@@ -392,10 +392,13 @@ export default function CalendarApp() {
 }
 
 function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose }) {
+  const today = new Date();
+  const defaultDate = today.toISOString().split('T')[0];
+
   const [formData, setFormData] = useState({
     collaborateurId: collaborateurs[0]?.id,
     clientId: clients[0]?.id,
-     dateComplete: new Date().toISOString().split('T')[0],
+    dateComplete: defaultDate,
     heures: 1,
     type: 'budgété',
     detail: ''
@@ -404,10 +407,8 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
   const handleSubmit = (e) => {
     e.preventDefault();
     const dateObj = new Date(formData.dateComplete);
-const day = dateObj.getDate();
-const dateObj = new Date(formData.dateComplete);
-const day = dateObj.getDate();
-onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), day, formData.heures, formData.type, formData.detail);
+    const day = dateObj.getDate();
+    onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), day, formData.heures, formData.type, formData.detail);
   };
 
   return (
@@ -435,19 +436,14 @@ onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), day, form
             </select>
           </div>
 
-         <div>
-  <label className="block text-sm font-medium text-slate-300 mb-1">Date</label>
-  <input type="date" value={formData.dateComplete} onChange={(e) => setFormData({ ...formData, dateComplete: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
-</div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date</label>
+            <input type="date" value={formData.dateComplete} onChange={(e) => setFormData({ ...formData, dateComplete: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
+          </div>
 
-<div>
-  <label className="block text-sm font-medium text-slate-300 mb-1">Heures</label>
-  <input type="number" step="0.5" min="0.5" value={formData.heures} onChange={(e) => setFormData({ ...formData, heures: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
-</div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Heures</label>
-              <input type="number" step="0.5" min="0.5" value={formData.heures} onChange={(e) => setFormData({ ...formData, heures: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Heures</label>
+            <input type="number" step="0.5" min="0.5" value={formData.heures} onChange={(e) => setFormData({ ...formData, heures: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
           </div>
 
           <div>
