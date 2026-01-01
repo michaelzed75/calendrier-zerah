@@ -64,6 +64,11 @@ export default function CalendarApp() {
       setCurrentUser(prefs.currentUser);
       setViewMode(prefs.viewMode || 'month');
       setSelectedCollaborateurs(prefs.selectedCollaborateurs || []);
+      // Si la vue sauvegardée est 'day', initialiser selectedDay
+      if (prefs.viewMode === 'day') {
+        const today = new Date();
+        setSelectedDay(formatDateToYMD(today));
+      }
     } else {
       setCurrentUser(1);
       setSelectedCollaborateurs([1, 2, 3, 4, 5, 6, 7, 8]);
@@ -375,7 +380,7 @@ export default function CalendarApp() {
 
         <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            {viewMode === 'day' ? (
+            {viewMode === 'day' && selectedDay ? (
               <>
                 <button onClick={() => navigateDay(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
                   <ChevronLeft size={20} />
@@ -722,9 +727,29 @@ export default function CalendarApp() {
 }
 
 function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }) {
+  // Protection si aucun collaborateur filtré
+  if (!collaborateurs || collaborateurs.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-white">Ajouter une charge</h3>
+            <button onClick={onClose} className="text-slate-400 hover:text-white">
+              <X size={24} />
+            </button>
+          </div>
+          <p className="text-slate-300">Veuillez sélectionner au moins un collaborateur dans le filtre.</p>
+          <button onClick={onClose} className="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition">
+            Fermer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [formData, setFormData] = useState({
-    collaborateurId: collaborateurs[0]?.id,
-    clientId: clients[0]?.id,
+    collaborateurId: collaborateurs[0]?.id || '',
+    clientId: clients[0]?.id || '',
     dateComplete: defaultDate,
     heures: 1,
     type: 'budgété',
@@ -794,6 +819,26 @@ function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }
 }
 
 function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose }) {
+  // Protection si aucun collaborateur filtré
+  if (!collaborateurs || collaborateurs.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-white">Modifier la charge</h3>
+            <button onClick={onClose} className="text-slate-400 hover:text-white">
+              <X size={24} />
+            </button>
+          </div>
+          <p className="text-slate-300">Veuillez sélectionner au moins un collaborateur dans le filtre.</p>
+          <button onClick={onClose} className="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition">
+            Fermer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [formData, setFormData] = useState({
     collaborateurId: charge.collaborateur_id,
     clientId: charge.client_id,
