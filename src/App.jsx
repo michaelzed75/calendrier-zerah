@@ -165,14 +165,15 @@ export default function CalendarApp() {
   };
 
   const handleDeleteCharge = async (chargeId) => {
-    const updated = charges.filter(c => c.id !== chargeId);
-    setCharges(updated);
-    localStorage.setItem('charges', JSON.stringify(updated));
-    
     try {
       await supabase.from('charges').delete().eq('id', chargeId);
+      const updated = charges.filter(c => c.id !== chargeId);
+      setCharges(updated);
+      localStorage.setItem('charges', JSON.stringify(updated));
     } catch (err) {
-      console.error('Erreur suppression:', err);
+      const updated = charges.filter(c => c.id !== chargeId);
+      setCharges(updated);
+      localStorage.setItem('charges', JSON.stringify(updated));
     }
   };
 
@@ -187,7 +188,8 @@ export default function CalendarApp() {
 
   const getWeekTotal = (collaborateurId) => {
     return weekDays.reduce((sum, date) => {
-      const dayTotal = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === date.toISOString().split('T')[0]).reduce((daySum, c) => daySum + c.heures, 0);
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const dayTotal = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr).reduce((daySum, c) => daySum + c.heures, 0);
       return sum + dayTotal;
     }, 0);
   };
@@ -360,7 +362,7 @@ export default function CalendarApp() {
                 <div key={collab.id} className="flex gap-4 mb-4 bg-slate-700 p-3 rounded">
                   <div className="w-32 flex-shrink-0"><div className="text-blue-300 font-semibold text-sm">{collab.nom}</div></div>
                   {weekDays.map(date => {
-                    const dateStr = date.toISOString().split('T')[0];
+                    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                     const dayCharges = charges.filter(c => c.collaborateur_id === collab.id && c.date_charge === dateStr);
                     const dayTotal = dayCharges.reduce((sum, c) => sum + c.heures, 0);
                     return (
