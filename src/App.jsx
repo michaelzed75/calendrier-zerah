@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-const XLSX = require('xlsx');
+import XLSX from 'xlsx';
 
 // Initialiser Supabase
 const SUPABASE_URL = 'https://anrvvsfvejnmdouxjfxj.supabase.co';
