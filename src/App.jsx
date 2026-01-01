@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download, Eye } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -29,10 +29,7 @@ const CLIENTS = [
   { id: 8, nom: 'Le Comptoir de Boulogne' }
 ];
 
-// ============================================
-// UTILITAIRE DATE - SOLUTION AU PROBLÈME 1
-// ============================================
-// Fonction utilitaire pour formater une date en YYYY-MM-DD sans décalage UTC
+// Utilitaires date
 const formatDateToYMD = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -40,7 +37,6 @@ const formatDateToYMD = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// Parse une date string YYYY-MM-DD en Date locale (évite le décalage UTC)
 const parseDateString = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
   return new Date(year, month - 1, day);
@@ -56,8 +52,9 @@ export default function CalendarApp() {
   const [selectedCollaborateurs, setSelectedCollaborateurs] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('month');
+  const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
   const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null); // Pour la vue jour
 
   useEffect(() => {
     const saved = localStorage.getItem('userPreferences');
@@ -153,7 +150,7 @@ export default function CalendarApp() {
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
-      date_charge: date, // Déjà au format YYYY-MM-DD depuis le formulaire
+      date_charge: date,
       heures: parseFloat(heures),
       type: type,
       detail: detail,
@@ -178,43 +175,59 @@ export default function CalendarApp() {
     setShowAddModal(false);
   };
 
-  // ============================================
-  // FIX PROBLÈME 2 : Suppression avec useCallback
-  // ============================================
   const handleDeleteCharge = useCallback(async (chargeId) => {
-    // Mise à jour optimiste du state AVANT l'appel Supabase
     setCharges(prevCharges => {
       const updated = prevCharges.filter(c => c.id !== chargeId);
       localStorage.setItem('charges', JSON.stringify(updated));
       return updated;
     });
 
-    // Suppression en base (async, non bloquant)
     try {
       const { error } = await supabase.from('charges').delete().eq('id', chargeId);
       if (error) {
         console.error('Erreur suppression Supabase:', error);
-        // En cas d'erreur, on pourrait recharger les données
-        // loadCharges();
       }
     } catch (err) {
       console.error('Erreur suppression:', err);
     }
   }, []);
 
-  // ============================================
-  // FIX PROBLÈME 1 : Comparaison de dates strings
-  // ============================================
+  // Obtenir les charges pour un jour donné
   const getChargesForDay = useCallback((collaborateurId, day) => {
-    // Construire la date cible au format YYYY-MM-DD
     const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
     return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
   }, [charges, currentDate]);
 
+  // Obtenir les charges pour une date string
+  const getChargesForDateStr = useCallback((collaborateurId, dateStr) => {
+    return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+  }, [charges]);
+
+  // Total heures pour un jour
   const getTotalHoursForDay = useCallback((collaborateurId, day) => {
     return getChargesForDay(collaborateurId, day).reduce((sum, c) => sum + parseFloat(c.heures), 0);
   }, [getChargesForDay]);
 
+  // Total heures pour une date string
+  const getTotalHoursForDateStr = useCallback((collaborateurId, dateStr) => {
+    return getChargesForDateStr(collaborateurId, dateStr).reduce((sum, c) => sum + parseFloat(c.heures), 0);
+  }, [getChargesForDateStr]);
+
+  // Agrégation par client pour une date (vue semaine)
+  const getAggregatedByClient = useCallback((collaborateurId, dateStr) => {
+    const dayCharges = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+    const aggregated = {};
+    dayCharges.forEach(charge => {
+      const clientName = CLIENTS.find(c => c.id === charge.client_id)?.nom || 'Inconnu';
+      if (!aggregated[clientName]) {
+        aggregated[clientName] = 0;
+      }
+      aggregated[clientName] += parseFloat(charge.heures);
+    });
+    return Object.entries(aggregated).map(([client, heures]) => ({ client, heures }));
+  }, [charges]);
+
+  // Total semaine
   const getWeekTotal = useCallback((collaborateurId) => {
     return weekDays.reduce((sum, date) => {
       const dateStr = formatDateToYMD(date);
@@ -229,23 +242,38 @@ export default function CalendarApp() {
     setWeekOffset(weekOffset + direction);
   };
 
+  // Ouvrir la vue jour
+  const openDayView = (day) => {
+    const dateStr = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    setSelectedDay(dateStr);
+    setViewMode('day');
+  };
+
+  // Ouvrir vue jour depuis vue semaine
+  const openDayViewFromDate = (date) => {
+    const dateStr = formatDateToYMD(date);
+    setSelectedDay(dateStr);
+    setViewMode('day');
+  };
+
+  // Navigation vue jour
+  const navigateDay = (direction) => {
+    const current = parseDateString(selectedDay);
+    current.setDate(current.getDate() + direction);
+    setSelectedDay(formatDateToYMD(current));
+  };
+
   const exportToExcel = (startDateStr, endDateStr) => {
     const data = [];
     
-    // Parse les dates de début et fin
-    const startDate = parseDateString(startDateStr);
-    const endDate = parseDateString(endDateStr);
-    
     filteredCollaborateurs.forEach(collab => {
       const chargesForCollab = charges.filter(c => {
-        // Comparer les strings de date directement (format YYYY-MM-DD)
         return c.collaborateur_id === collab.id &&
                c.date_charge >= startDateStr &&
                c.date_charge <= endDateStr;
       });
 
       chargesForCollab.forEach(charge => {
-        // Utiliser parseDateString pour l'affichage
         const displayDate = parseDateString(charge.date_charge);
         data.push({
           'Collaborateur': collab.nom,
@@ -270,6 +298,18 @@ export default function CalendarApp() {
     setShowExportModal(false);
   };
 
+  // Cycle des vues
+  const cycleViewMode = () => {
+    if (viewMode === 'month') {
+      setViewMode('week');
+      setWeekOffset(0);
+    } else if (viewMode === 'week') {
+      setViewMode('month');
+    } else if (viewMode === 'day') {
+      setViewMode('month');
+    }
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center"><div className="text-white text-xl">Chargement...</div></div>;
   }
@@ -284,28 +324,44 @@ export default function CalendarApp() {
 
         <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)) : handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
-              <ChevronLeft size={20} />
-            </button>
-            <h2 className="text-xl font-semibold text-white min-w-48 text-center">
-              {viewMode === 'month' 
-                ? currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-                : `Semaine du ${getWeekLabel()}`
-              }
-            </h2>
-            <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)) : handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
-              <ChevronRight size={20} />
-            </button>
+            {viewMode === 'day' ? (
+              <>
+                <button onClick={() => navigateDay(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  {parseDateString(selectedDay).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h2>
+                <button onClick={() => navigateDay(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)) : handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  {viewMode === 'month' 
+                    ? currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+                    : `Semaine du ${getWeekLabel()}`
+                  }
+                </h2>
+                <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)) : handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            )}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <select value={currentUser} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
               {COLLABORATEURS.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </select>
 
-            <button onClick={() => { setViewMode(viewMode === 'month' ? 'week' : 'month'); setWeekOffset(0); }} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+            <button onClick={cycleViewMode} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
               <Calendar size={18} />
-              {viewMode === 'month' ? 'Semaine' : 'Mois'}
+              {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
             </button>
 
             <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
@@ -346,81 +402,213 @@ export default function CalendarApp() {
 
         {showExportModal && <ExportModal viewMode={viewMode} currentDate={currentDate} weekDays={weekDays} onExport={exportToExcel} onClose={() => setShowExportModal(false)} />}
 
+        {/* ============================================ */}
+        {/* VUE MOIS - Totaux heures uniquement */}
+        {/* ============================================ */}
         {viewMode === 'month' && (
           <div className="grid grid-cols-7 gap-1 mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
-            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => <div key={day} className="text-center text-slate-400 text-sm font-semibold py-2">{day}</div>)}
+            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
+              <div key={day} className="text-center text-slate-400 text-sm font-semibold py-2">{day}</div>
+            ))}
             {allDays.map((day, idx) => (
-              <div key={idx} className="bg-slate-700 min-h-96 rounded-lg p-3 border border-slate-600 overflow-y-auto">
-                {day && <>
-                  <div className="text-white font-bold mb-3 text-lg">{day}</div>
-                  <div className="space-y-2">
-                    {filteredCollaborateurs.map(collab => {
-                      const dayCharges = getChargesForDay(collab.id, day);
-                      const totalHours = getTotalHoursForDay(collab.id, day);
-                      return (
-                        <div key={collab.id} className="bg-slate-600 rounded p-2 text-xs">
-                          <div className="text-blue-300 font-semibold mb-1">{collab.nom}</div>
-                          {dayCharges.length > 0 ? (
-                            <div className="space-y-1">
-                              {dayCharges.map(charge => (
-                                <div key={charge.id} className="bg-slate-500 rounded p-1">
-                                  <div className="flex items-center justify-between">
-                                    <div><span className="text-slate-300 text-xs">{CLIENTS.find(c => c.id === charge.client_id)?.nom.substring(0, 8)}</span>
-                                    <span className="ml-1 text-slate-400 text-xs">{charge.heures}h</span></div>
-                                    <button onClick={() => handleDeleteCharge(charge.id)} className="hover:bg-red-600 p-0.5 rounded transition">
-                                      <X size={12} />
-                                    </button>
-                                  </div>
-                                  {charge.detail && <div className="text-slate-300 text-xs mt-1 italic">{charge.detail}</div>}
-                                </div>
-                              ))}
-                            </div>
-                          ) : <div className="text-slate-400 text-xs">-</div>}
-                          {totalHours > 8 && <div className="mt-1 text-red-400 font-bold text-xs">⚠ {totalHours}h</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>}
+              <div key={idx} className="bg-slate-700 min-h-32 rounded-lg p-2 border border-slate-600">
+                {day && (
+                  <>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-white font-bold text-lg">{day}</span>
+                      <button 
+                        onClick={() => openDayView(day)} 
+                        className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
+                        title="Voir détails"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {filteredCollaborateurs.map(collab => {
+                        const totalHours = getTotalHoursForDay(collab.id, day);
+                        if (totalHours === 0) return null;
+                        return (
+                          <div 
+                            key={collab.id} 
+                            className={`flex justify-between items-center text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 ${
+                              totalHours > 8 ? 'bg-red-900/50 text-red-300' : 'bg-slate-600 text-slate-300'
+                            }`}
+                            onClick={() => openDayView(day)}
+                          >
+                            <span className="truncate">{collab.nom.split(' ')[0]}</span>
+                            <span className="font-bold">{totalHours}h</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
         )}
 
+        {/* ============================================ */}
+        {/* VUE SEMAINE - Heures + clients agrégés */}
+        {/* ============================================ */}
         {viewMode === 'week' && (
           <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 overflow-x-auto">
             <div className="min-w-full">
-              <div className="flex gap-4 mb-4">
-                <div className="w-32 flex-shrink-0"><div className="font-bold text-white text-sm">Collaborateur</div></div>
-                {weekDays.map(date => <div key={formatDateToYMD(date)} className="flex-1 min-w-32"><div className="font-semibold text-white text-sm">{date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}</div></div>)}
-                <div className="w-24 flex-shrink-0"><div className="font-bold text-green-300 text-sm">Total</div></div>
+              {/* En-tête */}
+              <div className="flex gap-2 mb-4">
+                <div className="w-28 flex-shrink-0">
+                  <div className="font-bold text-white text-sm">Collab.</div>
+                </div>
+                {weekDays.map(date => (
+                  <div key={formatDateToYMD(date)} className="flex-1 min-w-36">
+                    <div 
+                      className="font-semibold text-white text-sm cursor-pointer hover:text-blue-300 transition"
+                      onClick={() => openDayViewFromDate(date)}
+                    >
+                      {date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                ))}
+                <div className="w-20 flex-shrink-0">
+                  <div className="font-bold text-green-300 text-sm text-center">Total</div>
+                </div>
               </div>
+
+              {/* Lignes collaborateurs */}
               {filteredCollaborateurs.map(collab => (
-                <div key={collab.id} className="flex gap-4 mb-4 bg-slate-700 p-3 rounded">
-                  <div className="w-32 flex-shrink-0"><div className="text-blue-300 font-semibold text-sm">{collab.nom}</div></div>
+                <div key={collab.id} className="flex gap-2 mb-3 bg-slate-700 p-3 rounded">
+                  <div className="w-28 flex-shrink-0">
+                    <div className="text-blue-300 font-semibold text-sm">{collab.nom}</div>
+                  </div>
                   {weekDays.map(date => {
                     const dateStr = formatDateToYMD(date);
-                    const dayCharges = charges.filter(c => c.collaborateur_id === collab.id && c.date_charge === dateStr);
-                    const dayTotal = dayCharges.reduce((sum, c) => sum + parseFloat(c.heures), 0);
+                    const aggregated = getAggregatedByClient(collab.id, dateStr);
+                    const dayTotal = getTotalHoursForDateStr(collab.id, dateStr);
                     return (
-                      <div key={dateStr} className="flex-1 min-w-32">
-                        <div className={`text-sm font-semibold ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}>{dayTotal > 0 ? `${dayTotal}h` : '-'}</div>
-                        {dayCharges.map(charge => <div key={charge.id} className="text-xs text-slate-400 mt-1">{CLIENTS.find(c => c.id === charge.client_id)?.nom.substring(0, 6)}</div>)}
+                      <div 
+                        key={dateStr} 
+                        className="flex-1 min-w-36 cursor-pointer hover:bg-slate-600 rounded p-1 transition"
+                        onClick={() => openDayViewFromDate(date)}
+                      >
+                        <div className={`text-sm font-bold mb-1 ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}>
+                          {dayTotal > 0 ? `${dayTotal}h` : '-'}
+                        </div>
+                        {aggregated.length > 0 && (
+                          <div className="space-y-0.5">
+                            {aggregated.slice(0, 3).map((item, idx) => (
+                              <div key={idx} className="text-xs text-slate-400 truncate">
+                                {item.client.substring(0, 10)}: {item.heures}h
+                              </div>
+                            ))}
+                            {aggregated.length > 3 && (
+                              <div className="text-xs text-slate-500">+{aggregated.length - 3} autres</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                  <div className="w-24 flex-shrink-0"><div className={`text-sm font-bold ${getWeekTotal(collab.id) > 40 ? 'text-red-400' : 'text-green-300'}`}>{getWeekTotal(collab.id)}h</div></div>
+                  <div className="w-20 flex-shrink-0 flex items-center justify-center">
+                    <div className={`text-sm font-bold ${getWeekTotal(collab.id) > 40 ? 'text-red-400' : 'text-green-300'}`}>
+                      {getWeekTotal(collab.id)}h
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
+        {/* ============================================ */}
+        {/* VUE JOUR - Détail complet avec scroll */}
+        {/* ============================================ */}
+        {viewMode === 'day' && selectedDay && (
+          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+            <div className="space-y-6">
+              {filteredCollaborateurs.map(collab => {
+                const dayCharges = getChargesForDateStr(collab.id, selectedDay);
+                const totalHours = dayCharges.reduce((sum, c) => sum + parseFloat(c.heures), 0);
+                
+                return (
+                  <div key={collab.id} className="bg-slate-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-blue-300">{collab.nom}</h3>
+                      <span className={`text-lg font-bold ${totalHours > 8 ? 'text-red-400' : 'text-green-300'}`}>
+                        Total: {totalHours}h
+                      </span>
+                    </div>
+                    
+                    {dayCharges.length === 0 ? (
+                      <div className="text-slate-400 text-sm italic">Aucune charge planifiée</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-slate-400 border-b border-slate-600">
+                              <th className="text-left py-2 px-2">Client</th>
+                              <th className="text-center py-2 px-2">Budgété</th>
+                              <th className="text-center py-2 px-2">Réalisé</th>
+                              <th className="text-left py-2 px-2">Type</th>
+                              <th className="text-left py-2 px-2">Détail</th>
+                              <th className="text-center py-2 px-2">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dayCharges.map(charge => (
+                              <tr key={charge.id} className="border-b border-slate-600/50 hover:bg-slate-600/30">
+                                <td className="py-2 px-2 text-white">
+                                  {CLIENTS.find(c => c.id === charge.client_id)?.nom || 'Inconnu'}
+                                </td>
+                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures}h</td>
+                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures_realisees || 0}h</td>
+                                <td className="py-2 px-2">
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    charge.type === 'budgété' ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'
+                                  }`}>
+                                    {charge.type}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-slate-400 max-w-xs truncate" title={charge.detail}>
+                                  {charge.detail || '-'}
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <button 
+                                    onClick={() => handleDeleteCharge(charge.id)} 
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
+                                    title="Supprimer"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bouton retour */}
+            <div className="mt-6 flex justify-center">
+              <button 
+                onClick={() => setViewMode('month')} 
+                className="bg-slate-600 hover:bg-slate-500 text-white px-6 py-2 rounded-lg transition"
+              >
+                ← Retour au mois
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
           <p className="text-slate-400 text-sm">
-            Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
+            Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
           </p>
-          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.1</p>
+          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.2</p>
         </div>
       </div>
     </div>
@@ -428,7 +616,6 @@ export default function CalendarApp() {
 }
 
 function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose }) {
-  // Utiliser formatDateToYMD pour la date par défaut
   const today = new Date();
   const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -443,13 +630,12 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // La date est déjà au format YYYY-MM-DD depuis l'input type="date"
     onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700 max-h-96 overflow-y-auto">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold text-white">Ajouter une charge</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
@@ -505,11 +691,8 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
 }
 
 function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
-  // ============================================
-  // FIX PROBLÈME 1 : Dates d'export sans UTC
-  // ============================================
   const [startDate, setStartDate] = useState(() => {
-    if (viewMode === 'month') {
+    if (viewMode === 'month' || viewMode === 'day') {
       const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       return `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`;
     } else if (weekDays.length > 0) {
@@ -519,7 +702,7 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
   });
 
   const [endDate, setEndDate] = useState(() => {
-    if (viewMode === 'month') {
+    if (viewMode === 'month' || viewMode === 'day') {
       const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
       return `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
     } else if (weekDays.length > 0) {
@@ -529,7 +712,6 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
   });
 
   const handleExport = () => {
-    // Passer les strings directement, pas les objets Date
     onExport(startDate, endDate);
   };
 
