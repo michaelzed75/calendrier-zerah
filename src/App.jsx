@@ -180,7 +180,7 @@ export default function CalendarApp() {
   };
 
   const getChargesForDay = (collaborateurId, day) => {
-    const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toISOString().split('T')[0];
+    const targetDate = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
   };
 
