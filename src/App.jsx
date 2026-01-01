@@ -167,12 +167,15 @@ export default function CalendarApp() {
   };
 
   const handleDeleteCharge = async (chargeId) => {
+    const updated = charges.filter(c => c.id !== chargeId);
+    setCharges(updated);
+    localStorage.setItem('charges', JSON.stringify(updated));
+    
     try {
       await supabase.from('charges').delete().eq('id', chargeId);
     } catch (err) {
       console.error('Erreur suppression:', err);
     }
-    await loadCharges();
   };
 
   const getChargesForDay = (collaborateurId, day) => {
@@ -402,8 +405,6 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const dateObj = new Date(formData.dateComplete);
-    const day = dateObj.getDate();
     onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
   };
 
