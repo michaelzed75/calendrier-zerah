@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
@@ -28,6 +28,23 @@ const CLIENTS = [
   { id: 7, nom: 'Le Comptoir de Saint Cloud' },
   { id: 8, nom: 'Le Comptoir de Boulogne' }
 ];
+
+// ============================================
+// UTILITAIRE DATE - SOLUTION AU PROBLÈME 1
+// ============================================
+// Fonction utilitaire pour formater une date en YYYY-MM-DD sans décalage UTC
+const formatDateToYMD = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Parse une date string YYYY-MM-DD en Date locale (évite le décalage UTC)
+const parseDateString = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
 
 export default function CalendarApp() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
@@ -110,7 +127,7 @@ export default function CalendarApp() {
   const emptyDays = Array.from({ length: firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1 }, (_, i) => null);
   const allDays = [...emptyDays, ...monthDays];
 
-  const getWeekDays = () => {
+  const getWeekDays = useCallback(() => {
     const today = new Date(currentDate);
     today.setDate(today.getDate() + weekOffset * 7);
     const first = today.getDate() - today.getDay() + 1;
@@ -120,7 +137,7 @@ export default function CalendarApp() {
       weekDays.push(date);
     }
     return weekDays;
-  };
+  }, [currentDate, weekOffset]);
 
   const getWeekLabel = () => {
     const days = getWeekDays();
@@ -136,7 +153,7 @@ export default function CalendarApp() {
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
-      date_charge: date,
+      date_charge: date, // Déjà au format YYYY-MM-DD depuis le formulaire
       heures: parseFloat(heures),
       type: type,
       detail: detail,
@@ -147,73 +164,93 @@ export default function CalendarApp() {
       const { data, error } = await supabase.from('charges').insert([newCharge]).select();
       if (error) {
         const newChargeWithId = { id: Date.now(), ...newCharge };
-        const updated = [...charges, newChargeWithId];
-        setCharges(updated);
-        localStorage.setItem('charges', JSON.stringify(updated));
+        setCharges(prevCharges => [...prevCharges, newChargeWithId]);
+        localStorage.setItem('charges', JSON.stringify([...charges, newChargeWithId]));
       } else {
-        const updated = [...charges, data[0]];
-        setCharges(updated);
-        localStorage.setItem('charges', JSON.stringify(updated));
+        setCharges(prevCharges => [...prevCharges, data[0]]);
+        localStorage.setItem('charges', JSON.stringify([...charges, data[0]]));
       }
     } catch (err) {
       const newChargeWithId = { id: Date.now(), ...newCharge };
-      const updated = [...charges, newChargeWithId];
-      setCharges(updated);
-      localStorage.setItem('charges', JSON.stringify(updated));
+      setCharges(prevCharges => [...prevCharges, newChargeWithId]);
+      localStorage.setItem('charges', JSON.stringify([...charges, newChargeWithId]));
     }
     setShowAddModal(false);
   };
 
-  const handleDeleteCharge = async (chargeId) => {
+  // ============================================
+  // FIX PROBLÈME 2 : Suppression avec useCallback
+  // ============================================
+  const handleDeleteCharge = useCallback(async (chargeId) => {
+    // Mise à jour optimiste du state AVANT l'appel Supabase
+    setCharges(prevCharges => {
+      const updated = prevCharges.filter(c => c.id !== chargeId);
+      localStorage.setItem('charges', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Suppression en base (async, non bloquant)
     try {
-      await supabase.from('charges').delete().eq('id', chargeId);
-      const updated = charges.filter(c => c.id !== chargeId);
-      setCharges(updated);
-      localStorage.setItem('charges', JSON.stringify(updated));
+      const { error } = await supabase.from('charges').delete().eq('id', chargeId);
+      if (error) {
+        console.error('Erreur suppression Supabase:', error);
+        // En cas d'erreur, on pourrait recharger les données
+        // loadCharges();
+      }
     } catch (err) {
-      const updated = charges.filter(c => c.id !== chargeId);
-      setCharges(updated);
-      localStorage.setItem('charges', JSON.stringify(updated));
+      console.error('Erreur suppression:', err);
     }
-  };
+  }, []);
 
-  const getChargesForDay = (collaborateurId, day) => {
-    const targetDate = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // ============================================
+  // FIX PROBLÈME 1 : Comparaison de dates strings
+  // ============================================
+  const getChargesForDay = useCallback((collaborateurId, day) => {
+    // Construire la date cible au format YYYY-MM-DD
+    const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
     return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
-  };
+  }, [charges, currentDate]);
 
-  const getTotalHoursForDay = (collaborateurId, day) => {
-    return getChargesForDay(collaborateurId, day).reduce((sum, c) => sum + c.heures, 0);
-  };
+  const getTotalHoursForDay = useCallback((collaborateurId, day) => {
+    return getChargesForDay(collaborateurId, day).reduce((sum, c) => sum + parseFloat(c.heures), 0);
+  }, [getChargesForDay]);
 
-  const getWeekTotal = (collaborateurId) => {
+  const getWeekTotal = useCallback((collaborateurId) => {
     return weekDays.reduce((sum, date) => {
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const dayTotal = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr).reduce((daySum, c) => daySum + c.heures, 0);
+      const dateStr = formatDateToYMD(date);
+      const dayTotal = charges
+        .filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr)
+        .reduce((daySum, c) => daySum + parseFloat(c.heures), 0);
       return sum + dayTotal;
     }, 0);
-  };
+  }, [charges, weekDays]);
 
   const handleNavigateWeek = (direction) => {
     setWeekOffset(weekOffset + direction);
   };
 
-  const exportToExcel = (startDate, endDate) => {
+  const exportToExcel = (startDateStr, endDateStr) => {
     const data = [];
+    
+    // Parse les dates de début et fin
+    const startDate = parseDateString(startDateStr);
+    const endDate = parseDateString(endDateStr);
     
     filteredCollaborateurs.forEach(collab => {
       const chargesForCollab = charges.filter(c => {
-        const chargeDate = new Date(c.date_charge);
+        // Comparer les strings de date directement (format YYYY-MM-DD)
         return c.collaborateur_id === collab.id &&
-               chargeDate >= startDate &&
-               chargeDate <= endDate;
+               c.date_charge >= startDateStr &&
+               c.date_charge <= endDateStr;
       });
 
       chargesForCollab.forEach(charge => {
+        // Utiliser parseDateString pour l'affichage
+        const displayDate = parseDateString(charge.date_charge);
         data.push({
           'Collaborateur': collab.nom,
           'Client': CLIENTS.find(cl => cl.id === charge.client_id)?.nom || '',
-          'Date': new Date(charge.date_charge).toLocaleDateString('fr-FR'),
+          'Date': displayDate.toLocaleDateString('fr-FR'),
           'Budgété (h)': charge.heures,
           'Réalisé (h)': charge.heures_realisees || 0,
           'Écart (h)': (charge.heures - (charge.heures_realisees || 0)).toFixed(2),
@@ -227,7 +264,7 @@ export default function CalendarApp() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Charges');
     
-    const fileName = `Charges_${startDate.toISOString().split('T')[0]}_${endDate.toISOString().split('T')[0]}.xlsx`;
+    const fileName = `Charges_${startDateStr}_${endDateStr}.xlsx`;
     XLSX.writeFile(wb, fileName);
     
     setShowExportModal(false);
@@ -355,16 +392,16 @@ export default function CalendarApp() {
             <div className="min-w-full">
               <div className="flex gap-4 mb-4">
                 <div className="w-32 flex-shrink-0"><div className="font-bold text-white text-sm">Collaborateur</div></div>
-                {weekDays.map(date => <div key={date.toString()} className="flex-1 min-w-32"><div className="font-semibold text-white text-sm">{date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}</div></div>)}
+                {weekDays.map(date => <div key={formatDateToYMD(date)} className="flex-1 min-w-32"><div className="font-semibold text-white text-sm">{date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}</div></div>)}
                 <div className="w-24 flex-shrink-0"><div className="font-bold text-green-300 text-sm">Total</div></div>
               </div>
               {filteredCollaborateurs.map(collab => (
                 <div key={collab.id} className="flex gap-4 mb-4 bg-slate-700 p-3 rounded">
                   <div className="w-32 flex-shrink-0"><div className="text-blue-300 font-semibold text-sm">{collab.nom}</div></div>
                   {weekDays.map(date => {
-                    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    const dateStr = formatDateToYMD(date);
                     const dayCharges = charges.filter(c => c.collaborateur_id === collab.id && c.date_charge === dateStr);
-                    const dayTotal = dayCharges.reduce((sum, c) => sum + c.heures, 0);
+                    const dayTotal = dayCharges.reduce((sum, c) => sum + parseFloat(c.heures), 0);
                     return (
                       <div key={dateStr} className="flex-1 min-w-32">
                         <div className={`text-sm font-semibold ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}>{dayTotal > 0 ? `${dayTotal}h` : '-'}</div>
@@ -383,7 +420,7 @@ export default function CalendarApp() {
           <p className="text-slate-400 text-sm">
             Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
           </p>
-          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.0</p>
+          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.1</p>
         </div>
       </div>
     </div>
@@ -391,8 +428,9 @@ export default function CalendarApp() {
 }
 
 function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose }) {
+  // Utiliser formatDateToYMD pour la date par défaut
   const today = new Date();
-  const defaultDate = today.toISOString().split('T')[0];
+  const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const [formData, setFormData] = useState({
     collaborateurId: collaborateurs[0]?.id,
@@ -405,6 +443,7 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // La date est déjà au format YYYY-MM-DD depuis l'input type="date"
     onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
   };
 
@@ -466,24 +505,32 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
 }
 
 function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
+  // ============================================
+  // FIX PROBLÈME 1 : Dates d'export sans UTC
+  // ============================================
   const [startDate, setStartDate] = useState(() => {
     if (viewMode === 'month') {
-      return new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
-    } else {
+      const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      return `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`;
+    } else if (weekDays.length > 0) {
       return `${weekDays[0].getFullYear()}-${String(weekDays[0].getMonth() + 1).padStart(2, '0')}-${String(weekDays[0].getDate()).padStart(2, '0')}`;
     }
+    return '';
   });
 
   const [endDate, setEndDate] = useState(() => {
     if (viewMode === 'month') {
-      return new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
-    } else {
+      const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+      return `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    } else if (weekDays.length > 0) {
       return `${weekDays[6].getFullYear()}-${String(weekDays[6].getMonth() + 1).padStart(2, '0')}-${String(weekDays[6].getDate()).padStart(2, '0')}`;
     }
+    return '';
   });
 
   const handleExport = () => {
-    onExport(new Date(startDate), new Date(endDate));
+    // Passer les strings directement, pas les objets Date
+    onExport(startDate, endDate);
   };
 
   return (
