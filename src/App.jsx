@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -263,6 +263,23 @@ export default function CalendarApp() {
     setSelectedDay(formatDateToYMD(current));
   };
 
+  // Changer de vue avec initialisation correcte
+  const switchToView = (newView) => {
+    if (newView === 'day' && !selectedDay) {
+      // Si on passe en vue jour sans date sélectionnée, prendre aujourd'hui ou le 1er du mois courant
+      const today = new Date();
+      if (today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear()) {
+        setSelectedDay(formatDateToYMD(today));
+      } else {
+        setSelectedDay(formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)));
+      }
+    }
+    if (newView === 'week') {
+      setWeekOffset(0);
+    }
+    setViewMode(newView);
+  };
+
   const exportToExcel = (startDateStr, endDateStr) => {
     const data = [];
     
@@ -298,18 +315,6 @@ export default function CalendarApp() {
     setShowExportModal(false);
   };
 
-  // Cycle des vues
-  const cycleViewMode = () => {
-    if (viewMode === 'month') {
-      setViewMode('week');
-      setWeekOffset(0);
-    } else if (viewMode === 'week') {
-      setViewMode('month');
-    } else if (viewMode === 'day') {
-      setViewMode('month');
-    }
-  };
-
   if (loading) {
     return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center"><div className="text-white text-xl">Chargement...</div></div>;
   }
@@ -336,18 +341,27 @@ export default function CalendarApp() {
                   <ChevronRight size={20} />
                 </button>
               </>
-            ) : (
+            ) : viewMode === 'week' ? (
               <>
-                <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)) : handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                <button onClick={() => handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
                   <ChevronLeft size={20} />
                 </button>
                 <h2 className="text-xl font-semibold text-white min-w-48 text-center">
-                  {viewMode === 'month' 
-                    ? currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-                    : `Semaine du ${getWeekLabel()}`
-                  }
+                  Semaine du {getWeekLabel()}
                 </h2>
-                <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)) : handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                <button onClick={() => handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  {currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                </h2>
+                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
                   <ChevronRight size={20} />
                 </button>
               </>
@@ -359,10 +373,39 @@ export default function CalendarApp() {
               {COLLABORATEURS.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </select>
 
-            <button onClick={cycleViewMode} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
-              <Calendar size={18} />
-              {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
-            </button>
+            {/* Trois boutons fixes pour les vues */}
+            <div className="flex rounded-lg overflow-hidden border border-slate-600">
+              <button 
+                onClick={() => switchToView('month')} 
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  viewMode === 'month' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                Mois
+              </button>
+              <button 
+                onClick={() => switchToView('week')} 
+                className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
+                  viewMode === 'week' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                Semaine
+              </button>
+              <button 
+                onClick={() => switchToView('day')} 
+                className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
+                  viewMode === 'day' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                Jour
+              </button>
+            </div>
 
             <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
               <Filter size={18} />
@@ -546,30 +589,30 @@ export default function CalendarApp() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="text-slate-400 border-b border-slate-600">
-                              <th className="text-left py-2 px-2">Client</th>
-                              <th className="text-center py-2 px-2">Budgété</th>
-                              <th className="text-center py-2 px-2">Réalisé</th>
-                              <th className="text-left py-2 px-2">Type</th>
+                              <th className="text-left py-2 px-2 w-40">Client</th>
+                              <th className="text-center py-2 px-2 w-20">Budgété</th>
+                              <th className="text-center py-2 px-2 w-20">Réalisé</th>
+                              <th className="text-center py-2 px-2 w-24">Type</th>
                               <th className="text-left py-2 px-2">Détail</th>
-                              <th className="text-center py-2 px-2">Action</th>
+                              <th className="text-center py-2 px-2 w-16">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             {dayCharges.map(charge => (
-                              <tr key={charge.id} className="border-b border-slate-600/50 hover:bg-slate-600/30">
+                              <tr key={charge.id} className="border-b border-slate-600/50 hover:bg-slate-600/30 align-top">
                                 <td className="py-2 px-2 text-white">
                                   {CLIENTS.find(c => c.id === charge.client_id)?.nom || 'Inconnu'}
                                 </td>
                                 <td className="py-2 px-2 text-center text-slate-300">{charge.heures}h</td>
                                 <td className="py-2 px-2 text-center text-slate-300">{charge.heures_realisees || 0}h</td>
-                                <td className="py-2 px-2">
+                                <td className="py-2 px-2 text-center">
                                   <span className={`px-2 py-0.5 rounded text-xs ${
                                     charge.type === 'budgété' ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'
                                   }`}>
                                     {charge.type}
                                   </span>
                                 </td>
-                                <td className="py-2 px-2 text-slate-400 max-w-xs truncate" title={charge.detail}>
+                                <td className="py-2 px-2 text-slate-400 whitespace-pre-wrap break-words">
                                   {charge.detail || '-'}
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -591,16 +634,6 @@ export default function CalendarApp() {
                 );
               })}
             </div>
-
-            {/* Bouton retour */}
-            <div className="mt-6 flex justify-center">
-              <button 
-                onClick={() => setViewMode('month')} 
-                className="bg-slate-600 hover:bg-slate-500 text-white px-6 py-2 rounded-lg transition"
-              >
-                ← Retour au mois
-              </button>
-            </div>
           </div>
         )}
 
@@ -608,7 +641,7 @@ export default function CalendarApp() {
           <p className="text-slate-400 text-sm">
             Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
           </p>
-          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.2</p>
+          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.3</p>
         </div>
       </div>
     </div>
