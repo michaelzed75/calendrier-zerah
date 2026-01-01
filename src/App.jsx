@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -55,6 +55,7 @@ export default function CalendarApp() {
   const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null); // Pour la vue jour
+  const [editingCharge, setEditingCharge] = useState(null); // Pour l'édition
 
   useEffect(() => {
     const saved = localStorage.getItem('userPreferences');
@@ -146,6 +147,21 @@ export default function CalendarApp() {
 
   const weekDays = viewMode === 'week' ? getWeekDays() : [];
 
+  // Calculer la date par défaut selon la vue
+  const getDefaultDate = useCallback(() => {
+    if (viewMode === 'day' && selectedDay) {
+      return selectedDay;
+    } else if (viewMode === 'week') {
+      const days = getWeekDays();
+      if (days.length > 0) {
+        return formatDateToYMD(days[0]);
+      }
+    }
+    // Vue mois ou fallback : date du jour
+    const today = new Date();
+    return formatDateToYMD(today);
+  }, [viewMode, selectedDay, getWeekDays]);
+
   const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
     const newCharge = {
       collaborateur_id: collaborateurId,
@@ -173,6 +189,37 @@ export default function CalendarApp() {
       localStorage.setItem('charges', JSON.stringify([...charges, newChargeWithId]));
     }
     setShowAddModal(false);
+  };
+
+  const handleUpdateCharge = async (chargeId, collaborateurId, clientId, date, heures, type, detail) => {
+    const updatedCharge = {
+      collaborateur_id: collaborateurId,
+      client_id: clientId,
+      date_charge: date,
+      heures: parseFloat(heures),
+      type: type,
+      detail: detail
+    };
+
+    // Mise à jour optimiste
+    setCharges(prevCharges => {
+      const updated = prevCharges.map(c => 
+        c.id === chargeId ? { ...c, ...updatedCharge } : c
+      );
+      localStorage.setItem('charges', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const { error } = await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
+      if (error) {
+        console.error('Erreur mise à jour Supabase:', error);
+      }
+    } catch (err) {
+      console.error('Erreur mise à jour:', err);
+    }
+    
+    setEditingCharge(null);
   };
 
   const handleDeleteCharge = useCallback(async (chargeId) => {
@@ -266,7 +313,6 @@ export default function CalendarApp() {
   // Changer de vue avec initialisation correcte
   const switchToView = (newView) => {
     if (newView === 'day' && !selectedDay) {
-      // Si on passe en vue jour sans date sélectionnée, prendre aujourd'hui ou le 1er du mois courant
       const today = new Date();
       if (today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear()) {
         setSelectedDay(formatDateToYMD(today));
@@ -441,7 +487,25 @@ export default function CalendarApp() {
           </div>
         )}
 
-        {showAddModal && <AddChargeModal clients={CLIENTS} collaborateurs={COLLABORATEURS} currentMonth={currentDate} onAdd={handleAddCharge} onClose={() => setShowAddModal(false)} />}
+        {showAddModal && (
+          <AddChargeModal 
+            clients={CLIENTS} 
+            collaborateurs={filteredCollaborateurs} 
+            defaultDate={getDefaultDate()}
+            onAdd={handleAddCharge} 
+            onClose={() => setShowAddModal(false)} 
+          />
+        )}
+
+        {editingCharge && (
+          <EditChargeModal 
+            charge={editingCharge}
+            clients={CLIENTS} 
+            collaborateurs={filteredCollaborateurs} 
+            onUpdate={handleUpdateCharge} 
+            onClose={() => setEditingCharge(null)} 
+          />
+        )}
 
         {showExportModal && <ExportModal viewMode={viewMode} currentDate={currentDate} weekDays={weekDays} onExport={exportToExcel} onClose={() => setShowExportModal(false)} />}
 
@@ -594,7 +658,7 @@ export default function CalendarApp() {
                               <th className="text-center py-2 px-2 w-20">Réalisé</th>
                               <th className="text-center py-2 px-2 w-24">Type</th>
                               <th className="text-left py-2 px-2">Détail</th>
-                              <th className="text-center py-2 px-2 w-16">Action</th>
+                              <th className="text-center py-2 px-2 w-24">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -616,13 +680,22 @@ export default function CalendarApp() {
                                   {charge.detail || '-'}
                                 </td>
                                 <td className="py-2 px-2 text-center">
-                                  <button 
-                                    onClick={() => handleDeleteCharge(charge.id)} 
-                                    className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
-                                    title="Supprimer"
-                                  >
-                                    <X size={16} />
-                                  </button>
+                                  <div className="flex justify-center gap-1">
+                                    <button 
+                                      onClick={() => setEditingCharge(charge)} 
+                                      className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
+                                      title="Modifier"
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteCharge(charge.id)} 
+                                      className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
+                                      title="Supprimer"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -641,17 +714,14 @@ export default function CalendarApp() {
           <p className="text-slate-400 text-sm">
             Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
           </p>
-          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.3</p>
+          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.4</p>
         </div>
       </div>
     </div>
   );
 }
 
-function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose }) {
-  const today = new Date();
-  const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
+function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }) {
   const [formData, setFormData] = useState({
     collaborateurId: collaborateurs[0]?.id,
     clientId: clients[0]?.id,
@@ -717,6 +787,83 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
           <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded transition">
             Ajouter
           </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose }) {
+  const [formData, setFormData] = useState({
+    collaborateurId: charge.collaborateur_id,
+    clientId: charge.client_id,
+    dateComplete: charge.date_charge,
+    heures: charge.heures,
+    type: charge.type || 'budgété',
+    detail: charge.detail || ''
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onUpdate(charge.id, parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white">Modifier la charge</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Collaborateur</label>
+            <select value={formData.collaborateurId} onChange={(e) => setFormData({ ...formData, collaborateurId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
+              {collaborateurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
+            <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
+              {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date</label>
+            <input type="date" value={formData.dateComplete} onChange={(e) => setFormData({ ...formData, dateComplete: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Heures</label>
+            <input type="number" step="0.5" min="0.5" value={formData.heures} onChange={(e) => setFormData({ ...formData, heures: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Type</label>
+            <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
+              <option value="budgété">Budgété</option>
+              <option value="réel">Réel</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Détail (optionnel)</label>
+            <textarea value={formData.detail} onChange={(e) => setFormData({ ...formData, detail: e.target.value })} placeholder="Ex: Configuration système, réunion client..." className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 h-20 resize-none" />
+          </div>
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition">
+              Annuler
+            </button>
+            <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">
+              Enregistrer
+            </button>
+          </div>
         </form>
       </div>
     </div>
