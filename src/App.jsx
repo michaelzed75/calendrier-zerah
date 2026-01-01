@@ -421,7 +421,7 @@ export default function CalendarApp() {
 
           <div className="flex gap-3 flex-wrap">
             <select value={currentUser} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-              {COLLABORATEURS.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+              {filteredCollaborateurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </select>
 
             {/* Trois boutons fixes pour les vues */}
