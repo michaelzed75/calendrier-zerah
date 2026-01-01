@@ -169,14 +169,10 @@ export default function CalendarApp() {
   const handleDeleteCharge = async (chargeId) => {
     try {
       await supabase.from('charges').delete().eq('id', chargeId);
-      const updated = charges.filter(c => c.id !== chargeId);
-      setCharges(updated);
-      localStorage.setItem('charges', JSON.stringify(updated));
     } catch (err) {
-      const updated = charges.filter(c => c.id !== chargeId);
-      setCharges(updated);
-      localStorage.setItem('charges', JSON.stringify(updated));
+      console.error('Erreur suppression:', err);
     }
+    await loadCharges();
   };
 
   const getChargesForDay = (collaborateurId, day) => {
