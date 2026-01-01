@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
 
 // Initialiser Supabase
 const SUPABASE_URL = 'https://anrvvsfvejnmdouxjfxj.supabase.co';
@@ -36,10 +37,12 @@ export default function CalendarApp() {
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [selectedCollaborateurs, setSelectedCollaborateurs] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('month');
+  const [weekOffset, setWeekOffset] = useState(0);
 
   useEffect(() => {
     const saved = localStorage.getItem('userPreferences');
@@ -111,13 +114,22 @@ export default function CalendarApp() {
 
   const getWeekDays = () => {
     const today = new Date(currentDate);
+    today.setDate(today.getDate() + weekOffset * 7);
     const first = today.getDate() - today.getDay() + 1;
     const weekDays = [];
     for (let i = 0; i < 7; i++) {
-      const date = new Date(today.setDate(first + i));
-      weekDays.push(new Date(date));
+      const date = new Date(today.getFullYear(), today.getMonth(), first + i);
+      weekDays.push(date);
     }
     return weekDays;
+  };
+
+  const getWeekLabel = () => {
+    const days = getWeekDays();
+    if (days.length === 0) return '';
+    const start = days[0];
+    const end = days[6];
+    return `${start.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })} - ${end.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}`;
   };
 
   const weekDays = viewMode === 'week' ? getWeekDays() : [];
@@ -129,7 +141,8 @@ export default function CalendarApp() {
       date_charge: new Date(currentDate.getFullYear(), currentDate.getMonth(), date).toISOString().split('T')[0],
       heures: parseFloat(heures),
       type: type,
-      detail: detail
+      detail: detail,
+      heures_realisees: 0
     };
 
     try {
@@ -182,6 +195,45 @@ export default function CalendarApp() {
     }, 0);
   };
 
+  const handleNavigateWeek = (direction) => {
+    setWeekOffset(weekOffset + direction);
+  };
+
+  const exportToExcel = (startDate, endDate) => {
+    const data = [];
+    
+    filteredCollaborateurs.forEach(collab => {
+      const chargesForCollab = charges.filter(c => {
+        const chargeDate = new Date(c.date_charge);
+        return c.collaborateur_id === collab.id &&
+               chargeDate >= startDate &&
+               chargeDate <= endDate;
+      });
+
+      chargesForCollab.forEach(charge => {
+        data.push({
+          'Collaborateur': collab.nom,
+          'Client': CLIENTS.find(cl => cl.id === charge.client_id)?.nom || '',
+          'Date': new Date(charge.date_charge).toLocaleDateString('fr-FR'),
+          'Budgété (h)': charge.heures,
+          'Réalisé (h)': charge.heures_realisees || 0,
+          'Écart (h)': (charge.heures - (charge.heures_realisees || 0)).toFixed(2),
+          'Type': charge.type,
+          'Détail': charge.detail || ''
+        });
+      });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Charges');
+    
+    const fileName = `Charges_${startDate.toISOString().split('T')[0]}_${endDate.toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    setShowExportModal(false);
+  };
+
   if (loading) {
     return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center"><div className="text-white text-xl">Chargement...</div></div>;
   }
@@ -190,19 +242,22 @@ export default function CalendarApp() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Calendrier d'équipe</h1>
+          <h1 className="text-4xl font-bold text-white mb-2">Calendrier d'équipe - Audit Up</h1>
           <p className="text-slate-400">Gestion des charges de travail par collaborateur</p>
         </div>
 
         <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+            <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)) : handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
               <ChevronLeft size={20} />
             </button>
             <h2 className="text-xl font-semibold text-white min-w-48 text-center">
-              {currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+              {viewMode === 'month' 
+                ? currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+                : `Semaine du ${getWeekLabel()}`
+              }
             </h2>
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+            <button onClick={() => viewMode === 'month' ? setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)) : handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
               <ChevronRight size={20} />
             </button>
           </div>
@@ -212,7 +267,7 @@ export default function CalendarApp() {
               {COLLABORATEURS.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </select>
 
-            <button onClick={() => setViewMode(viewMode === 'month' ? 'week' : 'month')} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+            <button onClick={() => { setViewMode(viewMode === 'month' ? 'week' : 'month'); setWeekOffset(0); }} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
               <Calendar size={18} />
               {viewMode === 'month' ? 'Semaine' : 'Mois'}
             </button>
@@ -220,6 +275,11 @@ export default function CalendarApp() {
             <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
               <Filter size={18} />
               Filtrer
+            </button>
+
+            <button onClick={() => setShowExportModal(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+              <Download size={18} />
+              Export
             </button>
 
             <button onClick={() => setShowAddModal(!showAddModal)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
@@ -247,6 +307,8 @@ export default function CalendarApp() {
         )}
 
         {showAddModal && <AddChargeModal clients={CLIENTS} collaborateurs={COLLABORATEURS} currentMonth={currentDate} onAdd={handleAddCharge} onClose={() => setShowAddModal(false)} />}
+
+        {showExportModal && <ExportModal viewMode={viewMode} currentDate={currentDate} weekDays={weekDays} onExport={exportToExcel} onClose={() => setShowExportModal(false)} />}
 
         {viewMode === 'month' && (
           <div className="grid grid-cols-7 gap-1 mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
@@ -322,6 +384,7 @@ export default function CalendarApp() {
           <p className="text-slate-400 text-sm">
             Charges affichées : {charges.length} | Collaborateurs : {filteredCollaborateurs.length} | Utilisateur : {COLLABORATEURS.find(c => c.id === currentUser)?.nom}
           </p>
+          <p className="text-slate-500 text-xs mt-2">Développé par Audit Up | calendrier-zerah v2.0</p>
         </div>
       </div>
     </div>
@@ -396,6 +459,62 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
             Ajouter
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
+  const [startDate, setStartDate] = useState(() => {
+    if (viewMode === 'month') {
+      return new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
+    } else {
+      return weekDays[0].toISOString().split('T')[0];
+    }
+  });
+
+  const [endDate, setEndDate] = useState(() => {
+    if (viewMode === 'month') {
+      return new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
+    } else {
+      return weekDays[6].toISOString().split('T')[0];
+    }
+  });
+
+  const handleExport = () => {
+    onExport(new Date(startDate), new Date(endDate));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white">Export Excel</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date de début</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date de fin</label>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition">
+              Annuler
+            </button>
+            <button onClick={handleExport} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">
+              Exporter
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
