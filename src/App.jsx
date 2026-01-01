@@ -138,7 +138,7 @@ export default function CalendarApp() {
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
-      date_charge: new Date(currentDate.getFullYear(), currentDate.getMonth(), date).toISOString().split('T')[0],
+      date_charge: date_charge: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
       heures: parseFloat(heures),
       type: type,
       detail: detail,
