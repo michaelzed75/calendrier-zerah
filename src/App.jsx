@@ -395,7 +395,7 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
   const [formData, setFormData] = useState({
     collaborateurId: collaborateurs[0]?.id,
     clientId: clients[0]?.id,
-    date: dateComplete: new Date().toISOString().split('T')[0],
+     dateComplete: new Date().toISOString().split('T')[0],
     heures: 1,
     type: 'budgété',
     detail: ''
