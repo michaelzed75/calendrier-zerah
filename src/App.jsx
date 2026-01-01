@@ -135,11 +135,10 @@ export default function CalendarApp() {
   const weekDays = viewMode === 'week' ? getWeekDays() : [];
 
   const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
-    const chargeDate = new Date(date);
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
-      date_charge: `${chargeDate.getFullYear()}-${String(chargeDate.getMonth() + 1).padStart(2, '0')}-${String(chargeDate.getDate()).padStart(2, '0')}`,
+      date_charge: date,
       heures: parseFloat(heures),
       type: type,
       detail: detail,
