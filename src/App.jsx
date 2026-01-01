@@ -408,7 +408,7 @@ function AddChargeModal({ clients, collaborateurs, currentMonth, onAdd, onClose 
     e.preventDefault();
     const dateObj = new Date(formData.dateComplete);
     const day = dateObj.getDate();
-    onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), day, formData.heures, formData.type, formData.detail);
+    onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
   };
 
   return (
