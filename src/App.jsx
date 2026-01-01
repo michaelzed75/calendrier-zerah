@@ -3,12 +3,10 @@ import { ChevronLeft, ChevronRight, Plus, X, Filter, Calendar, Download } from '
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
-// Initialiser Supabase
 const SUPABASE_URL = 'https://anrvvsfvejnmdouxjfxj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_BxHx7EG9PQ-TDT3BmHFfWg_BZz77c8k';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Données de base
 const COLLABORATEURS = [
   { id: 1, nom: 'Michaël Z', role: 'manager', equipe: ['Delphine Z', 'Thérèse D', 'Benoît O', 'Danny', 'Jeremy Z', 'Anny', 'Camille'] },
   { id: 2, nom: 'Delphine Z', role: 'autonome', equipe: [] },
