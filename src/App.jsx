@@ -470,7 +470,7 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
     if (viewMode === 'month') {
       return new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
     } else {
-      return weekDays[0].toISOString().split('T')[0];
+      return `${weekDays[0].getFullYear()}-${String(weekDays[0].getMonth() + 1).padStart(2, '0')}-${String(weekDays[0].getDate()).padStart(2, '0')}`;
     }
   });
 
@@ -478,7 +478,7 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
     if (viewMode === 'month') {
       return new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
     } else {
-      return weekDays[6].toISOString().split('T')[0];
+      return `${weekDays[6].getFullYear()}-${String(weekDays[6].getMonth() + 1).padStart(2, '0')}-${String(weekDays[6].getDate()).padStart(2, '0')}`;
     }
   });
 
