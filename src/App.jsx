@@ -1,36 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
 const SUPABASE_URL = 'https://anrvvsfvejnmdouxjfxj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_BxHx7EG9PQ-TDT3BmHFfWg_BZz77c8k';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// ============================================
-// DONNÉES INITIALES (seront migrées vers Supabase)
-// ============================================
-const INITIAL_COLLABORATEURS = [
-  { id: 1, nom: 'Michaël Z', est_chef_mission: true, chef_id: null, actif: true },
-  { id: 2, nom: 'Delphine Z', est_chef_mission: false, chef_id: 1, actif: true },
-  { id: 3, nom: 'Thérèse D', est_chef_mission: true, chef_id: 1, actif: true },
-  { id: 4, nom: 'Benoît O', est_chef_mission: false, chef_id: 1, actif: true },
-  { id: 5, nom: 'Danny', est_chef_mission: false, chef_id: 3, actif: true },
-  { id: 6, nom: 'Jeremy Z', est_chef_mission: true, chef_id: 1, actif: true },
-  { id: 7, nom: 'Anny', est_chef_mission: false, chef_id: 6, actif: true },
-  { id: 8, nom: 'Camille', est_chef_mission: false, chef_id: 6, actif: true }
-];
-
-const INITIAL_CLIENTS = [
-  { id: 1, nom: 'PPF', code_pennylane: '', actif: true },
-  { id: 2, nom: 'PfA', code_pennylane: '', actif: true },
-  { id: 3, nom: 'Hôtel Saint James', code_pennylane: '', actif: true },
-  { id: 4, nom: 'Hôtel Relais Christine', code_pennylane: '', actif: true },
-  { id: 5, nom: 'Hôtel Richepense', code_pennylane: '', actif: true },
-  { id: 6, nom: 'Hôtel Ballu', code_pennylane: '', actif: true },
-  { id: 7, nom: 'Le Comptoir de Saint Cloud', code_pennylane: '', actif: true },
-  { id: 8, nom: 'Le Comptoir de Boulogne', code_pennylane: '', actif: true }
-];
 
 // ============================================
 // UTILITAIRES
@@ -53,12 +28,13 @@ const parseDateString = (dateStr) => {
 export default function App() {
   const [currentPage, setCurrentPage] = useState('calendar');
   const [collaborateurs, setCollaborateurs] = useState([]);
+  const [collaborateurChefs, setCollaborateurChefs] = useState([]);
   const [clients, setClients] = useState([]);
   const [charges, setCharges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Chargement initial des données
+  // Chargement initial des données depuis Supabase
   useEffect(() => {
     loadAllData();
   }, []);
@@ -66,58 +42,61 @@ export default function App() {
   const loadAllData = async () => {
     setLoading(true);
     
-    // Charger collaborateurs
-    const savedCollabs = localStorage.getItem('collaborateurs');
-    if (savedCollabs) {
-      setCollaborateurs(JSON.parse(savedCollabs));
-    } else {
-      setCollaborateurs(INITIAL_COLLABORATEURS);
-      localStorage.setItem('collaborateurs', JSON.stringify(INITIAL_COLLABORATEURS));
-    }
-
-    // Charger clients
-    const savedClients = localStorage.getItem('clients');
-    if (savedClients) {
-      setClients(JSON.parse(savedClients));
-    } else {
-      setClients(INITIAL_CLIENTS);
-      localStorage.setItem('clients', JSON.stringify(INITIAL_CLIENTS));
-    }
-
-    // Charger charges depuis Supabase
     try {
-      const { data, error } = await supabase.from('charges').select('*');
-      if (error) {
-        const stored = localStorage.getItem('charges');
-        setCharges(stored ? JSON.parse(stored) : []);
-      } else {
-        setCharges(data || []);
-        localStorage.setItem('charges', JSON.stringify(data || []));
+      // Charger collaborateurs
+      const { data: collabData, error: collabError } = await supabase
+        .from('collaborateurs')
+        .select('*')
+        .order('id');
+      if (!collabError && collabData) {
+        setCollaborateurs(collabData);
+      }
+
+      // Charger liaisons collaborateur-chefs
+      const { data: chefsData, error: chefsError } = await supabase
+        .from('collaborateur_chefs')
+        .select('*');
+      if (!chefsError && chefsData) {
+        setCollaborateurChefs(chefsData);
+      }
+
+      // Charger clients
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        .select('*')
+        .order('id');
+      if (!clientsError && clientsData) {
+        setClients(clientsData);
+      }
+
+      // Charger charges
+      const { data: chargesData, error: chargesError } = await supabase
+        .from('charges')
+        .select('*');
+      if (!chargesError && chargesData) {
+        setCharges(chargesData);
       }
     } catch (err) {
-      const stored = localStorage.getItem('charges');
-      setCharges(stored ? JSON.parse(stored) : []);
+      console.error('Erreur chargement données:', err);
     }
 
     setLoading(false);
   };
 
-  // Sauvegarder collaborateurs
-  const saveCollaborateurs = (newCollabs) => {
-    setCollaborateurs(newCollabs);
-    localStorage.setItem('collaborateurs', JSON.stringify(newCollabs));
+  // Obtenir les chefs d'un collaborateur
+  const getChefsOf = (collaborateurId) => {
+    const chefIds = collaborateurChefs
+      .filter(cc => cc.collaborateur_id === collaborateurId)
+      .map(cc => cc.chef_id);
+    return collaborateurs.filter(c => chefIds.includes(c.id));
   };
 
-  // Sauvegarder clients
-  const saveClients = (newClients) => {
-    setClients(newClients);
-    localStorage.setItem('clients', JSON.stringify(newClients));
-  };
-
-  // Sauvegarder charges
-  const saveCharges = (newCharges) => {
-    setCharges(newCharges);
-    localStorage.setItem('charges', JSON.stringify(newCharges));
+  // Obtenir l'équipe d'un chef
+  const getEquipeOf = (chefId) => {
+    const membreIds = collaborateurChefs
+      .filter(cc => cc.chef_id === chefId)
+      .map(cc => cc.collaborateur_id);
+    return collaborateurs.filter(c => membreIds.includes(c.id));
   };
 
   if (loading) {
@@ -212,23 +191,30 @@ export default function App() {
       {/* Contenu des pages */}
       {currentPage === 'calendar' && (
         <CalendarPage 
-          collaborateurs={collaborateurs} 
+          collaborateurs={collaborateurs}
+          collaborateurChefs={collaborateurChefs}
           clients={clients} 
           charges={charges}
-          saveCharges={saveCharges}
+          setCharges={setCharges}
+          getChefsOf={getChefsOf}
+          getEquipeOf={getEquipeOf}
         />
       )}
       {currentPage === 'collaborateurs' && (
         <CollaborateursPage 
-          collaborateurs={collaborateurs} 
-          saveCollaborateurs={saveCollaborateurs}
+          collaborateurs={collaborateurs}
+          setCollaborateurs={setCollaborateurs}
+          collaborateurChefs={collaborateurChefs}
+          setCollaborateurChefs={setCollaborateurChefs}
           charges={charges}
+          getChefsOf={getChefsOf}
+          getEquipeOf={getEquipeOf}
         />
       )}
       {currentPage === 'clients' && (
         <ClientsPage 
           clients={clients} 
-          saveClients={saveClients}
+          setClients={setClients}
           charges={charges}
         />
       )}
@@ -239,7 +225,7 @@ export default function App() {
 // ============================================
 // PAGE CALENDRIER
 // ============================================
-function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
+function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -251,12 +237,11 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null);
   const [editingCharge, setEditingCharge] = useState(null);
-  const [localCharges, setLocalCharges] = useState(charges);
+  const [expandedEquipes, setExpandedEquipes] = useState({});
 
-  // Synchroniser les charges locales avec les props
-  useEffect(() => {
-    setLocalCharges(charges);
-  }, [charges]);
+  const activeCollaborateurs = collaborateurs.filter(c => c.actif);
+  const activeClients = clients.filter(c => c.actif);
+  const chefsMission = activeCollaborateurs.filter(c => c.est_chef_mission);
 
   // Charger les préférences utilisateur
   useEffect(() => {
@@ -266,36 +251,40 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
       setCurrentUser(prefs.currentUser);
       setViewMode(prefs.viewMode || 'month');
       setSelectedCollaborateurs(prefs.selectedCollaborateurs || []);
-      if (prefs.viewMode === 'day') {
-        const today = new Date();
-        setSelectedDay(formatDateToYMD(today));
+      setExpandedEquipes(prefs.expandedEquipes || {});
+      if (prefs.viewMode === 'day' && prefs.selectedDay) {
+        setSelectedDay(prefs.selectedDay);
+      } else if (prefs.viewMode === 'day') {
+        setSelectedDay(formatDateToYMD(new Date()));
       }
     } else {
-      const activeCollabs = collaborateurs.filter(c => c.actif);
-      setCurrentUser(activeCollabs[0]?.id || 1);
-      setSelectedCollaborateurs(activeCollabs.map(c => c.id));
+      setCurrentUser(activeCollaborateurs[0]?.id || 1);
+      setSelectedCollaborateurs(activeCollaborateurs.map(c => c.id));
+      // Ouvrir toutes les équipes par défaut
+      const defaultExpanded = {};
+      chefsMission.forEach(chef => { defaultExpanded[chef.id] = true; });
+      setExpandedEquipes(defaultExpanded);
     }
   }, [collaborateurs]);
 
   // Sauvegarder les préférences
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser !== null) {
       localStorage.setItem('userPreferences', JSON.stringify({
         currentUser,
         viewMode,
-        selectedCollaborateurs
+        selectedCollaborateurs,
+        expandedEquipes,
+        selectedDay
       }));
     }
-  }, [currentUser, viewMode, selectedCollaborateurs]);
+  }, [currentUser, viewMode, selectedCollaborateurs, expandedEquipes, selectedDay]);
 
   // Filtrer les collaborateurs actifs et sélectionnés
   useEffect(() => {
     const filtered = collaborateurs.filter(c => c.actif && selectedCollaborateurs.includes(c.id));
     setFilteredCollaborateurs(filtered);
   }, [selectedCollaborateurs, collaborateurs]);
-
-  const activeCollaborateurs = collaborateurs.filter(c => c.actif);
-  const activeClients = clients.filter(c => c.actif);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -351,21 +340,11 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
 
     try {
       const { data, error } = await supabase.from('charges').insert([newCharge]).select();
-      if (error) {
-        const newChargeWithId = { id: Date.now(), ...newCharge };
-        const updated = [...localCharges, newChargeWithId];
-        setLocalCharges(updated);
-        saveCharges(updated);
-      } else {
-        const updated = [...localCharges, data[0]];
-        setLocalCharges(updated);
-        saveCharges(updated);
+      if (!error && data) {
+        setCharges(prev => [...prev, data[0]]);
       }
     } catch (err) {
-      const newChargeWithId = { id: Date.now(), ...newCharge };
-      const updated = [...localCharges, newChargeWithId];
-      setLocalCharges(updated);
-      saveCharges(updated);
+      console.error('Erreur ajout charge:', err);
     }
     setShowAddModal(false);
   };
@@ -380,11 +359,9 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
       detail: detail
     };
 
-    const updated = localCharges.map(c => 
+    setCharges(prev => prev.map(c => 
       c.id === chargeId ? { ...c, ...updatedCharge } : c
-    );
-    setLocalCharges(updated);
-    saveCharges(updated);
+    ));
 
     try {
       await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
@@ -396,25 +373,23 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
   };
 
   const handleDeleteCharge = useCallback(async (chargeId) => {
-    const updated = localCharges.filter(c => c.id !== chargeId);
-    setLocalCharges(updated);
-    saveCharges(updated);
+    setCharges(prev => prev.filter(c => c.id !== chargeId));
 
     try {
       await supabase.from('charges').delete().eq('id', chargeId);
     } catch (err) {
       console.error('Erreur suppression:', err);
     }
-  }, [localCharges, saveCharges]);
+  }, [setCharges]);
 
   const getChargesForDay = useCallback((collaborateurId, day) => {
     const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
-    return localCharges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
-  }, [localCharges, currentDate]);
+    return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
+  }, [charges, currentDate]);
 
   const getChargesForDateStr = useCallback((collaborateurId, dateStr) => {
-    return localCharges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
-  }, [localCharges]);
+    return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+  }, [charges]);
 
   const getTotalHoursForDay = useCallback((collaborateurId, day) => {
     return getChargesForDay(collaborateurId, day).reduce((sum, c) => sum + parseFloat(c.heures), 0);
@@ -425,7 +400,7 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
   }, [getChargesForDateStr]);
 
   const getAggregatedByClient = useCallback((collaborateurId, dateStr) => {
-    const dayCharges = localCharges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+    const dayCharges = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
     const aggregated = {};
     dayCharges.forEach(charge => {
       const clientName = clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu';
@@ -435,17 +410,17 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
       aggregated[clientName] += parseFloat(charge.heures);
     });
     return Object.entries(aggregated).map(([client, heures]) => ({ client, heures }));
-  }, [localCharges, clients]);
+  }, [charges, clients]);
 
   const getWeekTotal = useCallback((collaborateurId) => {
     return weekDays.reduce((sum, date) => {
       const dateStr = formatDateToYMD(date);
-      const dayTotal = localCharges
+      const dayTotal = charges
         .filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr)
         .reduce((daySum, c) => daySum + parseFloat(c.heures), 0);
       return sum + dayTotal;
     }, 0);
-  }, [localCharges, weekDays]);
+  }, [charges, weekDays]);
 
   const handleNavigateWeek = (direction) => {
     setWeekOffset(weekOffset + direction);
@@ -484,11 +459,28 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
     setViewMode(newView);
   };
 
+  // Toggle équipe dans le filtre
+  const toggleEquipe = (chefId) => {
+    setExpandedEquipes(prev => ({ ...prev, [chefId]: !prev[chefId] }));
+  };
+
+  // Sélectionner toute une équipe
+  const selectEquipe = (chefId, select) => {
+    const equipe = getEquipeOf(chefId);
+    const equipeIds = [chefId, ...equipe.map(m => m.id)];
+    
+    if (select) {
+      setSelectedCollaborateurs(prev => [...new Set([...prev, ...equipeIds])]);
+    } else {
+      setSelectedCollaborateurs(prev => prev.filter(id => !equipeIds.includes(id)));
+    }
+  };
+
   const exportToExcel = (startDateStr, endDateStr) => {
     const data = [];
     
     filteredCollaborateurs.forEach(collab => {
-      const chargesForCollab = localCharges.filter(c => {
+      const chargesForCollab = charges.filter(c => {
         return c.collaborateur_id === collab.id &&
                c.date_charge >= startDateStr &&
                c.date_charge <= endDateStr;
@@ -570,7 +562,7 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
 
           <div className="flex gap-3 flex-wrap">
             {filteredCollaborateurs.length > 0 && (
-              <select value={currentUser} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+              <select value={currentUser || ''} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
                 {filteredCollaborateurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
               </select>
             )}
@@ -619,10 +611,11 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
           </div>
         </div>
 
+        {/* FILTRE PAR ÉQUIPE */}
         {showFilterModal && (
           <div className="bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">Filtrer par collaborateur</h3>
+              <h3 className="text-lg font-semibold text-white">Filtrer par équipe</h3>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setSelectedCollaborateurs(activeCollaborateurs.map(c => c.id))}
@@ -638,22 +631,100 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {activeCollaborateurs.map(collab => (
-                <label key={collab.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedCollaborateurs.includes(collab.id)} 
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedCollaborateurs([...selectedCollaborateurs, collab.id]);
-                      else setSelectedCollaborateurs(selectedCollaborateurs.filter(id => id !== collab.id));
-                    }} 
-                    className="rounded" 
-                  />
-                  <span>{collab.nom}</span>
-                  {collab.est_chef_mission && <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>}
-                </label>
-              ))}
+            
+            <div className="space-y-3">
+              {chefsMission.map(chef => {
+                const equipe = getEquipeOf(chef.id);
+                const isExpanded = expandedEquipes[chef.id];
+                const allSelected = [chef.id, ...equipe.map(m => m.id)].every(id => selectedCollaborateurs.includes(id));
+                const someSelected = [chef.id, ...equipe.map(m => m.id)].some(id => selectedCollaborateurs.includes(id));
+                
+                return (
+                  <div key={chef.id} className="bg-slate-700 rounded-lg overflow-hidden">
+                    {/* En-tête équipe */}
+                    <div className="flex items-center justify-between p-3 bg-slate-600">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => toggleEquipe(chef.id)} className="text-white">
+                          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
+                        <input 
+                          type="checkbox"
+                          checked={allSelected}
+                          ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                          onChange={(e) => selectEquipe(chef.id, e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-white font-semibold">Équipe {chef.nom}</span>
+                        <span className="text-slate-400 text-sm">({equipe.length + 1} personnes)</span>
+                      </div>
+                    </div>
+                    
+                    {/* Membres de l'équipe */}
+                    {isExpanded && (
+                      <div className="p-3 space-y-2">
+                        {/* Le chef lui-même */}
+                        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedCollaborateurs.includes(chef.id)} 
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, chef.id]);
+                              else setSelectedCollaborateurs(prev => prev.filter(id => id !== chef.id));
+                            }} 
+                            className="rounded" 
+                          />
+                          <span>{chef.nom}</span>
+                          <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>
+                        </label>
+                        
+                        {/* Les membres */}
+                        {equipe.filter(m => m.actif).map(membre => (
+                          <label key={membre.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedCollaborateurs.includes(membre.id)} 
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, membre.id]);
+                                else setSelectedCollaborateurs(prev => prev.filter(id => id !== membre.id));
+                              }} 
+                              className="rounded" 
+                            />
+                            <span>{membre.nom}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {/* Collaborateurs sans chef (autonomes) */}
+              {(() => {
+                const collabsAvecChef = collaborateurChefs.map(cc => cc.collaborateur_id);
+                const autonomes = activeCollaborateurs.filter(c => !c.est_chef_mission && !collabsAvecChef.includes(c.id));
+                
+                if (autonomes.length === 0) return null;
+                
+                return (
+                  <div className="bg-slate-700 rounded-lg p-3">
+                    <div className="text-slate-400 text-sm mb-2">Autres collaborateurs</div>
+                    {autonomes.map(collab => (
+                      <label key={collab.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedCollaborateurs.includes(collab.id)} 
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, collab.id]);
+                            else setSelectedCollaborateurs(prev => prev.filter(id => id !== collab.id));
+                          }} 
+                          className="rounded" 
+                        />
+                        <span>{collab.nom}</span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -883,9 +954,9 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
 
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
           <p className="text-slate-400 text-sm">
-            Charges : {localCharges.length} | Collaborateurs filtrés : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
+            Charges : {charges.length} | Collaborateurs filtrés : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
           </p>
-          <p className="text-slate-500 text-xs mt-2">calendrier-zerah v3.0</p>
+          <p className="text-slate-500 text-xs mt-2">calendrier-zerah v3.1</p>
         </div>
       </div>
     </div>
@@ -895,53 +966,114 @@ function CalendarPage({ collaborateurs, clients, charges, saveCharges }) {
 // ============================================
 // PAGE COLLABORATEURS
 // ============================================
-function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
+function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);
 
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
 
-  const handleAddCollaborateur = (nom, estChefMission, chefId) => {
-    const newId = Math.max(...collaborateurs.map(c => c.id), 0) + 1;
-    const newCollab = {
-      id: newId,
-      nom,
-      est_chef_mission: estChefMission,
-      chef_id: chefId,
-      actif: true
-    };
-    saveCollaborateurs([...collaborateurs, newCollab]);
+  const handleAddCollaborateur = async (nom, estChefMission, chefIds) => {
+    try {
+      // Ajouter le collaborateur
+      const { data, error } = await supabase
+        .from('collaborateurs')
+        .insert([{ nom, est_chef_mission: estChefMission, actif: true }])
+        .select();
+      
+      if (error) throw error;
+      
+      const newCollab = data[0];
+      setCollaborateurs(prev => [...prev, newCollab]);
+      
+      // Ajouter les liaisons avec les chefs
+      if (chefIds && chefIds.length > 0) {
+        const liaisons = chefIds.map(chefId => ({
+          collaborateur_id: newCollab.id,
+          chef_id: chefId
+        }));
+        
+        const { data: liaisonsData, error: liaisonsError } = await supabase
+          .from('collaborateur_chefs')
+          .insert(liaisons)
+          .select();
+        
+        if (!liaisonsError && liaisonsData) {
+          setCollaborateurChefs(prev => [...prev, ...liaisonsData]);
+        }
+      }
+    } catch (err) {
+      console.error('Erreur ajout collaborateur:', err);
+      alert('Erreur lors de l\'ajout');
+    }
     setShowAddModal(false);
   };
 
-  const handleUpdateCollaborateur = (id, nom, estChefMission, chefId) => {
+  const handleUpdateCollaborateur = async (id, nom, estChefMission, chefIds) => {
     // Vérifier si on peut décocher "chef de mission"
     if (!estChefMission) {
-      const hasSubordinates = collaborateurs.some(c => c.chef_id === id && c.actif);
-      if (hasSubordinates) {
+      const equipe = getEquipeOf(id);
+      if (equipe.length > 0) {
         alert('Impossible de retirer le statut chef de mission : ce collaborateur a des membres dans son équipe.');
         return;
       }
     }
     
-    const updated = collaborateurs.map(c => 
-      c.id === id ? { ...c, nom, est_chef_mission: estChefMission, chef_id: chefId } : c
-    );
-    saveCollaborateurs(updated);
+    try {
+      // Mettre à jour le collaborateur
+      const { error } = await supabase
+        .from('collaborateurs')
+        .update({ nom, est_chef_mission: estChefMission })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setCollaborateurs(prev => prev.map(c => 
+        c.id === id ? { ...c, nom, est_chef_mission: estChefMission } : c
+      ));
+      
+      // Supprimer les anciennes liaisons
+      await supabase
+        .from('collaborateur_chefs')
+        .delete()
+        .eq('collaborateur_id', id);
+      
+      // Ajouter les nouvelles liaisons
+      if (chefIds && chefIds.length > 0) {
+        const liaisons = chefIds.map(chefId => ({
+          collaborateur_id: id,
+          chef_id: chefId
+        }));
+        
+        const { data: liaisonsData } = await supabase
+          .from('collaborateur_chefs')
+          .insert(liaisons)
+          .select();
+        
+        // Mettre à jour le state local
+        setCollaborateurChefs(prev => [
+          ...prev.filter(cc => cc.collaborateur_id !== id),
+          ...(liaisonsData || [])
+        ]);
+      } else {
+        setCollaborateurChefs(prev => prev.filter(cc => cc.collaborateur_id !== id));
+      }
+    } catch (err) {
+      console.error('Erreur mise à jour collaborateur:', err);
+      alert('Erreur lors de la mise à jour');
+    }
     setEditingCollab(null);
   };
 
-  const handleToggleActif = (id) => {
+  const handleToggleActif = async (id) => {
     const collab = collaborateurs.find(c => c.id === id);
     
-    // Si on désactive, vérifier qu'il n'a pas de subordonnés actifs
     if (collab.actif) {
-      const hasActiveSubordinates = collaborateurs.some(c => c.chef_id === id && c.actif);
-      if (hasActiveSubordinates) {
+      const equipe = getEquipeOf(id);
+      const hasActiveMembers = equipe.some(m => m.actif);
+      if (hasActiveMembers) {
         alert('Impossible de désactiver : ce collaborateur a des membres actifs dans son équipe.');
         return;
       }
-      // Vérifier qu'il n'a pas de charges
       const hasCharges = charges.some(c => c.collaborateur_id === id);
       if (hasCharges) {
         if (!confirm('Ce collaborateur a des charges. Voulez-vous vraiment le désactiver ?')) {
@@ -950,23 +1082,31 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
       }
     }
     
-    const updated = collaborateurs.map(c => 
-      c.id === id ? { ...c, actif: !c.actif } : c
-    );
-    saveCollaborateurs(updated);
+    try {
+      const { error } = await supabase
+        .from('collaborateurs')
+        .update({ actif: !collab.actif })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setCollaborateurs(prev => prev.map(c => 
+        c.id === id ? { ...c, actif: !c.actif } : c
+      ));
+    } catch (err) {
+      console.error('Erreur toggle actif:', err);
+    }
   };
 
-  const handleDeleteCollaborateur = (id) => {
+  const handleDeleteCollaborateur = async (id) => {
     const collab = collaborateurs.find(c => c.id === id);
     
-    // Vérifier qu'il n'a pas de subordonnés
-    const hasSubordinates = collaborateurs.some(c => c.chef_id === id);
-    if (hasSubordinates) {
+    const equipe = getEquipeOf(id);
+    if (equipe.length > 0) {
       alert('Impossible de supprimer : ce collaborateur a des membres dans son équipe.');
       return;
     }
     
-    // Vérifier qu'il n'a pas de charges
     const hasCharges = charges.some(c => c.collaborateur_id === id);
     if (hasCharges) {
       alert('Impossible de supprimer : ce collaborateur a des charges. Désactivez-le plutôt.');
@@ -974,19 +1114,27 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
     }
     
     if (confirm(`Supprimer définitivement ${collab.nom} ?`)) {
-      const updated = collaborateurs.filter(c => c.id !== id);
-      saveCollaborateurs(updated);
+      try {
+        const { error } = await supabase
+          .from('collaborateurs')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        setCollaborateurs(prev => prev.filter(c => c.id !== id));
+        setCollaborateurChefs(prev => prev.filter(cc => cc.collaborateur_id !== id && cc.chef_id !== id));
+      } catch (err) {
+        console.error('Erreur suppression:', err);
+        alert('Erreur lors de la suppression');
+      }
     }
   };
 
-  const getChefNom = (chefId) => {
-    if (!chefId) return '-';
-    const chef = collaborateurs.find(c => c.id === chefId);
-    return chef ? chef.nom : '-';
-  };
-
-  const getEquipeCount = (chefId) => {
-    return collaborateurs.filter(c => c.chef_id === chefId && c.actif).length;
+  const getChefsNoms = (collaborateurId) => {
+    const chefs = getChefsOf(collaborateurId);
+    if (chefs.length === 0) return '-';
+    return chefs.map(c => c.nom).join(', ');
   };
 
   return (
@@ -1012,61 +1160,64 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
               <tr className="bg-slate-700 text-slate-300">
                 <th className="text-left py-3 px-4">Nom</th>
                 <th className="text-center py-3 px-4">Chef de mission</th>
-                <th className="text-left py-3 px-4">Son chef</th>
+                <th className="text-left py-3 px-4">Ses chefs</th>
                 <th className="text-center py-3 px-4">Équipe</th>
                 <th className="text-center py-3 px-4">Actif</th>
                 <th className="text-center py-3 px-4">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {collaborateurs.map(collab => (
-                <tr key={collab.id} className={`border-t border-slate-700 ${!collab.actif ? 'opacity-50' : ''}`}>
-                  <td className="py-3 px-4 text-white font-medium">{collab.nom}</td>
-                  <td className="py-3 px-4 text-center">
-                    {collab.est_chef_mission ? (
-                      <span className="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-sm">Oui</span>
-                    ) : (
-                      <span className="text-slate-500">Non</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-slate-300">{getChefNom(collab.chef_id)}</td>
-                  <td className="py-3 px-4 text-center">
-                    {collab.est_chef_mission && getEquipeCount(collab.id) > 0 ? (
-                      <span className="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-sm">
-                        {getEquipeCount(collab.id)} membre(s)
-                      </span>
-                    ) : (
-                      <span className="text-slate-500">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <button 
-                      onClick={() => handleToggleActif(collab.id)}
-                      className={`p-1 rounded transition ${collab.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
-                    >
-                      <Check size={18} />
-                    </button>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="flex justify-center gap-1">
+              {collaborateurs.map(collab => {
+                const equipe = getEquipeOf(collab.id);
+                return (
+                  <tr key={collab.id} className={`border-t border-slate-700 ${!collab.actif ? 'opacity-50' : ''}`}>
+                    <td className="py-3 px-4 text-white font-medium">{collab.nom}</td>
+                    <td className="py-3 px-4 text-center">
+                      {collab.est_chef_mission ? (
+                        <span className="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-sm">Oui</span>
+                      ) : (
+                        <span className="text-slate-500">Non</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-300 text-sm">{getChefsNoms(collab.id)}</td>
+                    <td className="py-3 px-4 text-center">
+                      {collab.est_chef_mission && equipe.length > 0 ? (
+                        <span className="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-sm">
+                          {equipe.length} membre(s)
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
                       <button 
-                        onClick={() => setEditingCollab(collab)}
-                        className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
-                        title="Modifier"
+                        onClick={() => handleToggleActif(collab.id)}
+                        className={`p-1 rounded transition ${collab.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
                       >
-                        <Pencil size={16} />
+                        <Check size={18} />
                       </button>
-                      <button 
-                        onClick={() => handleDeleteCollaborateur(collab.id)}
-                        className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex justify-center gap-1">
+                        <button 
+                          onClick={() => setEditingCollab(collab)}
+                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
+                          title="Modifier"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCollaborateur(collab.id)}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1080,6 +1231,7 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
         {showAddModal && (
           <CollaborateurModal 
             chefsMission={chefsMission}
+            collaborateurChefs={collaborateurChefs}
             onSave={handleAddCollaborateur}
             onClose={() => setShowAddModal(false)}
           />
@@ -1089,7 +1241,8 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
           <CollaborateurModal 
             collaborateur={editingCollab}
             chefsMission={chefsMission.filter(c => c.id !== editingCollab.id)}
-            onSave={(nom, estChef, chefId) => handleUpdateCollaborateur(editingCollab.id, nom, estChef, chefId)}
+            collaborateurChefs={collaborateurChefs}
+            onSave={(nom, estChef, chefIds) => handleUpdateCollaborateur(editingCollab.id, nom, estChef, chefIds)}
             onClose={() => setEditingCollab(null)}
           />
         )}
@@ -1101,31 +1254,47 @@ function CollaborateursPage({ collaborateurs, saveCollaborateurs, charges }) {
 // ============================================
 // PAGE CLIENTS
 // ============================================
-function ClientsPage({ clients, saveClients, charges }) {
+function ClientsPage({ clients, setClients, charges }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
 
-  const handleAddClient = (nom, codePennylane) => {
-    const newId = Math.max(...clients.map(c => c.id), 0) + 1;
-    const newClient = {
-      id: newId,
-      nom,
-      code_pennylane: codePennylane,
-      actif: true
-    };
-    saveClients([...clients, newClient]);
+  const handleAddClient = async (nom, codePennylane) => {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .insert([{ nom, code_pennylane: codePennylane, actif: true }])
+        .select();
+      
+      if (error) throw error;
+      
+      setClients(prev => [...prev, data[0]]);
+    } catch (err) {
+      console.error('Erreur ajout client:', err);
+      alert('Erreur lors de l\'ajout');
+    }
     setShowAddModal(false);
   };
 
-  const handleUpdateClient = (id, nom, codePennylane) => {
-    const updated = clients.map(c => 
-      c.id === id ? { ...c, nom, code_pennylane: codePennylane } : c
-    );
-    saveClients(updated);
+  const handleUpdateClient = async (id, nom, codePennylane) => {
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ nom, code_pennylane: codePennylane })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setClients(prev => prev.map(c => 
+        c.id === id ? { ...c, nom, code_pennylane: codePennylane } : c
+      ));
+    } catch (err) {
+      console.error('Erreur mise à jour client:', err);
+      alert('Erreur lors de la mise à jour');
+    }
     setEditingClient(null);
   };
 
-  const handleToggleActif = (id) => {
+  const handleToggleActif = async (id) => {
     const client = clients.find(c => c.id === id);
     
     if (client.actif) {
@@ -1137,13 +1306,23 @@ function ClientsPage({ clients, saveClients, charges }) {
       }
     }
     
-    const updated = clients.map(c => 
-      c.id === id ? { ...c, actif: !c.actif } : c
-    );
-    saveClients(updated);
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ actif: !client.actif })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setClients(prev => prev.map(c => 
+        c.id === id ? { ...c, actif: !c.actif } : c
+      ));
+    } catch (err) {
+      console.error('Erreur toggle actif:', err);
+    }
   };
 
-  const handleDeleteClient = (id) => {
+  const handleDeleteClient = async (id) => {
     const client = clients.find(c => c.id === id);
     
     const hasCharges = charges.some(c => c.client_id === id);
@@ -1153,8 +1332,19 @@ function ClientsPage({ clients, saveClients, charges }) {
     }
     
     if (confirm(`Supprimer définitivement ${client.nom} ?`)) {
-      const updated = clients.filter(c => c.id !== id);
-      saveClients(updated);
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        setClients(prev => prev.filter(c => c.id !== id));
+      } catch (err) {
+        console.error('Erreur suppression:', err);
+        alert('Erreur lors de la suppression');
+      }
     }
   };
 
@@ -1266,10 +1456,25 @@ function ClientsPage({ clients, saveClients, charges }) {
 // ============================================
 // MODALS
 // ============================================
-function CollaborateurModal({ collaborateur, chefsMission, onSave, onClose }) {
+function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, onSave, onClose }) {
   const [nom, setNom] = useState(collaborateur?.nom || '');
   const [estChefMission, setEstChefMission] = useState(collaborateur?.est_chef_mission || false);
-  const [chefId, setChefId] = useState(collaborateur?.chef_id || '');
+  const [selectedChefIds, setSelectedChefIds] = useState(() => {
+    if (collaborateur && collaborateurChefs) {
+      return collaborateurChefs
+        .filter(cc => cc.collaborateur_id === collaborateur.id)
+        .map(cc => cc.chef_id);
+    }
+    return [];
+  });
+
+  const toggleChef = (chefId) => {
+    setSelectedChefIds(prev => 
+      prev.includes(chefId) 
+        ? prev.filter(id => id !== chefId)
+        : [...prev, chefId]
+    );
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1277,12 +1482,12 @@ function CollaborateurModal({ collaborateur, chefsMission, onSave, onClose }) {
       alert('Le nom est obligatoire');
       return;
     }
-    onSave(nom.trim(), estChefMission, chefId ? parseInt(chefId) : null);
+    onSave(nom.trim(), estChefMission, selectedChefIds);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold text-white">
             {collaborateur ? 'Modifier le collaborateur' : 'Ajouter un collaborateur'}
@@ -1317,20 +1522,25 @@ function CollaborateurModal({ collaborateur, chefsMission, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Son chef de mission</label>
-            <select 
-              value={chefId} 
-              onChange={(e) => setChefId(e.target.value)} 
-              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
-            >
-              <option value="">Aucun (N+2 / Direction)</option>
-              {chefsMission.map(chef => (
-                <option key={chef.id} value={chef.id}>{chef.nom}</option>
-              ))}
-            </select>
-            {chefsMission.length === 0 && (
-              <p className="text-slate-500 text-xs mt-1">Créez d'abord un chef de mission</p>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Ses chefs de mission</label>
+            {chefsMission.length === 0 ? (
+              <p className="text-slate-500 text-sm">Aucun chef de mission disponible. Créez d'abord un chef de mission.</p>
+            ) : (
+              <div className="space-y-2 bg-slate-700 rounded p-3 max-h-40 overflow-y-auto">
+                {chefsMission.map(chef => (
+                  <label key={chef.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedChefIds.includes(chef.id)} 
+                      onChange={() => toggleChef(chef.id)} 
+                      className="rounded" 
+                    />
+                    <span>{chef.nom}</span>
+                  </label>
+                ))}
+              </div>
             )}
+            <p className="text-slate-500 text-xs mt-1">Vous pouvez sélectionner plusieurs chefs</p>
           </div>
 
           <div className="flex gap-3 pt-2">
