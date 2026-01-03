@@ -2941,11 +2941,25 @@ function AuthPage({ authPage, setAuthPage, accent }) {
   const [loading, setLoading] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
 
-  // Détecter si on arrive via un lien de reset password
+  // Détecter si on arrive via un lien de reset password ou une erreur
   useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
     const type = hashParams.get('type');
+    const errorCode = hashParams.get('error_code');
+    const errorDescription = hashParams.get('error_description');
+
+    // Si erreur dans l'URL (lien expiré, etc.)
+    if (errorCode) {
+      if (errorCode === 'otp_expired') {
+        setError('Le lien a expiré. Veuillez demander un nouveau lien de réinitialisation.');
+      } else {
+        setError(errorDescription?.replace(/\+/g, ' ') || 'Une erreur est survenue');
+      }
+      // Nettoyer l'URL
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
 
     if (type === 'recovery' && accessToken) {
       setIsRecoveryMode(true);
