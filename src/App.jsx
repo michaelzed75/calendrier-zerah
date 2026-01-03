@@ -76,7 +76,6 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('calendar');
   const [collaborateurs, setCollaborateurs] = useState([]);
   const [collaborateurChefs, setCollaborateurChefs] = useState([]);
-  const [collaborateurClients, setCollaborateurClients] = useState([]);
   const [clients, setClients] = useState([]);
   const [charges, setCharges] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,14 +201,6 @@ export default function App() {
       if (!chargesError && chargesData) {
         setCharges(chargesData);
       }
-
-      // Charger assignations collaborateur-clients
-      const { data: collabClientsData, error: collabClientsError } = await supabase
-        .from('collaborateur_clients')
-        .select('*');
-      if (!collabClientsError && collabClientsData) {
-        setCollaborateurClients(collabClientsData);
-      }
     } catch (err) {
       console.error('Erreur chargement données:', err);
     }
@@ -231,6 +222,29 @@ export default function App() {
       .filter(cc => cc.chef_id === chefId)
       .map(cc => cc.collaborateur_id);
     return collaborateurs.filter(c => membreIds.includes(c.id));
+  };
+
+  // Obtenir les clients accessibles pour un collaborateur (pour ajouter des charges)
+  const getAccessibleClients = (collaborateur) => {
+    if (!collaborateur) return clients.filter(c => c.actif);
+
+    // Admin voit tous les clients actifs
+    if (collaborateur.is_admin) {
+      return clients.filter(c => c.actif);
+    }
+
+    // Chef de mission voit ses clients + clients sans chef assigné
+    if (collaborateur.est_chef_mission) {
+      return clients.filter(c =>
+        c.actif && (!c.chef_mission_id || c.chef_mission_id === collaborateur.id)
+      );
+    }
+
+    // Collaborateur voit les clients de ses chefs + clients sans chef assigné
+    const chefIds = getChefsOf(collaborateur.id).map(c => c.id);
+    return clients.filter(c =>
+      c.actif && (!c.chef_mission_id || chefIds.includes(c.chef_mission_id))
+    );
   };
 
   // Calculer le style de fond
@@ -414,12 +428,12 @@ export default function App() {
         <CalendarPage
           collaborateurs={collaborateurs}
           collaborateurChefs={collaborateurChefs}
-          collaborateurClients={collaborateurClients}
           clients={clients}
           charges={charges}
           setCharges={setCharges}
           getChefsOf={getChefsOf}
           getEquipeOf={getEquipeOf}
+          getAccessibleClients={getAccessibleClients}
           accent={accent}
           userCollaborateur={userCollaborateur}
         />
@@ -444,8 +458,6 @@ export default function App() {
           charges={charges}
           setCharges={setCharges}
           collaborateurs={collaborateurs}
-          collaborateurClients={collaborateurClients}
-          setCollaborateurClients={setCollaborateurClients}
           accent={accent}
           userCollaborateur={userCollaborateur}
         />
@@ -756,7 +768,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
 // ============================================
 // PAGE CALENDRIER
 // ============================================
-function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients, clients, charges, setCharges, getChefsOf, getEquipeOf, accent, userCollaborateur }) {
+function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1306,9 +1318,8 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
 
         {showAddModal && (
           <AddChargeModal
-            clients={activeClients}
+            clients={getAccessibleClients(userCollaborateur)}
             collaborateurs={filteredCollaborateurs}
-            collaborateurClients={collaborateurClients}
             defaultDate={getDefaultDate()}
             onAdd={handleAddCharge}
             onClose={() => setShowAddModal(false)}
@@ -1318,9 +1329,8 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
         {editingCharge && (
           <EditChargeModal
             charge={editingCharge}
-            clients={activeClients}
+            clients={getAccessibleClients(userCollaborateur)}
             collaborateurs={filteredCollaborateurs}
-            collaborateurClients={collaborateurClients}
             onUpdate={handleUpdateCharge}
             onClose={() => setEditingCharge(null)}
           />
@@ -1921,15 +1931,17 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
 // ============================================
 // PAGE CLIENTS
 // ============================================
-function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs, collaborateurClients, setCollaborateurClients, accent, userCollaborateur }) {
+function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs, accent, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
-  const [assigningClient, setAssigningClient] = useState(null);
   const [mergingClient, setMergingClient] = useState(null);
   const [filterCabinet, setFilterCabinet] = useState('tous');
   const [searchTerm, setSearchTerm] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
+
+  // Chefs de mission pour l'assignation
+  const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
 
   // Peut synchroniser : admin ou chef de mission
   const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
@@ -1978,12 +1990,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
       if (chargesError) throw chargesError;
 
-      // Transférer les assignations collaborateur-client
-      const { error: assignError } = await supabase
-        .from('collaborateur_clients')
-        .update({ client_id: targetId })
-        .eq('client_id', sourceId);
-
       // Supprimer le client source (sans cabinet)
       const { error: deleteError } = await supabase
         .from('clients')
@@ -1997,9 +2003,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       setCharges(prev => prev.map(c =>
         c.client_id === sourceId ? { ...c, client_id: targetId } : c
       ));
-      setCollaborateurClients(prev => prev.map(cc =>
-        cc.client_id === sourceId ? { ...cc, client_id: targetId } : cc
-      ));
 
       alert('Fusion réussie ! Les charges ont été transférées.');
     } catch (err) {
@@ -2007,6 +2010,25 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       alert('Erreur lors de la fusion');
     }
     setMergingClient(null);
+  };
+
+  // Assigner un chef de mission à un client
+  const handleAssignChef = async (clientId, chefId) => {
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ chef_mission_id: chefId || null })
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      setClients(prev => prev.map(c =>
+        c.id === clientId ? { ...c, chef_mission_id: chefId || null } : c
+      ));
+    } catch (err) {
+      console.error('Erreur assignation chef:', err);
+      alert('Erreur lors de l\'assignation');
+    }
   };
 
   const handleAddClient = async (nom, codePennylane) => {
@@ -2103,42 +2125,10 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     return charges.filter(c => c.client_id === clientId).length;
   };
 
-  // Obtenir les collaborateurs assignés à un client
-  const getAssignedCollaborateurs = (clientId) => {
-    const assignedIds = collaborateurClients
-      .filter(cc => cc.client_id === clientId)
-      .map(cc => cc.collaborateur_id);
-    return collaborateurs.filter(c => assignedIds.includes(c.id));
-  };
-
-  // Assigner/désassigner un collaborateur à un client
-  const handleToggleAssignment = async (clientId, collaborateurId) => {
-    const existing = collaborateurClients.find(
-      cc => cc.client_id === clientId && cc.collaborateur_id === collaborateurId
-    );
-
-    try {
-      if (existing) {
-        // Supprimer l'assignation
-        const { error } = await supabase
-          .from('collaborateur_clients')
-          .delete()
-          .eq('id', existing.id);
-        if (error) throw error;
-        setCollaborateurClients(prev => prev.filter(cc => cc.id !== existing.id));
-      } else {
-        // Ajouter l'assignation
-        const { data, error } = await supabase
-          .from('collaborateur_clients')
-          .insert([{ client_id: clientId, collaborateur_id: collaborateurId }])
-          .select();
-        if (error) throw error;
-        setCollaborateurClients(prev => [...prev, data[0]]);
-      }
-    } catch (err) {
-      console.error('Erreur assignation:', err);
-      alert('Erreur lors de l\'assignation');
-    }
+  // Obtenir le nom du chef de mission
+  const getChefName = (chefId) => {
+    const chef = collaborateurs.find(c => c.id === chefId);
+    return chef ? chef.nom : null;
   };
 
   // Obtenir les cabinets uniques
@@ -2157,7 +2147,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Clients</h2>
-            <p className="text-slate-400">Gérez vos clients et assignez des collaborateurs</p>
+            <p className="text-slate-400">Gérez vos clients et assignez un chef de mission</p>
           </div>
           <div className="flex gap-2">
             {canSync && (
@@ -2217,7 +2207,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
               <tr className="bg-slate-700 text-slate-300">
                 <th className="text-left py-3 px-4">Nom</th>
                 <th className="text-left py-3 px-4">Cabinet</th>
-                <th className="text-left py-3 px-4">Collaborateurs</th>
+                <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
                 <th className="text-center py-3 px-4">Actif</th>
                 <th className="text-center py-3 px-4">Actions</th>
@@ -2225,7 +2215,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             </thead>
             <tbody>
               {filteredClients.map(client => {
-                const assigned = getAssignedCollaborateurs(client.id);
+                const chefName = getChefName(client.chef_mission_id);
                 return (
                   <tr key={client.id} className={`border-t border-slate-700 ${!client.actif ? 'opacity-50' : ''}`}>
                     <td className="py-3 px-4">
@@ -2246,20 +2236,16 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1">
-                        {assigned.length > 0 ? (
-                          assigned.slice(0, 3).map(collab => (
-                            <span key={collab.id} className="bg-slate-600 text-white px-2 py-0.5 rounded text-xs">
-                              {collab.nom.split(' ')[0]}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-slate-500 text-sm italic">Non assigné</span>
-                        )}
-                        {assigned.length > 3 && (
-                          <span className="text-slate-400 text-xs">+{assigned.length - 3}</span>
-                        )}
-                      </div>
+                      <select
+                        value={client.chef_mission_id || ''}
+                        onChange={(e) => handleAssignChef(client.id, e.target.value ? parseInt(e.target.value) : null)}
+                        className="bg-slate-700 border border-slate-600 text-white px-2 py-1 rounded text-sm"
+                      >
+                        <option value="">Non assigné</option>
+                        {chefsMission.map(chef => (
+                          <option key={chef.id} value={chef.id}>{chef.nom}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-3 px-4 text-center">
                       {getChargesCount(client.id) > 0 ? (
@@ -2290,13 +2276,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                             <Download size={16} className="rotate-90" />
                           </button>
                         )}
-                        <button
-                          onClick={() => setAssigningClient(client)}
-                          className="text-purple-400 hover:text-purple-300 hover:bg-purple-900/30 p-1 rounded transition"
-                          title="Gérer les collaborateurs"
-                        >
-                          <Users size={16} />
-                        </button>
                         <button
                           onClick={() => setEditingClient(client)}
                           className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
@@ -2339,57 +2318,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             onSave={(nom, code) => handleUpdateClient(editingClient.id, nom, code)}
             onClose={() => setEditingClient(null)}
           />
-        )}
-
-        {/* Modal d'assignation des collaborateurs */}
-        {assigningClient && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-white">Collaborateurs assignés</h3>
-                <button onClick={() => setAssigningClient(null)} className="text-slate-400 hover:text-white">
-                  <X size={20} />
-                </button>
-              </div>
-              <p className="text-slate-400 mb-4">{assigningClient.nom}</p>
-
-              <div className="max-h-80 overflow-y-auto space-y-2">
-                {collaborateurs.filter(c => c.actif).map(collab => {
-                  const isAssigned = collaborateurClients.some(
-                    cc => cc.client_id === assigningClient.id && cc.collaborateur_id === collab.id
-                  );
-                  return (
-                    <div
-                      key={collab.id}
-                      onClick={() => handleToggleAssignment(assigningClient.id, collab.id)}
-                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition ${
-                        isAssigned ? 'bg-purple-600/30 border border-purple-500' : 'bg-slate-700 hover:bg-slate-600'
-                      }`}
-                    >
-                      <div>
-                        <span className="text-white">{collab.nom}</span>
-                        {collab.est_chef_mission && (
-                          <span className="ml-2 text-xs bg-yellow-600/30 text-yellow-300 px-2 py-0.5 rounded">
-                            Chef
-                          </span>
-                        )}
-                      </div>
-                      {isAssigned && <Check size={18} className="text-purple-400" />}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-slate-700">
-                <button
-                  onClick={() => setAssigningClient(null)}
-                  className="w-full bg-slate-600 hover:bg-slate-500 text-white py-2 rounded-lg transition"
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
         )}
 
         {/* Modal de fusion */}
@@ -2681,7 +2609,7 @@ function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) 
   );
 }
 
-function AddChargeModal({ clients, collaborateurs, collaborateurClients, defaultDate, onAdd, onClose }) {
+function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }) {
   if (!collaborateurs || collaborateurs.length === 0) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2701,41 +2629,21 @@ function AddChargeModal({ clients, collaborateurs, collaborateurClients, default
     );
   }
 
-  // Fonction pour obtenir les clients assignés à un collaborateur
-  const getClientsForCollaborateur = (collaborateurId) => {
-    const assignedClientIds = collaborateurClients
-      .filter(cc => cc.collaborateur_id === parseInt(collaborateurId))
-      .map(cc => cc.client_id);
-
-    // Si le collaborateur a des assignations, filtrer les clients
-    if (assignedClientIds.length > 0) {
-      return clients.filter(c => assignedClientIds.includes(c.id));
-    }
-    // Sinon, retourner tous les clients (pour compatibilité)
-    return clients;
-  };
-
   const initialCollabId = collaborateurs[0]?.id || '';
-  const initialClients = getClientsForCollaborateur(initialCollabId);
 
   const [formData, setFormData] = useState({
     collaborateurId: initialCollabId,
-    clientId: initialClients[0]?.id || '',
+    clientId: clients[0]?.id || '',
     dateComplete: defaultDate,
     heures: 1,
     type: 'budgété',
     detail: ''
   });
 
-  // Clients disponibles pour le collaborateur sélectionné
-  const availableClients = getClientsForCollaborateur(formData.collaborateurId);
-
   const handleCollaborateurChange = (newCollabId) => {
-    const newClients = getClientsForCollaborateur(newCollabId);
     setFormData({
       ...formData,
-      collaborateurId: newCollabId,
-      clientId: newClients[0]?.id || ''
+      collaborateurId: newCollabId
     });
   };
 
@@ -2763,19 +2671,10 @@ function AddChargeModal({ clients, collaborateurs, collaborateurClients, default
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              Client
-              {availableClients.length < clients.length && (
-                <span className="text-purple-400 text-xs ml-2">({availableClients.length} assigné{availableClients.length > 1 ? 's' : ''})</span>
-              )}
-            </label>
-            {availableClients.length > 0 ? (
-              <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
-                {availableClients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-              </select>
-            ) : (
-              <p className="text-red-400 text-sm py-2">Aucun client assigné à ce collaborateur</p>
-            )}
+            <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
+            <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
+              {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
           </div>
 
           <div>
@@ -2810,7 +2709,7 @@ function AddChargeModal({ clients, collaborateurs, collaborateurClients, default
   );
 }
 
-function EditChargeModal({ charge, clients, collaborateurs, collaborateurClients, onUpdate, onClose }) {
+function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose }) {
   if (!collaborateurs || collaborateurs.length === 0) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2830,18 +2729,6 @@ function EditChargeModal({ charge, clients, collaborateurs, collaborateurClients
     );
   }
 
-  // Fonction pour obtenir les clients assignés à un collaborateur
-  const getClientsForCollaborateur = (collaborateurId) => {
-    const assignedClientIds = collaborateurClients
-      .filter(cc => cc.collaborateur_id === parseInt(collaborateurId))
-      .map(cc => cc.client_id);
-
-    if (assignedClientIds.length > 0) {
-      return clients.filter(c => assignedClientIds.includes(c.id));
-    }
-    return clients;
-  };
-
   const [formData, setFormData] = useState({
     collaborateurId: charge.collaborateur_id,
     clientId: charge.client_id,
@@ -2851,18 +2738,10 @@ function EditChargeModal({ charge, clients, collaborateurs, collaborateurClients
     detail: charge.detail || ''
   });
 
-  const availableClients = getClientsForCollaborateur(formData.collaborateurId);
-
   const handleCollaborateurChange = (newCollabId) => {
-    const newClients = getClientsForCollaborateur(newCollabId);
-    // Garder le client actuel s'il est dans la liste, sinon prendre le premier
-    const newClientId = newClients.find(c => c.id === formData.clientId)
-      ? formData.clientId
-      : (newClients[0]?.id || '');
     setFormData({
       ...formData,
-      collaborateurId: newCollabId,
-      clientId: newClientId
+      collaborateurId: newCollabId
     });
   };
 
@@ -2890,19 +2769,10 @@ function EditChargeModal({ charge, clients, collaborateurs, collaborateurClients
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              Client
-              {availableClients.length < clients.length && (
-                <span className="text-purple-400 text-xs ml-2">({availableClients.length} assigné{availableClients.length > 1 ? 's' : ''})</span>
-              )}
-            </label>
-            {availableClients.length > 0 ? (
-              <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
-                {availableClients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-              </select>
-            ) : (
-              <p className="text-red-400 text-sm py-2">Aucun client assigné à ce collaborateur</p>
-            )}
+            <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
+            <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
+              {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
           </div>
 
           <div>
