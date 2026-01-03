@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh version:*)",
+      "Bash(node scripts/db.js:*)",
+      "WebFetch(domain:help.pennylane.com)",
+      "WebFetch(domain:pennylane.readme.io)",
+      "WebFetch(domain:firm-pennylane.readme.io)",
+      "Bash(node scripts/pennylane.js:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run build)",
+      "Bash(npm run dev:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
+    ]
+  }
+}

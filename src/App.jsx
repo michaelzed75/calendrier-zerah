@@ -1934,99 +1934,21 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Peut synchroniser : admin ou chef de mission
   const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
 
-  // Synchronisation Pennylane
+  // Synchronisation Pennylane via API serverless
   const handleSyncPennylane = async () => {
     setSyncing(true);
     setSyncMessage(null);
 
     try {
-      const CABINETS = {
-        'audit-up': { name: 'Audit Up', token: 'c2ca9d53-e662-48bf-9f5c-00d6c7fea5d8' },
-        'zerah': { name: 'Zerah Fiduciaire', token: '993eb08d-4e9d-4e30-9164-9c7db24b49b4' }
-      };
+      const response = await fetch('/api/sync-pennylane', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
 
-      const API_BASE = 'https://app.pennylane.com/api/external/firm/v1';
-      const allDossiers = [];
-      const pennylaneIds = [];
+      const result = await response.json();
 
-      // Récupérer les dossiers des deux cabinets
-      for (const [key, cabinet] of Object.entries(CABINETS)) {
-        try {
-          let page = 1;
-          let totalPages = 1;
-
-          do {
-            const response = await fetch(`${API_BASE}/companies?page=${page}&per_page=100`, {
-              headers: {
-                'Authorization': `Bearer ${cabinet.token}`,
-                'Accept': 'application/json'
-              }
-            });
-
-            if (!response.ok) throw new Error(`Erreur API ${response.status}`);
-
-            const result = await response.json();
-            const companies = result.items || result.companies || [];
-
-            companies.forEach(c => {
-              allDossiers.push({
-                nom: c.name,
-                code_pennylane: c.external_id || c.client_code || String(c.id),
-                pennylane_id: c.id,
-                cabinet: cabinet.name,
-                siren: c.siren || null,
-                adresse: c.address || null,
-                ville: c.city || null,
-                code_postal: c.postal_code || null,
-                actif: true
-              });
-              pennylaneIds.push({ id: c.id, cabinet: cabinet.name });
-            });
-
-            totalPages = result.total_pages || 1;
-            page++;
-          } while (page <= totalPages);
-        } catch (err) {
-          console.error(`Erreur sync ${cabinet.name}:`, err);
-        }
-      }
-
-      let imported = 0;
-      let updated = 0;
-      let deactivated = 0;
-
-      // Importer/mettre à jour les dossiers
-      for (const dossier of allDossiers) {
-        try {
-          const { data: existing } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('pennylane_id', dossier.pennylane_id)
-            .eq('cabinet', dossier.cabinet)
-            .single();
-
-          if (existing) {
-            await supabase.from('clients').update(dossier).eq('id', existing.id);
-            updated++;
-          } else {
-            await supabase.from('clients').insert([dossier]);
-            imported++;
-          }
-        } catch (err) {
-          console.error(`Erreur pour ${dossier.nom}:`, err);
-        }
-      }
-
-      // Soft delete : désactiver les clients qui ne sont plus dans Pennylane
-      const clientsWithPennylane = clients.filter(c => c.pennylane_id && c.cabinet);
-      for (const client of clientsWithPennylane) {
-        const stillExists = pennylaneIds.some(
-          p => p.id === client.pennylane_id && p.cabinet === client.cabinet
-        );
-        if (!stillExists && client.actif) {
-          await supabase.from('clients').update({ actif: false }).eq('id', client.id);
-          deactivated++;
-        }
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur de synchronisation');
       }
 
       // Recharger les clients
@@ -2035,11 +1957,11 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
       setSyncMessage({
         type: 'success',
-        text: `Sync terminée : ${imported} nouveaux, ${updated} mis à jour, ${deactivated} désactivés`
+        text: `Sync terminée : ${result.imported} nouveaux, ${result.updated} mis à jour, ${result.deactivated} désactivés`
       });
     } catch (err) {
       console.error('Erreur sync:', err);
-      setSyncMessage({ type: 'error', text: 'Erreur lors de la synchronisation' });
+      setSyncMessage({ type: 'error', text: err.message || 'Erreur lors de la synchronisation' });
     }
 
     setSyncing(false);
