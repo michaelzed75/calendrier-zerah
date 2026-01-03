@@ -2939,46 +2939,30 @@ function AuthPage({ authPage, setAuthPage, accent }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [showOtpForm, setShowOtpForm] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
 
   // Détecter si on arrive via un lien de reset password ou une erreur
   useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = hashParams.get('access_token');
-    const type = hashParams.get('type');
     const errorCode = hashParams.get('error_code');
     const errorDescription = hashParams.get('error_description');
 
     // Si erreur dans l'URL (lien expiré, etc.)
     if (errorCode) {
       if (errorCode === 'otp_expired') {
-        setError('Le lien a expiré. Veuillez demander un nouveau lien de réinitialisation.');
+        setError('Le lien a expiré. Veuillez demander un nouveau code.');
       } else {
         setError(errorDescription?.replace(/\+/g, ' ') || 'Une erreur est survenue');
       }
       // Nettoyer l'URL
       window.history.replaceState(null, '', window.location.pathname);
-      return;
     }
-
-    if (type === 'recovery' && accessToken) {
-      setIsRecoveryMode(true);
-      // Nettoyer l'URL
-      window.history.replaceState(null, '', window.location.pathname);
-    }
-
-    // Aussi écouter l'événement PASSWORD_RECOVERY de Supabase
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsRecoveryMode(true);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
-  // Réinitialiser le mot de passe
-  const handleResetPassword = async (e) => {
+  // Vérifier le code OTP et changer le mot de passe
+  const handleVerifyOtpAndReset = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -2995,16 +2979,38 @@ function AuthPage({ authPage, setAuthPage, accent }) {
       return;
     }
 
-    try {
-      const { error } = await supabase.auth.updateUser({ password });
+    if (!otpCode || otpCode.length < 6) {
+      setError('Veuillez entrer le code à 6 chiffres reçu par email');
+      setLoading(false);
+      return;
+    }
 
-      if (error) {
-        setError(error.message);
+    try {
+      // Vérifier le code OTP
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: resetEmail,
+        token: otpCode,
+        type: 'recovery'
+      });
+
+      if (verifyError) {
+        setError('Code invalide ou expiré. Veuillez réessayer.');
+        setLoading(false);
+        return;
+      }
+
+      // Mettre à jour le mot de passe
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+
+      if (updateError) {
+        setError(updateError.message);
       } else {
         setSuccess('Mot de passe modifié avec succès ! Vous pouvez maintenant vous connecter.');
-        setIsRecoveryMode(false);
+        setShowOtpForm(false);
         setPassword('');
         setConfirmPassword('');
+        setOtpCode('');
+        setResetEmail('');
         setAuthPage('login');
       }
     } catch (err) {
@@ -3101,17 +3107,20 @@ function AuthPage({ authPage, setAuthPage, accent }) {
   const handleForgotPassword = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-      });
+      // Envoyer le code OTP par email (pas de lien magique)
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
 
       if (error) {
         setError(error.message);
       } else {
-        setSuccess('Un email de réinitialisation a été envoyé si ce compte existe.');
+        // Passer au formulaire de saisie du code
+        setResetEmail(email);
+        setShowOtpForm(true);
+        setSuccess('Un code de vérification a été envoyé à votre adresse email.');
       }
     } catch (err) {
       setError('Une erreur est survenue');
@@ -3141,12 +3150,24 @@ function AuthPage({ authPage, setAuthPage, accent }) {
           </div>
         )}
 
-        {/* Formulaire Réinitialisation du mot de passe */}
-        {isRecoveryMode && (
-          <form onSubmit={handleResetPassword} className="space-y-4">
+        {/* Formulaire Réinitialisation du mot de passe avec code OTP */}
+        {showOtpForm && (
+          <form onSubmit={handleVerifyOtpAndReset} className="space-y-4">
             <div className="text-center mb-4">
               <h2 className="text-xl font-bold text-white">Nouveau mot de passe</h2>
-              <p className="text-slate-400 text-sm">Entrez votre nouveau mot de passe</p>
+              <p className="text-slate-400 text-sm">Entrez le code reçu par email et votre nouveau mot de passe</p>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Code de vérification</label>
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full bg-slate-700 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none text-center text-2xl tracking-widest"
+                placeholder="000000"
+                maxLength={6}
+                required
+              />
             </div>
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Nouveau mot de passe</label>
@@ -3183,11 +3204,18 @@ function AuthPage({ authPage, setAuthPage, accent }) {
             >
               {loading ? 'Modification...' : 'Modifier le mot de passe'}
             </button>
+            <button
+              type="button"
+              onClick={() => { setShowOtpForm(false); setOtpCode(''); setPassword(''); setConfirmPassword(''); setError(''); setSuccess(''); }}
+              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+            >
+              Annuler
+            </button>
           </form>
         )}
 
         {/* Formulaire Connexion */}
-        {authPage === 'login' && !isRecoveryMode && (
+        {authPage === 'login' && !showOtpForm && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
@@ -3244,7 +3272,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         )}
 
         {/* Formulaire Inscription */}
-        {authPage === 'register' && !isRecoveryMode && (
+        {authPage === 'register' && !showOtpForm && (
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
@@ -3307,7 +3335,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         )}
 
         {/* Formulaire Mot de passe oublié */}
-        {authPage === 'forgot' && !isRecoveryMode && (
+        {authPage === 'forgot' && !showOtpForm && (
           <form onSubmit={handleForgotPassword} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
