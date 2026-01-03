@@ -442,10 +442,12 @@ export default function App() {
           clients={clients}
           setClients={setClients}
           charges={charges}
+          setCharges={setCharges}
           collaborateurs={collaborateurs}
           collaborateurClients={collaborateurClients}
           setCollaborateurClients={setCollaborateurClients}
           accent={accent}
+          userCollaborateur={userCollaborateur}
         />
       )}
       {/* Crédits photo Unsplash */}
@@ -1919,12 +1921,171 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
 // ============================================
 // PAGE CLIENTS
 // ============================================
-function ClientsPage({ clients, setClients, charges, collaborateurs, collaborateurClients, setCollaborateurClients, accent }) {
+function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs, collaborateurClients, setCollaborateurClients, accent, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [assigningClient, setAssigningClient] = useState(null);
+  const [mergingClient, setMergingClient] = useState(null);
   const [filterCabinet, setFilterCabinet] = useState('tous');
   const [searchTerm, setSearchTerm] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
+
+  // Peut synchroniser : admin ou chef de mission
+  const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
+
+  // Synchronisation Pennylane
+  const handleSyncPennylane = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+
+    try {
+      const CABINETS = {
+        'audit-up': { name: 'Audit Up', token: 'c2ca9d53-e662-48bf-9f5c-00d6c7fea5d8' },
+        'zerah': { name: 'Zerah Fiduciaire', token: '993eb08d-4e9d-4e30-9164-9c7db24b49b4' }
+      };
+
+      const API_BASE = 'https://app.pennylane.com/api/external/firm/v1';
+      const allDossiers = [];
+      const pennylaneIds = [];
+
+      // Récupérer les dossiers des deux cabinets
+      for (const [key, cabinet] of Object.entries(CABINETS)) {
+        try {
+          let page = 1;
+          let totalPages = 1;
+
+          do {
+            const response = await fetch(`${API_BASE}/companies?page=${page}&per_page=100`, {
+              headers: {
+                'Authorization': `Bearer ${cabinet.token}`,
+                'Accept': 'application/json'
+              }
+            });
+
+            if (!response.ok) throw new Error(`Erreur API ${response.status}`);
+
+            const result = await response.json();
+            const companies = result.items || result.companies || [];
+
+            companies.forEach(c => {
+              allDossiers.push({
+                nom: c.name,
+                code_pennylane: c.external_id || c.client_code || String(c.id),
+                pennylane_id: c.id,
+                cabinet: cabinet.name,
+                siren: c.siren || null,
+                adresse: c.address || null,
+                ville: c.city || null,
+                code_postal: c.postal_code || null,
+                actif: true
+              });
+              pennylaneIds.push({ id: c.id, cabinet: cabinet.name });
+            });
+
+            totalPages = result.total_pages || 1;
+            page++;
+          } while (page <= totalPages);
+        } catch (err) {
+          console.error(`Erreur sync ${cabinet.name}:`, err);
+        }
+      }
+
+      let imported = 0;
+      let updated = 0;
+      let deactivated = 0;
+
+      // Importer/mettre à jour les dossiers
+      for (const dossier of allDossiers) {
+        try {
+          const { data: existing } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('pennylane_id', dossier.pennylane_id)
+            .eq('cabinet', dossier.cabinet)
+            .single();
+
+          if (existing) {
+            await supabase.from('clients').update(dossier).eq('id', existing.id);
+            updated++;
+          } else {
+            await supabase.from('clients').insert([dossier]);
+            imported++;
+          }
+        } catch (err) {
+          console.error(`Erreur pour ${dossier.nom}:`, err);
+        }
+      }
+
+      // Soft delete : désactiver les clients qui ne sont plus dans Pennylane
+      const clientsWithPennylane = clients.filter(c => c.pennylane_id && c.cabinet);
+      for (const client of clientsWithPennylane) {
+        const stillExists = pennylaneIds.some(
+          p => p.id === client.pennylane_id && p.cabinet === client.cabinet
+        );
+        if (!stillExists && client.actif) {
+          await supabase.from('clients').update({ actif: false }).eq('id', client.id);
+          deactivated++;
+        }
+      }
+
+      // Recharger les clients
+      const { data: newClients } = await supabase.from('clients').select('*').order('id');
+      if (newClients) setClients(newClients);
+
+      setSyncMessage({
+        type: 'success',
+        text: `Sync terminée : ${imported} nouveaux, ${updated} mis à jour, ${deactivated} désactivés`
+      });
+    } catch (err) {
+      console.error('Erreur sync:', err);
+      setSyncMessage({ type: 'error', text: 'Erreur lors de la synchronisation' });
+    }
+
+    setSyncing(false);
+  };
+
+  // Fusionner un client sans cabinet vers un client Pennylane
+  const handleMergeClient = async (sourceId, targetId) => {
+    try {
+      // Transférer toutes les charges du client source vers le client cible
+      const { error: chargesError } = await supabase
+        .from('charges')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+
+      if (chargesError) throw chargesError;
+
+      // Transférer les assignations collaborateur-client
+      const { error: assignError } = await supabase
+        .from('collaborateur_clients')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+
+      // Supprimer le client source (sans cabinet)
+      const { error: deleteError } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', sourceId);
+
+      if (deleteError) throw deleteError;
+
+      // Mettre à jour le state local
+      setClients(prev => prev.filter(c => c.id !== sourceId));
+      setCharges(prev => prev.map(c =>
+        c.client_id === sourceId ? { ...c, client_id: targetId } : c
+      ));
+      setCollaborateurClients(prev => prev.map(cc =>
+        cc.client_id === sourceId ? { ...cc, client_id: targetId } : cc
+      ));
+
+      alert('Fusion réussie ! Les charges ont été transférées.');
+    } catch (err) {
+      console.error('Erreur fusion:', err);
+      alert('Erreur lors de la fusion');
+    }
+    setMergingClient(null);
+  };
 
   const handleAddClient = async (nom, codePennylane) => {
     try {
@@ -2076,14 +2237,35 @@ function ClientsPage({ clients, setClients, charges, collaborateurs, collaborate
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Clients</h2>
             <p className="text-slate-400">Gérez vos clients et assignez des collaborateurs</p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-          >
-            <Plus size={18} />
-            Ajouter
-          </button>
+          <div className="flex gap-2">
+            {canSync && (
+              <button
+                onClick={handleSyncPennylane}
+                disabled={syncing}
+                className={`${accent.color} ${accent.hover} text-white px-4 py-2 rounded-lg flex items-center gap-2 transition disabled:opacity-50`}
+              >
+                <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Sync...' : 'Sync Pennylane'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+            >
+              <Plus size={18} />
+              Ajouter
+            </button>
+          </div>
         </div>
+
+        {/* Message de sync */}
+        {syncMessage && (
+          <div className={`mb-4 p-3 rounded-lg ${
+            syncMessage.type === 'success' ? 'bg-green-500/20 border border-green-500 text-green-400' : 'bg-red-500/20 border border-red-500 text-red-400'
+          }`}>
+            {syncMessage.text}
+          </div>
+        )}
 
         {/* Filtres */}
         <div className="flex flex-wrap gap-4 mb-6">
@@ -2176,6 +2358,16 @@ function ClientsPage({ clients, setClients, charges, collaborateurs, collaborate
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex justify-center gap-1">
+                        {/* Bouton Fusionner - seulement pour clients sans cabinet */}
+                        {!client.cabinet && (
+                          <button
+                            onClick={() => setMergingClient(client)}
+                            className="text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 p-1 rounded transition"
+                            title="Fusionner avec un client Pennylane"
+                          >
+                            <Download size={16} className="rotate-90" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setAssigningClient(client)}
                           className="text-purple-400 hover:text-purple-300 hover:bg-purple-900/30 p-1 rounded transition"
@@ -2276,6 +2468,17 @@ function ClientsPage({ clients, setClients, charges, collaborateurs, collaborate
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal de fusion */}
+        {mergingClient && (
+          <MergeClientModal
+            sourceClient={mergingClient}
+            clients={clients}
+            charges={charges}
+            onMerge={handleMergeClient}
+            onClose={() => setMergingClient(null)}
+          />
         )}
       </div>
     </div>
@@ -2444,6 +2647,113 @@ function ClientModal({ client, onSave, onClose }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) {
+  const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Clients Pennylane disponibles pour la fusion (actifs, avec cabinet)
+  const pennylaneClients = clients.filter(c =>
+    c.cabinet && c.actif && c.id !== sourceClient.id
+  );
+
+  const filteredClients = pennylaneClients.filter(c =>
+    c.nom.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Compter les charges du client source
+  const sourceChargesCount = charges.filter(c => c.client_id === sourceClient.id).length;
+
+  const handleMerge = () => {
+    if (!selectedTargetId) {
+      alert('Veuillez sélectionner un client cible');
+      return;
+    }
+    const targetClient = clients.find(c => c.id === parseInt(selectedTargetId));
+    if (confirm(`Fusionner "${sourceClient.nom}" vers "${targetClient.nom}" ?\n\n${sourceChargesCount} charge(s) seront transférées.\nLe client "${sourceClient.nom}" sera supprimé.`)) {
+      onMerge(sourceClient.id, parseInt(selectedTargetId));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-lg w-full border border-slate-700 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white">Fusionner le client</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="bg-slate-700/50 rounded-lg p-4 mb-4">
+          <p className="text-sm text-slate-400 mb-1">Client source (sera supprimé)</p>
+          <p className="text-white font-medium">{sourceClient.nom}</p>
+          {sourceChargesCount > 0 && (
+            <p className="text-orange-400 text-sm mt-2">
+              {sourceChargesCount} charge(s) seront transférées
+            </p>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Fusionner vers (client Pennylane)
+          </label>
+          <input
+            type="text"
+            placeholder="Rechercher un client..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 mb-2"
+          />
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {filteredClients.map(client => (
+              <div
+                key={client.id}
+                onClick={() => setSelectedTargetId(String(client.id))}
+                className={`p-3 rounded cursor-pointer transition ${
+                  selectedTargetId === String(client.id)
+                    ? 'bg-orange-600/30 border border-orange-500'
+                    : 'bg-slate-700 hover:bg-slate-600'
+                }`}
+              >
+                <div className="text-white">{client.nom}</div>
+                <div className="text-xs text-slate-400 flex gap-2 mt-1">
+                  <span className={`px-1.5 py-0.5 rounded ${
+                    client.cabinet === 'Audit Up' ? 'bg-purple-600/30 text-purple-300' : 'bg-blue-600/30 text-blue-300'
+                  }`}>
+                    {client.cabinet}
+                  </span>
+                  {client.code_pennylane && <span>{client.code_pennylane}</span>}
+                </div>
+              </div>
+            ))}
+            {filteredClients.length === 0 && (
+              <p className="text-slate-500 text-center py-4">Aucun client trouvé</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleMerge}
+            disabled={!selectedTargetId}
+            className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded transition"
+          >
+            Fusionner
+          </button>
+        </div>
       </div>
     </div>
   );
