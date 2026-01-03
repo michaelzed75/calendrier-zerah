@@ -421,6 +421,7 @@ export default function App() {
           getChefsOf={getChefsOf}
           getEquipeOf={getEquipeOf}
           accent={accent}
+          userCollaborateur={userCollaborateur}
         />
       )}
       {currentPage === 'collaborateurs' && (
@@ -753,7 +754,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
 // ============================================
 // PAGE CALENDRIER
 // ============================================
-function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients, clients, charges, setCharges, getChefsOf, getEquipeOf, accent }) {
+function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients, clients, charges, setCharges, getChefsOf, getEquipeOf, accent, userCollaborateur }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -771,14 +772,56 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
   const activeClients = clients.filter(c => c.actif);
   const chefsMission = activeCollaborateurs.filter(c => c.est_chef_mission);
 
+  // Calculer les collaborateurs visibles selon les droits de l'utilisateur
+  const getVisibleCollaborateurs = () => {
+    if (!userCollaborateur) return [];
+
+    // Admin voit tout le monde
+    if (userCollaborateur.is_admin) {
+      return activeCollaborateurs;
+    }
+
+    const visibleIds = new Set();
+
+    // L'utilisateur se voit toujours lui-même
+    visibleIds.add(userCollaborateur.id);
+
+    // Si c'est un chef de mission, il voit son équipe
+    if (userCollaborateur.est_chef_mission) {
+      const equipe = getEquipeOf(userCollaborateur.id);
+      equipe.forEach(membre => visibleIds.add(membre.id));
+    }
+
+    // Tout collaborateur voit ses chefs
+    const chefs = getChefsOf(userCollaborateur.id);
+    chefs.forEach(chef => visibleIds.add(chef.id));
+
+    // Et les membres de l'équipe de ses chefs (ses collègues)
+    chefs.forEach(chef => {
+      const equipeDuChef = getEquipeOf(chef.id);
+      equipeDuChef.forEach(membre => visibleIds.add(membre.id));
+    });
+
+    return activeCollaborateurs.filter(c => visibleIds.has(c.id));
+  };
+
+  const visibleCollaborateurs = getVisibleCollaborateurs();
+  const visibleChefsMission = visibleCollaborateurs.filter(c => c.est_chef_mission);
+
   // Charger les préférences utilisateur
   useEffect(() => {
+    if (visibleCollaborateurs.length === 0) return;
+
     const saved = localStorage.getItem('userPreferences');
     if (saved) {
       const prefs = JSON.parse(saved);
-      setCurrentUser(prefs.currentUser);
+      // Filtrer les collaborateurs sélectionnés pour ne garder que ceux visibles
+      const visibleIds = visibleCollaborateurs.map(c => c.id);
+      const filteredSelected = (prefs.selectedCollaborateurs || []).filter(id => visibleIds.includes(id));
+
+      setCurrentUser(userCollaborateur?.id || prefs.currentUser);
       setViewMode(prefs.viewMode || 'month');
-      setSelectedCollaborateurs(prefs.selectedCollaborateurs || []);
+      setSelectedCollaborateurs(filteredSelected.length > 0 ? filteredSelected : visibleIds);
       setExpandedEquipes(prefs.expandedEquipes || {});
       if (prefs.viewMode === 'day' && prefs.selectedDay) {
         setSelectedDay(prefs.selectedDay);
@@ -786,14 +829,14 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
         setSelectedDay(formatDateToYMD(new Date()));
       }
     } else {
-      setCurrentUser(activeCollaborateurs[0]?.id || 1);
-      setSelectedCollaborateurs(activeCollaborateurs.map(c => c.id));
-      // Ouvrir toutes les équipes par défaut
+      setCurrentUser(userCollaborateur?.id || visibleCollaborateurs[0]?.id || 1);
+      setSelectedCollaborateurs(visibleCollaborateurs.map(c => c.id));
+      // Ouvrir toutes les équipes visibles par défaut
       const defaultExpanded = {};
-      chefsMission.forEach(chef => { defaultExpanded[chef.id] = true; });
+      visibleChefsMission.forEach(chef => { defaultExpanded[chef.id] = true; });
       setExpandedEquipes(defaultExpanded);
     }
-  }, [collaborateurs]);
+  }, [collaborateurs, userCollaborateur]);
 
   // Sauvegarder les préférences
   useEffect(() => {
@@ -808,11 +851,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
     }
   }, [currentUser, viewMode, selectedCollaborateurs, expandedEquipes, selectedDay]);
 
-  // Filtrer les collaborateurs actifs et sélectionnés
+  // Filtrer les collaborateurs visibles et sélectionnés
   useEffect(() => {
-    const filtered = collaborateurs.filter(c => c.actif && selectedCollaborateurs.includes(c.id));
+    const filtered = visibleCollaborateurs.filter(c => selectedCollaborateurs.includes(c.id));
     setFilteredCollaborateurs(filtered);
-  }, [selectedCollaborateurs, collaborateurs]);
+  }, [selectedCollaborateurs, visibleCollaborateurs]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -1145,13 +1188,13 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-white">Filtrer par équipe</h3>
               <div className="flex gap-2">
-                <button 
-                  onClick={() => setSelectedCollaborateurs(activeCollaborateurs.map(c => c.id))}
+                <button
+                  onClick={() => setSelectedCollaborateurs(visibleCollaborateurs.map(c => c.id))}
                   className="text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded transition"
                 >
                   Tout sélectionner
                 </button>
-                <button 
+                <button
                   onClick={() => setSelectedCollaborateurs([])}
                   className="text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded transition"
                 >
@@ -1159,14 +1202,16 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
                 </button>
               </div>
             </div>
-            
+
             <div className="space-y-3">
-              {chefsMission.map(chef => {
-                const equipe = getEquipeOf(chef.id);
+              {visibleChefsMission.map(chef => {
+                const equipe = getEquipeOf(chef.id).filter(m => visibleCollaborateurs.some(v => v.id === m.id));
+                const visibleIds = visibleCollaborateurs.map(v => v.id);
                 const isExpanded = expandedEquipes[chef.id];
-                const allSelected = [chef.id, ...equipe.map(m => m.id)].every(id => selectedCollaborateurs.includes(id));
-                const someSelected = [chef.id, ...equipe.map(m => m.id)].some(id => selectedCollaborateurs.includes(id));
-                
+                const teamIds = [chef.id, ...equipe.map(m => m.id)].filter(id => visibleIds.includes(id));
+                const allSelected = teamIds.every(id => selectedCollaborateurs.includes(id));
+                const someSelected = teamIds.some(id => selectedCollaborateurs.includes(id));
+
                 return (
                   <div key={chef.id} className="bg-slate-700 rounded-lg overflow-hidden">
                     {/* En-tête équipe */}
@@ -1175,7 +1220,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
                         <button onClick={() => toggleEquipe(chef.id)} className="text-white">
                           {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </button>
-                        <input 
+                        <input
                           type="checkbox"
                           checked={allSelected}
                           ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
@@ -1186,36 +1231,36 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
                         <span className="text-slate-400 text-sm">({equipe.length + 1} personnes)</span>
                       </div>
                     </div>
-                    
+
                     {/* Membres de l'équipe */}
                     {isExpanded && (
                       <div className="p-3 space-y-2">
                         {/* Le chef lui-même */}
                         <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedCollaborateurs.includes(chef.id)} 
+                          <input
+                            type="checkbox"
+                            checked={selectedCollaborateurs.includes(chef.id)}
                             onChange={(e) => {
                               if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, chef.id]);
                               else setSelectedCollaborateurs(prev => prev.filter(id => id !== chef.id));
-                            }} 
-                            className="rounded" 
+                            }}
+                            className="rounded"
                           />
                           <span>{chef.nom}</span>
                           <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>
                         </label>
-                        
-                        {/* Les membres */}
+
+                        {/* Les membres visibles */}
                         {equipe.filter(m => m.actif).map(membre => (
                           <label key={membre.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
-                            <input 
-                              type="checkbox" 
-                              checked={selectedCollaborateurs.includes(membre.id)} 
+                            <input
+                              type="checkbox"
+                              checked={selectedCollaborateurs.includes(membre.id)}
                               onChange={(e) => {
                                 if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, membre.id]);
                                 else setSelectedCollaborateurs(prev => prev.filter(id => id !== membre.id));
-                              }} 
-                              className="rounded" 
+                              }}
+                              className="rounded"
                             />
                             <span>{membre.nom}</span>
                           </label>
@@ -1225,11 +1270,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
                   </div>
                 );
               })}
-              
-              {/* Collaborateurs sans chef (autonomes) */}
+
+              {/* Collaborateurs sans chef (autonomes) - visibles uniquement */}
               {(() => {
                 const collabsAvecChef = collaborateurChefs.map(cc => cc.collaborateur_id);
-                const autonomes = activeCollaborateurs.filter(c => !c.est_chef_mission && !collabsAvecChef.includes(c.id));
+                const autonomes = visibleCollaborateurs.filter(c => !c.est_chef_mission && !collabsAvecChef.includes(c.id));
                 
                 if (autonomes.length === 0) return null;
                 
