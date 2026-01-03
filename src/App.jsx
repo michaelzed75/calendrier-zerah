@@ -2939,6 +2939,65 @@ function AuthPage({ authPage, setAuthPage, accent }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+
+  // Détecter si on arrive via un lien de reset password
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const type = hashParams.get('type');
+
+    if (type === 'recovery' && accessToken) {
+      setIsRecoveryMode(true);
+      // Nettoyer l'URL
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    // Aussi écouter l'événement PASSWORD_RECOVERY de Supabase
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Réinitialiser le mot de passe
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    if (password !== confirmPassword) {
+      setError('Les mots de passe ne correspondent pas');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Le mot de passe doit contenir au moins 6 caractères');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess('Mot de passe modifié avec succès ! Vous pouvez maintenant vous connecter.');
+        setIsRecoveryMode(false);
+        setPassword('');
+        setConfirmPassword('');
+        setAuthPage('login');
+      }
+    } catch (err) {
+      setError('Une erreur est survenue');
+    }
+    setLoading(false);
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -3068,8 +3127,53 @@ function AuthPage({ authPage, setAuthPage, accent }) {
           </div>
         )}
 
+        {/* Formulaire Réinitialisation du mot de passe */}
+        {isRecoveryMode && (
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-bold text-white">Nouveau mot de passe</h2>
+              <p className="text-slate-400 text-sm">Entrez votre nouveau mot de passe</p>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Nouveau mot de passe</label>
+              <div className="relative">
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Confirmer le mot de passe</label>
+              <div className="relative">
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full ${accent.color} ${accent.hover} text-white font-bold py-3 rounded-lg transition`}
+            >
+              {loading ? 'Modification...' : 'Modifier le mot de passe'}
+            </button>
+          </form>
+        )}
+
         {/* Formulaire Connexion */}
-        {authPage === 'login' && (
+        {authPage === 'login' && !isRecoveryMode && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
@@ -3126,7 +3230,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         )}
 
         {/* Formulaire Inscription */}
-        {authPage === 'register' && (
+        {authPage === 'register' && !isRecoveryMode && (
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
@@ -3189,7 +3293,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         )}
 
         {/* Formulaire Mot de passe oublié */}
-        {authPage === 'forgot' && (
+        {authPage === 'forgot' && !isRecoveryMode && (
           <form onSubmit={handleForgotPassword} className="space-y-4">
             <div>
               <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
