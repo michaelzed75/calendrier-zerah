@@ -2980,7 +2980,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
     }
 
     if (!otpCode || otpCode.length < 6) {
-      setError('Veuillez entrer le code à 6 chiffres reçu par email');
+      setError('Veuillez entrer le code reçu par email');
       setLoading(false);
       return;
     }
@@ -3162,10 +3162,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               <input
                 type="text"
                 value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                 className="w-full bg-slate-700 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none text-center text-2xl tracking-widest"
-                placeholder="000000"
-                maxLength={6}
+                placeholder="Code reçu par email"
                 required
               />
             </div>
