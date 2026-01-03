@@ -1957,7 +1957,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
       setSyncMessage({
         type: 'success',
-        text: `Sync terminée : ${result.imported} nouveaux, ${result.updated} mis à jour, ${result.deactivated} désactivés`
+        text: `Sync terminée ! ${result.total} dossiers Pennylane. ${result.imported} nouveaux, ${result.updated} mis à jour, ${result.deactivated} désactivés.`
       });
     } catch (err) {
       console.error('Erreur sync:', err);
