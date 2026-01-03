@@ -2141,6 +2141,43 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     return matchesCabinet && matchesSearch;
   });
 
+  // Export Excel
+  const handleExportExcel = () => {
+    const dataToExport = filteredClients.map(client => ({
+      'Nom': client.nom,
+      'Code Pennylane': client.code_pennylane || '',
+      'Cabinet': client.cabinet || '',
+      'Chef de mission': getChefName(client.chef_mission_id) || 'Non assigné',
+      'SIREN': client.siren || '',
+      'Adresse': client.adresse || '',
+      'Ville': client.ville || '',
+      'Code postal': client.code_postal || '',
+      'Charges': getChargesCount(client.id),
+      'Actif': client.actif ? 'Oui' : 'Non'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clients');
+
+    // Ajuster la largeur des colonnes
+    ws['!cols'] = [
+      { wch: 30 }, // Nom
+      { wch: 15 }, // Code
+      { wch: 15 }, // Cabinet
+      { wch: 20 }, // Chef
+      { wch: 12 }, // SIREN
+      { wch: 30 }, // Adresse
+      { wch: 20 }, // Ville
+      { wch: 10 }, // CP
+      { wch: 8 },  // Charges
+      { wch: 6 }   // Actif
+    ];
+
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `clients_${date}.xlsx`);
+  };
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
@@ -2160,6 +2197,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 {syncing ? 'Sync...' : 'Sync Pennylane'}
               </button>
             )}
+            <button
+              onClick={handleExportExcel}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+            >
+              <Download size={18} />
+              Export Excel
+            </button>
             <button
               onClick={() => setShowAddModal(true)}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
