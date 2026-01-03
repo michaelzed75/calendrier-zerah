@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -67,6 +67,12 @@ const UNSPLASH_CATEGORIES = [
 // COMPOSANT PRINCIPAL - APP
 // ============================================
 export default function App() {
+  // État d'authentification
+  const [user, setUser] = useState(null);
+  const [userCollaborateur, setUserCollaborateur] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authPage, setAuthPage] = useState('login'); // 'login', 'register', 'forgot'
+
   const [currentPage, setCurrentPage] = useState('calendar');
   const [collaborateurs, setCollaborateurs] = useState([]);
   const [collaborateurChefs, setCollaborateurChefs] = useState([]);
@@ -108,10 +114,56 @@ export default function App() {
     localStorage.setItem('backgroundTheme', JSON.stringify(backgroundTheme));
   }, [backgroundTheme]);
 
+  // Vérifier l'authentification au démarrage
+  useEffect(() => {
+    // Récupérer la session actuelle
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserCollaborateur(session.user.email);
+      }
+      setAuthLoading(false);
+    });
+
+    // Écouter les changements d'auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserCollaborateur(session.user.email);
+      } else {
+        setUserCollaborateur(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Charger le collaborateur lié à l'utilisateur
+  const loadUserCollaborateur = async (email) => {
+    const { data, error } = await supabase
+      .from('collaborateurs')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (!error && data) {
+      setUserCollaborateur(data);
+    }
+  };
+
+  // Déconnexion
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setUserCollaborateur(null);
+  };
+
   // Chargement initial des données depuis Supabase
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (user) {
+      loadAllData();
+    }
+  }, [user]);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -210,6 +262,26 @@ export default function App() {
 
   const accent = getAccentClasses();
 
+  // Écran de chargement auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">Chargement...</div>
+      </div>
+    );
+  }
+
+  // Si non connecté, afficher la page de connexion
+  if (!user) {
+    return (
+      <AuthPage
+        authPage={authPage}
+        setAuthPage={setAuthPage}
+        accent={accent}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
@@ -269,6 +341,14 @@ export default function App() {
             >
               <Palette size={18} />
             </button>
+            {/* Bouton Déconnexion */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
+              title="Déconnexion"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
 
           {/* Menu mobile */}
@@ -317,6 +397,14 @@ export default function App() {
               <Palette size={18} />
               Personnaliser
             </button>
+            {/* Bouton Déconnexion mobile */}
+            <button
+              onClick={() => { handleLogout(); setShowMobileMenu(false); }}
+              className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-red-600/20 text-red-400 transition"
+            >
+              <LogOut size={18} />
+              Déconnexion
+            </button>
           </div>
         )}
       </nav>
@@ -345,6 +433,7 @@ export default function App() {
           getChefsOf={getChefsOf}
           getEquipeOf={getEquipeOf}
           accent={accent}
+          isAdmin={userCollaborateur?.is_admin}
         />
       )}
       {currentPage === 'clients' && (
@@ -358,7 +447,6 @@ export default function App() {
           accent={accent}
         />
       )}
-
       {/* Crédits photo Unsplash */}
       {imageCredits && (
         <div className="fixed bottom-2 right-2 z-20 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70">
@@ -1408,11 +1496,49 @@ function CalendarPage({ collaborateurs, collaborateurChefs, collaborateurClients
 // ============================================
 // PAGE COLLABORATEURS
 // ============================================
-function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent }) {
+function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);
+  const [editingEmail, setEditingEmail] = useState(null);
+  const [newEmail, setNewEmail] = useState('');
 
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
+
+  // Sauvegarder l'email d'un collaborateur (admin uniquement)
+  const handleSaveEmail = async (collaborateurId) => {
+    // Valider l'email
+    if (newEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newEmail)) {
+        alert('Email invalide');
+        return;
+      }
+      // Vérifier si l'email est déjà utilisé
+      const existingCollab = collaborateurs.find(c => c.email === newEmail && c.id !== collaborateurId);
+      if (existingCollab) {
+        alert('Cet email est déjà attribué à ' + existingCollab.nom);
+        return;
+      }
+    }
+
+    try {
+      const { error } = await supabase
+        .from('collaborateurs')
+        .update({ email: newEmail || null })
+        .eq('id', collaborateurId);
+
+      if (error) throw error;
+
+      setCollaborateurs(prev => prev.map(c =>
+        c.id === collaborateurId ? { ...c, email: newEmail || null } : c
+      ));
+      setEditingEmail(null);
+      setNewEmail('');
+    } catch (err) {
+      console.error('Erreur mise à jour email:', err);
+      alert('Erreur lors de la mise à jour');
+    }
+  };
 
   const handleAddCollaborateur = async (nom, estChefMission, chefIds) => {
     try {
@@ -1601,6 +1727,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
             <thead>
               <tr className="bg-slate-700 text-slate-300">
                 <th className="text-left py-3 px-4">Nom</th>
+                {isAdmin && <th className="text-left py-3 px-4">Email (accès app)</th>}
                 <th className="text-center py-3 px-4">Chef de mission</th>
                 <th className="text-left py-3 px-4">Ses chefs</th>
                 <th className="text-center py-3 px-4">Équipe</th>
@@ -1614,6 +1741,57 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
                 return (
                   <tr key={collab.id} className={`border-t border-slate-700 ${!collab.actif ? 'opacity-50' : ''}`}>
                     <td className="py-3 px-4 text-white font-medium">{collab.nom}</td>
+                    {isAdmin && (
+                      <td className="py-3 px-4">
+                        {editingEmail === collab.id ? (
+                          <div className="flex gap-2">
+                            <input
+                              type="email"
+                              value={newEmail}
+                              onChange={(e) => setNewEmail(e.target.value)}
+                              className="bg-slate-700 text-white px-2 py-1 rounded border border-slate-500 text-sm w-40"
+                              placeholder="email@exemple.com"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveEmail(collab.id)}
+                              className={`${accent.color} text-white px-2 py-1 rounded text-sm`}
+                            >
+                              OK
+                            </button>
+                            <button
+                              onClick={() => { setEditingEmail(null); setNewEmail(''); }}
+                              className="bg-slate-600 text-white px-2 py-1 rounded text-sm"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {collab.email ? (
+                              <>
+                                <span className="text-green-400 text-sm">{collab.email}</span>
+                                <button
+                                  onClick={() => { setEditingEmail(collab.id); setNewEmail(collab.email || ''); }}
+                                  className="text-slate-400 hover:text-white p-1"
+                                  title="Modifier l'email"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => { setEditingEmail(collab.id); setNewEmail(''); }}
+                                className="text-slate-500 hover:text-slate-300 text-sm flex items-center gap-1"
+                              >
+                                <Mail size={14} />
+                                Ajouter
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    )}
                     <td className="py-3 px-4 text-center">
                       {collab.est_chef_mission ? (
                         <span className="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-sm">Oui</span>
@@ -2559,3 +2737,301 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
     </div>
   );
 }
+
+// ============================================
+// PAGE D'AUTHENTIFICATION
+// ============================================
+function AuthPage({ authPage, setAuthPage, accent }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      // Vérifier que l'email existe dans collaborateurs
+      const { data: collab, error: collabError } = await supabase
+        .from('collaborateurs')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (collabError || !collab) {
+        setError("Cet email n'est pas autorisé à accéder à l'application. Contactez votre administrateur.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('Email ou mot de passe incorrect');
+        } else {
+          setError(authError.message);
+        }
+      }
+    } catch (err) {
+      setError('Une erreur est survenue');
+    }
+    setLoading(false);
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    if (password !== confirmPassword) {
+      setError('Les mots de passe ne correspondent pas');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Le mot de passe doit contenir au moins 6 caractères');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Vérifier que l'email existe dans collaborateurs
+      const { data: collab, error: collabError } = await supabase
+        .from('collaborateurs')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (collabError || !collab) {
+        setError("Cet email n'est pas autorisé. Demandez à votre administrateur de vous ajouter.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message);
+      } else {
+        setSuccess('Compte créé ! Vérifiez votre email pour confirmer votre inscription.');
+        setAuthPage('login');
+      }
+    } catch (err) {
+      setError('Une erreur est survenue');
+    }
+    setLoading(false);
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess('Un email de réinitialisation a été envoyé si ce compte existe.');
+      }
+    } catch (err) {
+      setError('Une erreur est survenue');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+      <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">Audit Up</h1>
+          <p className="text-slate-400">Calendrier de gestion</p>
+        </div>
+
+        {/* Messages */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg flex items-center gap-2 text-red-400">
+            <AlertCircle size={18} />
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-4 p-3 bg-green-500/20 border border-green-500 rounded-lg text-green-400">
+            {success}
+          </div>
+        )}
+
+        {/* Formulaire Connexion */}
+        {authPage === 'login' && (
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <div className="relative">
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="votre@email.com"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Mot de passe</label>
+              <div className="relative">
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full ${accent.color} ${accent.hover} text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2`}
+            >
+              {loading ? 'Connexion...' : <><LogIn size={18} /> Se connecter</>}
+            </button>
+            <div className="flex justify-between text-sm">
+              <button
+                type="button"
+                onClick={() => { setAuthPage('register'); setError(''); setSuccess(''); }}
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Créer un compte
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthPage('forgot'); setError(''); setSuccess(''); }}
+                className="text-slate-400 hover:text-slate-300"
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Formulaire Inscription */}
+        {authPage === 'register' && (
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <div className="relative">
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="votre@email.com"
+                  required
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Utilisez l'email fourni par votre administrateur</p>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Mot de passe</label>
+              <div className="relative">
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Confirmer le mot de passe</label>
+              <div className="relative">
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full ${accent.color} ${accent.hover} text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2`}
+            >
+              {loading ? 'Création...' : <><UserPlus size={18} /> Créer mon compte</>}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthPage('login'); setError(''); setSuccess(''); }}
+              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+            >
+              Déjà un compte ? Se connecter
+            </button>
+          </form>
+        )}
+
+        {/* Formulaire Mot de passe oublié */}
+        {authPage === 'forgot' && (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <div>
+              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <div className="relative">
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  placeholder="votre@email.com"
+                  required
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full ${accent.color} ${accent.hover} text-white font-bold py-3 rounded-lg transition`}
+            >
+              {loading ? 'Envoi...' : 'Réinitialiser le mot de passe'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthPage('login'); setError(''); setSuccess(''); }}
+              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+            >
+              Retour à la connexion
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
