@@ -83,13 +83,13 @@ export default function App() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [backgroundTheme, setBackgroundTheme] = useState(() => {
     const saved = localStorage.getItem('backgroundTheme');
-    return saved ? JSON.parse(saved) : { type: 'gradient', value: 'default' };
+    return saved ? JSON.parse(saved) : { type: 'gradient', value: 'aurora' };
   });
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [imageCredits, setImageCredits] = useState(null);
   const [accentColor, setAccentColor] = useState(() => {
     const saved = localStorage.getItem('accentColor');
-    return saved || 'purple';
+    return saved || 'pink';
   });
 
   // Sauvegarder la couleur d'accent
@@ -279,7 +279,7 @@ export default function App() {
   // Écran de chargement auth
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-teal-900 via-purple-800 to-pink-900 flex items-center justify-center">
         <div className="text-white text-xl">Chargement...</div>
       </div>
     );
@@ -298,7 +298,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-teal-900 via-purple-800 to-pink-900 flex items-center justify-center">
         <div className="text-white text-xl">Chargement...</div>
       </div>
     );
@@ -3047,8 +3047,8 @@ function AuthPage({ authPage, setAuthPage, accent }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div className="min-h-screen bg-gradient-to-br from-teal-900 via-purple-800 to-pink-900 flex items-center justify-center p-4">
+      <div className="bg-slate-800/90 backdrop-blur rounded-2xl shadow-2xl w-full max-w-md p-8">
         {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Audit Up</h1>
@@ -3079,7 +3079,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="votre@email.com"
                   required
                 />
@@ -3093,7 +3093,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="••••••••"
                   required
                 />
@@ -3110,7 +3110,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               <button
                 type="button"
                 onClick={() => { setAuthPage('register'); setError(''); setSuccess(''); }}
-                className="text-purple-400 hover:text-purple-300"
+                className="text-pink-400 hover:text-pink-300"
               >
                 Créer un compte
               </button>
@@ -3136,7 +3136,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="votre@email.com"
                   required
                 />
@@ -3151,7 +3151,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="••••••••"
                   required
                 />
@@ -3165,7 +3165,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="••••••••"
                   required
                 />
@@ -3199,7 +3199,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-purple-500 focus:outline-none"
+                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-3 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
                   placeholder="votre@email.com"
                   required
                 />
