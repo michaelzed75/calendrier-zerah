@@ -449,6 +449,7 @@ export default function App() {
           getEquipeOf={getEquipeOf}
           accent={accent}
           isAdmin={userCollaborateur?.is_admin}
+          userCollaborateur={userCollaborateur}
         />
       )}
       {currentPage === 'clients' && (
@@ -1553,11 +1554,51 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
 // ============================================
 // PAGE COLLABORATEURS
 // ============================================
-function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin }) {
+function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);
   const [editingEmail, setEditingEmail] = useState(null);
   const [newEmail, setNewEmail] = useState('');
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState(null);
+
+  // Envoyer un rappel de test (uniquement à l'admin)
+  const handleSendTestReminder = async () => {
+    if (!userCollaborateur?.email) {
+      setReminderMessage({ type: 'error', text: 'Vous devez avoir un email configuré pour recevoir le test.' });
+      return;
+    }
+
+    setSendingReminder(true);
+    setReminderMessage(null);
+
+    try {
+      const response = await fetch('/api/send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testMode: true,
+          testEmail: userCollaborateur.email
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de l\'envoi');
+      }
+
+      setReminderMessage({
+        type: 'success',
+        text: `Email de test envoyé à ${userCollaborateur.email} !`
+      });
+    } catch (err) {
+      console.error('Erreur envoi rappel:', err);
+      setReminderMessage({ type: 'error', text: err.message || 'Erreur lors de l\'envoi' });
+    }
+
+    setSendingReminder(false);
+  };
 
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
 
@@ -1770,14 +1811,45 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Collaborateurs</h2>
             <p className="text-slate-400">Gérez votre équipe et la hiérarchie</p>
           </div>
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-          >
-            <Plus size={18} />
-            Ajouter
-          </button>
+          <div className="flex gap-3">
+            {isAdmin && (
+              <button
+                onClick={handleSendTestReminder}
+                disabled={sendingReminder}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+                title="Envoie un email de test à votre adresse"
+              >
+                <Mail size={18} />
+                {sendingReminder ? 'Envoi...' : 'Tester rappel'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+            >
+              <Plus size={18} />
+              Ajouter
+            </button>
+          </div>
         </div>
+
+        {/* Message de rappel */}
+        {reminderMessage && (
+          <div className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${
+            reminderMessage.type === 'success'
+              ? 'bg-green-500/20 border border-green-500 text-green-400'
+              : 'bg-red-500/20 border border-red-500 text-red-400'
+          }`}>
+            {reminderMessage.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+            {reminderMessage.text}
+            <button
+              onClick={() => setReminderMessage(null)}
+              className="ml-auto hover:opacity-70"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        )}
 
         <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
           <table className="w-full">
@@ -3133,8 +3205,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
       <div className="bg-slate-800/90 backdrop-blur rounded-2xl shadow-2xl w-full max-w-md p-8">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Audit Up</h1>
-          <p className="text-slate-400">Calendrier de gestion</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Calendrier de gestion d'équipe</h1>
         </div>
 
         {/* Messages */}
@@ -3366,6 +3437,12 @@ function AuthPage({ authPage, setAuthPage, accent }) {
             </button>
           </form>
         )}
+
+        {/* Footer - Powered by */}
+        <div className="mt-8 pt-6 border-t border-slate-700 text-center">
+          <p className="text-slate-500 text-xs">Powered by</p>
+          <p className="text-slate-400 font-semibold">AUDIT UP</p>
+        </div>
       </div>
     </div>
   );
