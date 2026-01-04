@@ -58,13 +58,13 @@ function generateEmailHTML(chefName, teamMembers, weekDates) {
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse;">
 
-          <!-- Header avec dégradé -->
+          <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0f766e 0%, #7c3aed 50%, #db2777 100%); border-radius: 16px 16px 0 0; padding: 40px 30px; text-align: center;">
+            <td style="background-color: #5b21b6; border-radius: 16px 16px 0 0; padding: 40px 30px; text-align: center;">
               <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
                 Calendrier de gestion d'équipe
               </h1>
-              <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">
+              <p style="margin: 10px 0 0 0; color: #c4b5fd; font-size: 14px;">
                 Semaine du ${weekDates.start} au ${weekDates.end} ${weekDates.year}
               </p>
             </td>
@@ -85,7 +85,7 @@ function generateEmailHTML(chefName, teamMembers, weekDates) {
               <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 30px 0;">
                 <tr>
                   <td align="center">
-                    <a href="${APP_URL}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                    <a href="${APP_URL}" style="display: inline-block; background-color: #7c3aed; color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                       Accéder au calendrier
                     </a>
                   </td>
@@ -102,7 +102,7 @@ function generateEmailHTML(chefName, teamMembers, weekDates) {
                 </table>
               </div>
 
-              <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+              <p style="margin: 30px 0 0 0; color: #374151; font-size: 16px; line-height: 1.6;">
                 Merci de renseigner les heures budgétées pour chaque collaborateur et chaque client.
               </p>
             </td>
