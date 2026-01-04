@@ -1560,6 +1560,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
   const [editingEmail, setEditingEmail] = useState(null);
   const [newEmail, setNewEmail] = useState('');
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [sendingToAll, setSendingToAll] = useState(false);
   const [reminderMessage, setReminderMessage] = useState(null);
 
   // Envoyer un rappel de test (uniquement à l'admin)
@@ -1598,6 +1599,42 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
     }
 
     setSendingReminder(false);
+  };
+
+  // Envoyer les rappels à tous les chefs de mission
+  const handleSendToAllChefs = async () => {
+    if (!confirm('Envoyer le rappel à tous les chefs de mission ?')) {
+      return;
+    }
+
+    setSendingToAll(true);
+    setReminderMessage(null);
+
+    try {
+      const response = await fetch('/api/send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testMode: false
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de l\'envoi');
+      }
+
+      setReminderMessage({
+        type: 'success',
+        text: `Rappels envoyés à ${result.sent} chef(s) de mission !`
+      });
+    } catch (err) {
+      console.error('Erreur envoi rappels:', err);
+      setReminderMessage({ type: 'error', text: err.message || 'Erreur lors de l\'envoi' });
+    }
+
+    setSendingToAll(false);
   };
 
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
@@ -1811,17 +1848,28 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Collaborateurs</h2>
             <p className="text-slate-400">Gérez votre équipe et la hiérarchie</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             {isAdmin && (
-              <button
-                onClick={handleSendTestReminder}
-                disabled={sendingReminder}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-                title="Envoie un email de test à votre adresse"
-              >
-                <Mail size={18} />
-                {sendingReminder ? 'Envoi...' : 'Tester rappel'}
-              </button>
+              <>
+                <button
+                  onClick={handleSendTestReminder}
+                  disabled={sendingReminder}
+                  className="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+                  title="Envoie un email de test à votre adresse"
+                >
+                  <Mail size={18} />
+                  {sendingReminder ? 'Envoi...' : 'Tester'}
+                </button>
+                <button
+                  onClick={handleSendToAllChefs}
+                  disabled={sendingToAll}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+                  title="Envoie le rappel à tous les chefs de mission"
+                >
+                  <Mail size={18} />
+                  {sendingToAll ? 'Envoi...' : 'Envoyer aux chefs de mission'}
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowAddModal(true)}

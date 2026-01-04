@@ -1,0 +1,16 @@
+name: Envoi rappel hebdomadaire
+
+on:
+  schedule:
+    # Lundi à 9h UTC = 10h Paris (heure d'hiver) / 11h Paris (heure d'été)
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Permet de déclencher manuellement depuis GitHub
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Envoyer les rappels aux chefs de mission
+        run: |
+          curl -X GET "https://calendrier-zerah.vercel.app/api/send-reminder" \
+            -H "Content-Type: application/json"
