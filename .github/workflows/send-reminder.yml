@@ -2,7 +2,9 @@ name: Envoi rappel hebdomadaire
 
 on:
   schedule:
-    # Lundi à 9h UTC = 10h Paris (heure d'hiver) / 11h Paris (heure d'été)
+    # Lundi 8h UTC = 10h Paris en été
+    - cron: '0 8 * * 1'
+    # Lundi 9h UTC = 10h Paris en hiver
     - cron: '0 9 * * 1'
   workflow_dispatch: # Permet de déclencher manuellement depuis GitHub
 
@@ -10,7 +12,24 @@ jobs:
   send-reminder:
     runs-on: ubuntu-latest
     steps:
-      - name: Envoyer les rappels aux chefs de mission
+      - name: Vérifier si c'est la bonne heure pour Paris (10h)
+        id: check_time
         run: |
-          curl -X GET "https://calendrier-zerah.vercel.app/api/send-reminder" \
-            -H "Content-Type: application/json"
+          # Obtenir l'heure actuelle à Paris
+          PARIS_HOUR=$(TZ='Europe/Paris' date +%H)
+          echo "Heure à Paris: ${PARIS_HOUR}h"
+
+          # Ne continuer que si c'est 10h à Paris
+          if [ "$PARIS_HOUR" = "10" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Ce n'est pas 10h à Paris, on skip"
+          fi
+
+      - name: Envoyer les rappels aux chefs de mission
+        if: steps.check_time.outputs.should_run == 'true'
+        run: |
+          curl -X POST "https://calendrier-zerah.vercel.app/api/send-reminder" \
+            -H "Content-Type: application/json" \
+            -d '{"testMode": false}'
