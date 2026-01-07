@@ -1061,7 +1061,21 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       }
     }
     if (newView === 'week') {
-      setWeekOffset(0);
+      // Calculer l'offset pour afficher la semaine contenant aujourd'hui
+      const today = new Date();
+      const baseDate = new Date(currentDate);
+      // Trouver le lundi de la semaine de baseDate
+      const baseDayOfWeek = baseDate.getDay();
+      const baseMonday = new Date(baseDate);
+      baseMonday.setDate(baseDate.getDate() - (baseDayOfWeek === 0 ? 6 : baseDayOfWeek - 1));
+      // Trouver le lundi de la semaine d'aujourd'hui
+      const todayDayOfWeek = today.getDay();
+      const todayMonday = new Date(today);
+      todayMonday.setDate(today.getDate() - (todayDayOfWeek === 0 ? 6 : todayDayOfWeek - 1));
+      // Calculer la différence en semaines
+      const diffTime = todayMonday.getTime() - baseMonday.getTime();
+      const diffWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+      setWeekOffset(diffWeeks);
     }
     setViewMode(newView);
   };
