@@ -782,6 +782,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const [selectedDay, setSelectedDay] = useState(null);
   const [editingCharge, setEditingCharge] = useState(null);
   const [expandedEquipes, setExpandedEquipes] = useState({});
+  const [prefilledDate, setPrefilledDate] = useState(null);
 
   const activeCollaborateurs = collaborateurs.filter(c => c.actif);
   const activeClients = clients.filter(c => c.actif);
@@ -901,6 +902,9 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const weekDays = viewMode === 'week' ? getWeekDays() : [];
 
   const getDefaultDate = useCallback(() => {
+    if (prefilledDate) {
+      return prefilledDate;
+    }
     if (viewMode === 'day' && selectedDay) {
       return selectedDay;
     } else if (viewMode === 'week') {
@@ -911,7 +915,13 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     }
     const today = new Date();
     return formatDateToYMD(today);
-  }, [viewMode, selectedDay, getWeekDays]);
+  }, [viewMode, selectedDay, getWeekDays, prefilledDate]);
+
+  const openAddModalWithDate = useCallback((day) => {
+    const dateStr = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    setPrefilledDate(dateStr);
+    setShowAddModal(true);
+  }, [currentDate]);
 
   const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
     const newCharge = {
@@ -933,6 +943,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       console.error('Erreur ajout charge:', err);
     }
     setShowAddModal(false);
+    setPrefilledDate(null);
   };
 
   const handleUpdateCharge = async (chargeId, collaborateurId, clientId, date, heures, type, detail) => {
@@ -997,6 +1008,16 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     });
     return Object.entries(aggregated).map(([client, heures]) => ({ client, heures }));
   }, [charges, clients]);
+
+  const getTooltipForDay = useCallback((collaborateurId, day) => {
+    const dayCharges = getChargesForDay(collaborateurId, day);
+    if (dayCharges.length === 0) return '';
+    return dayCharges.map(charge => {
+      const clientName = clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu';
+      const detail = charge.detail ? ` - ${charge.detail}` : '';
+      return `${clientName}: ${charge.heures}h${detail}`;
+    }).join('\n');
+  }, [getChargesForDay, clients]);
 
   const getWeekTotal = useCallback((collaborateurId) => {
     return weekDays.reduce((sum, date) => {
@@ -1323,7 +1344,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
             collaborateurs={filteredCollaborateurs}
             defaultDate={getDefaultDate()}
             onAdd={handleAddCharge}
-            onClose={() => setShowAddModal(false)}
+            onClose={() => { setShowAddModal(false); setPrefilledDate(null); }}
           />
         )}
 
@@ -1358,9 +1379,15 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                 {day && (
                   <>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-white font-bold text-lg">{day}</span>
-                      <button 
-                        onClick={() => openDayView(day)} 
+                      <span
+                        className="text-white font-bold text-lg cursor-pointer hover:text-green-400 transition"
+                        onClick={() => openAddModalWithDate(day)}
+                        title="Ajouter une charge"
+                      >
+                        {day}
+                      </span>
+                      <button
+                        onClick={() => openDayView(day)}
                         className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
                         title="Voir détails"
                       >
@@ -1372,12 +1399,13 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                         const totalHours = getTotalHoursForDay(collab.id, day);
                         if (totalHours === 0) return null;
                         return (
-                          <div 
-                            key={collab.id} 
+                          <div
+                            key={collab.id}
                             className={`flex justify-between items-center text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 ${
                               totalHours > 8 ? 'bg-red-900/50 text-red-300' : 'bg-slate-600 text-slate-300'
                             }`}
                             onClick={() => openDayView(day)}
+                            title={getTooltipForDay(collab.id, day)}
                           >
                             <span className="truncate">{collab.nom.split(' ')[0]}</span>
                             <span className="font-bold">{totalHours}h</span>
@@ -2797,12 +2825,26 @@ function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }
 
   const [formData, setFormData] = useState({
     collaborateurId: initialCollabId,
-    clientId: clients[0]?.id || '',
+    clientId: '',
     dateComplete: defaultDate,
     heures: 1,
     type: 'budgété',
     detail: ''
   });
+
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  const sortedClients = [...clients].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const filteredClients = sortedClients.filter(c =>
+    c.nom.toLowerCase().includes(clientSearch.toLowerCase())
+  );
+
+  const handleClientSelect = (client) => {
+    setFormData({ ...formData, clientId: client.id });
+    setClientSearch(client.nom);
+    setShowClientDropdown(false);
+  };
 
   const handleCollaborateurChange = (newCollabId) => {
     setFormData({
@@ -2834,11 +2876,33 @@ function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }
             </select>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
-            <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
-              {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-            </select>
+            <input
+              type="text"
+              value={clientSearch}
+              onChange={(e) => {
+                setClientSearch(e.target.value);
+                setFormData({ ...formData, clientId: '' });
+                setShowClientDropdown(true);
+              }}
+              onFocus={() => setShowClientDropdown(true)}
+              placeholder="Rechercher un client..."
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
+            />
+            {showClientDropdown && filteredClients.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded max-h-48 overflow-y-auto">
+                {filteredClients.map(c => (
+                  <div
+                    key={c.id}
+                    onClick={() => handleClientSelect(c)}
+                    className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white"
+                  >
+                    {c.nom}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
