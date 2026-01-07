@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -348,6 +348,17 @@ export default function App() {
               <Building2 size={18} />
               Clients
             </button>
+            {userCollaborateur?.est_chef_mission && (
+              <button
+                onClick={() => setCurrentPage('tva')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                <Receipt size={18} />
+                TVA
+              </button>
+            )}
             <button
               onClick={() => setShowThemeModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
@@ -404,6 +415,17 @@ export default function App() {
               <Building2 size={18} />
               Clients
             </button>
+            {userCollaborateur?.est_chef_mission && (
+              <button
+                onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                <Receipt size={18} />
+                TVA
+              </button>
+            )}
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
               className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-slate-300 transition"
@@ -459,6 +481,17 @@ export default function App() {
           charges={charges}
           setCharges={setCharges}
           collaborateurs={collaborateurs}
+          accent={accent}
+          userCollaborateur={userCollaborateur}
+        />
+      )}
+      {currentPage === 'tva' && userCollaborateur?.est_chef_mission && (
+        <RepartitionTVAPage
+          clients={clients}
+          collaborateurs={collaborateurs}
+          charges={charges}
+          setCharges={setCharges}
+          getEquipeOf={getEquipeOf}
           accent={accent}
           userCollaborateur={userCollaborateur}
         />
@@ -2193,15 +2226,15 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     }
   };
 
-  const handleAddClient = async (nom, codePennylane) => {
+  const handleAddClient = async (nom, codePennylane, tva = false) => {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .insert([{ nom, code_pennylane: codePennylane, actif: true }])
+        .insert([{ nom, code_pennylane: codePennylane, actif: true, tva }])
         .select();
-      
+
       if (error) throw error;
-      
+
       setClients(prev => [...prev, data[0]]);
     } catch (err) {
       console.error('Erreur ajout client:', err);
@@ -2210,17 +2243,17 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     setShowAddModal(false);
   };
 
-  const handleUpdateClient = async (id, nom, codePennylane) => {
+  const handleUpdateClient = async (id, nom, codePennylane, tva = false) => {
     try {
       const { error } = await supabase
         .from('clients')
-        .update({ nom, code_pennylane: codePennylane })
+        .update({ nom, code_pennylane: codePennylane, tva })
         .eq('id', id);
-      
+
       if (error) throw error;
-      
-      setClients(prev => prev.map(c => 
-        c.id === id ? { ...c, nom, code_pennylane: codePennylane } : c
+
+      setClients(prev => prev.map(c =>
+        c.id === id ? { ...c, nom, code_pennylane: codePennylane, tva } : c
       ));
     } catch (err) {
       console.error('Erreur mise à jour client:', err);
@@ -2249,11 +2282,29 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       
       if (error) throw error;
       
-      setClients(prev => prev.map(c => 
+      setClients(prev => prev.map(c =>
         c.id === id ? { ...c, actif: !c.actif } : c
       ));
     } catch (err) {
       console.error('Erreur toggle actif:', err);
+    }
+  };
+
+  const handleToggleTVA = async (id) => {
+    const client = clients.find(c => c.id === id);
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ tva: !client.tva })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setClients(prev => prev.map(c =>
+        c.id === id ? { ...c, tva: !c.tva } : c
+      ));
+    } catch (err) {
+      console.error('Erreur toggle TVA:', err);
     }
   };
 
@@ -2415,6 +2466,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 <th className="text-left py-3 px-4">Cabinet</th>
                 <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
+                <th className="text-center py-3 px-4">TVA</th>
                 <th className="text-center py-3 px-4">Actif</th>
                 <th className="text-center py-3 px-4">Actions</th>
               </tr>
@@ -2425,7 +2477,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 return (
                   <tr key={client.id} className={`border-t border-slate-700 ${!client.actif ? 'opacity-50' : ''}`}>
                     <td className="py-3 px-4">
-                      <div className="text-white font-medium">{client.nom}</div>
+                      <span className="text-white font-medium">{client.nom}</span>
                       {client.code_pennylane && (
                         <div className="text-slate-500 text-xs">{client.code_pennylane}</div>
                       )}
@@ -2461,6 +2513,15 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       ) : (
                         <span className="text-slate-500">0</span>
                       )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => handleToggleTVA(client.id)}
+                        className={`p-1 rounded transition ${client.tva ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
+                        title={client.tva ? 'Désactiver TVA' : 'Activer TVA'}
+                      >
+                        <Receipt size={18} />
+                      </button>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
@@ -2521,7 +2582,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         {editingClient && (
           <ClientModal
             client={editingClient}
-            onSave={(nom, code) => handleUpdateClient(editingClient.id, nom, code)}
+            onSave={(nom, code, tva) => handleUpdateClient(editingClient.id, nom, code, tva)}
             onClose={() => setEditingClient(null)}
           />
         )}
@@ -2536,6 +2597,422 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             onClose={() => setMergingClient(null)}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// PAGE REPARTITION TVA
+// ============================================
+function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getEquipeOf, accent, userCollaborateur }) {
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
+  const [repartitionData, setRepartitionData] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState([]);
+
+  // Clients TVA actifs
+  const clientsTVA = clients.filter(c => c.actif && c.tva);
+
+  // Collaborateurs de l'équipe du chef de mission (+ lui-même)
+  const equipeCollaborateurs = userCollaborateur ? [
+    userCollaborateur,
+    ...getEquipeOf(userCollaborateur.id)
+  ] : [];
+
+  // Jours fériés français 2025-2027
+  const joursFeries = [
+    // 2025
+    '2025-01-01', '2025-04-21', '2025-05-01', '2025-05-08', '2025-05-29',
+    '2025-06-09', '2025-07-14', '2025-08-15', '2025-11-01', '2025-11-11', '2025-12-25',
+    // 2026
+    '2026-01-01', '2026-04-06', '2026-05-01', '2026-05-08', '2026-05-14',
+    '2026-05-25', '2026-07-14', '2026-08-15', '2026-11-01', '2026-11-11', '2026-12-25',
+    // 2027
+    '2027-01-01', '2027-03-29', '2027-05-01', '2027-05-08', '2027-05-06',
+    '2027-05-17', '2027-07-14', '2027-08-15', '2027-11-01', '2027-11-11', '2027-12-25'
+  ];
+
+  // Ref pour éviter la sauvegarde au premier chargement
+  const isInitialLoad = React.useRef(true);
+
+  // Charger les données sauvegardées du localStorage (une seule fois)
+  useEffect(() => {
+    if (clientsTVA.length > 0 && repartitionData.length === 0) {
+      const savedData = localStorage.getItem('tvaRepartitionData');
+      const savedMap = savedData ? JSON.parse(savedData) : {};
+
+      setRepartitionData(clientsTVA.map(client => {
+        const saved = savedMap[client.id];
+        return {
+          clientId: client.id,
+          clientNom: client.nom,
+          collaborateurId: saved?.collaborateurId || '',
+          heures: saved?.heures || 0,
+          dateLimite: saved?.dateLimite || 19
+        };
+      }));
+    }
+  }, [clientsTVA]);
+
+  // Sauvegarder les données dans le localStorage quand elles changent (pas au premier chargement)
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      if (repartitionData.length > 0) {
+        isInitialLoad.current = false;
+      }
+      return;
+    }
+    if (repartitionData.length > 0) {
+      const dataToSave = {};
+      repartitionData.forEach(item => {
+        dataToSave[item.clientId] = {
+          collaborateurId: item.collaborateurId,
+          heures: item.heures,
+          dateLimite: item.dateLimite
+        };
+      });
+      localStorage.setItem('tvaRepartitionData', JSON.stringify(dataToSave));
+    }
+  }, [repartitionData]);
+
+  // Parser une date YYYY-MM-DD en objet Date local
+  const parseDateLocal = (dateStr) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // Formater une date en YYYY-MM-DD
+  const formatDateToYMD = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Vérifier si un jour est ouvré (Lun-Ven, pas férié)
+  const isJourOuvre = (dateStr) => {
+    const date = parseDateLocal(dateStr);
+    const jour = date.getDay();
+    // 0 = Dimanche, 6 = Samedi
+    if (jour === 0 || jour === 6) return false;
+    // Vérifier si c'est un jour férié
+    if (joursFeries.includes(dateStr)) return false;
+    return true;
+  };
+
+  // Obtenir le prochain jour ouvré
+  const getProchainJourOuvre = (dateStr) => {
+    let date = parseDateLocal(dateStr);
+    date.setDate(date.getDate() + 1);
+    while (!isJourOuvre(formatDateToYMD(date))) {
+      date.setDate(date.getDate() + 1);
+    }
+    return formatDateToYMD(date);
+  };
+
+  // Mettre à jour une ligne de répartition
+  const updateRepartition = (index, field, value) => {
+    setRepartitionData(prev => prev.map((item, i) =>
+      i === index ? { ...item, [field]: value } : item
+    ));
+  };
+
+  // Vérifier si toutes les données sont remplies
+  const isDataComplete = () => {
+    if (!dateDebut || !dateFin) return false;
+    return repartitionData.every(item =>
+      item.collaborateurId && item.dateLimite >= 1 && item.dateLimite <= 31
+    );
+  };
+
+  // Calculer les heures déjà planifiées pour un collaborateur sur une date
+  const getHeuresPlanifiees = (collaborateurId, dateStr, chargesExistantes) => {
+    const chargesJour = chargesExistantes.filter(c =>
+      c.collaborateur_id === collaborateurId && c.date_charge === dateStr
+    );
+    return chargesJour.reduce((sum, c) => sum + parseFloat(c.heures), 0);
+  };
+
+  // Calculer les heures disponibles sur la période pour un collaborateur
+  const calculerHeuresDisponibles = (collaborateurId) => {
+    if (!dateDebut || !dateFin) return 0;
+
+    let heuresDisponibles = 0;
+    const startDate = parseDateLocal(dateDebut);
+    const endDate = parseDateLocal(dateFin);
+    const currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      const dateStr = formatDateToYMD(currentDate);
+      if (isJourOuvre(dateStr)) {
+        // Heures déjà planifiées ce jour-là
+        const heuresDejaPlanifiees = charges
+          .filter(c => c.collaborateur_id === parseInt(collaborateurId) && c.date_charge === dateStr)
+          .reduce((sum, c) => sum + parseFloat(c.heures), 0);
+        heuresDisponibles += Math.max(0, 8 - heuresDejaPlanifiees);
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return heuresDisponibles;
+  };
+
+  // Valider la capacité de chaque collaborateur
+  const validerCapacite = () => {
+    const errors = [];
+
+    // Regrouper les heures par collaborateur
+    const heuresParCollab = {};
+    repartitionData.forEach(item => {
+      if (item.collaborateurId && item.heures > 0) {
+        if (!heuresParCollab[item.collaborateurId]) {
+          heuresParCollab[item.collaborateurId] = 0;
+        }
+        heuresParCollab[item.collaborateurId] += parseFloat(item.heures);
+      }
+    });
+
+    // Vérifier chaque collaborateur
+    Object.entries(heuresParCollab).forEach(([collabId, heuresReparties]) => {
+      const heuresDisponibles = calculerHeuresDisponibles(collabId);
+      if (heuresReparties > heuresDisponibles) {
+        const collab = equipeCollaborateurs.find(c => c.id === parseInt(collabId));
+        const nomCollab = collab ? collab.nom : 'Inconnu';
+        const depassement = heuresReparties - heuresDisponibles;
+        errors.push({
+          collaborateur: nomCollab,
+          heuresDisponibles,
+          heuresReparties,
+          depassement
+        });
+      }
+    });
+
+    return errors;
+  };
+
+  // Répartir les charges automatiquement
+  const repartirCharges = async () => {
+    if (!isDataComplete()) {
+      alert('Veuillez remplir tous les champs (collaborateur et date limite) avant de répartir.');
+      return;
+    }
+
+    // Valider la capacité
+    const errors = validerCapacite();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors([]);
+
+    setIsGenerating(true);
+
+    try {
+      // Copie des charges existantes pour le calcul
+      let chargesExistantes = [...charges];
+      const nouvellesCharges = [];
+
+      // Trier par date limite (priorité aux plus urgentes)
+      const dataTriee = [...repartitionData]
+        .filter(item => item.heures > 0)
+        .sort((a, b) => a.dateLimite - b.dateLimite);
+
+      for (const item of dataTriee) {
+        let heuresRestantes = parseFloat(item.heures);
+        let currentDate = dateDebut;
+
+        // Avancer jusqu'au premier jour ouvré si nécessaire
+        while (!isJourOuvre(currentDate) && currentDate <= dateFin) {
+          currentDate = getProchainJourOuvre(currentDate);
+        }
+
+        while (heuresRestantes > 0 && currentDate <= dateFin) {
+          if (isJourOuvre(currentDate)) {
+            const heuresDejaPlanifiees = getHeuresPlanifiees(
+              parseInt(item.collaborateurId),
+              currentDate,
+              [...chargesExistantes, ...nouvellesCharges]
+            );
+            const heuresDisponibles = Math.max(0, 8 - heuresDejaPlanifiees);
+
+            if (heuresDisponibles > 0) {
+              const heuresAPlacer = Math.min(heuresRestantes, heuresDisponibles);
+
+              nouvellesCharges.push({
+                collaborateur_id: parseInt(item.collaborateurId),
+                client_id: item.clientId,
+                date_charge: currentDate,
+                heures: heuresAPlacer,
+                type: 'budgété',
+                detail: 'TVA',
+                heures_realisees: 0
+              });
+
+              heuresRestantes -= heuresAPlacer;
+            }
+          }
+
+          // Passer au jour suivant
+          const nextDate = new Date(currentDate);
+          nextDate.setDate(nextDate.getDate() + 1);
+          currentDate = formatDateToYMD(nextDate);
+        }
+      }
+
+      // Insérer toutes les charges en base
+      if (nouvellesCharges.length > 0) {
+        const { data, error } = await supabase
+          .from('charges')
+          .insert(nouvellesCharges)
+          .select();
+
+        if (error) throw error;
+
+        setCharges(prev => [...prev, ...data]);
+        alert(`${nouvellesCharges.length} charge(s) créée(s) avec succès !`);
+      } else {
+        alert('Aucune charge à créer (toutes les durées sont à 0).');
+      }
+    } catch (err) {
+      console.error('Erreur lors de la répartition:', err);
+      alert('Erreur lors de la création des charges');
+    }
+
+    setIsGenerating(false);
+  };
+
+  return (
+    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+      <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700 mb-6">
+        <h1 className="text-2xl font-bold text-white mb-6">Répartition des charges TVA</h1>
+
+        {/* Sélection de la période */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date de début</label>
+            <input
+              type="date"
+              value={dateDebut}
+              onChange={(e) => setDateDebut(e.target.value)}
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Date de fin</label>
+            <input
+              type="date"
+              value={dateFin}
+              onChange={(e) => setDateFin(e.target.value)}
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
+            />
+          </div>
+        </div>
+
+        {/* Erreurs de validation */}
+        {validationErrors.length > 0 && (
+          <div className="mb-6 p-4 bg-red-900/30 border border-red-500 rounded-lg">
+            <h3 className="text-red-400 font-bold mb-2">Capacité dépassée - Veuillez revoir le planning</h3>
+            {validationErrors.map((error, index) => (
+              <p key={index} className="text-red-300 text-sm">
+                <strong>{error.collaborateur}</strong> : durée disponible sur la période = {error.heuresDisponibles}h, vous avez réparti {error.heuresReparties}h (dépassement de {error.depassement}h)
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Tableau des clients TVA */}
+        {clientsTVA.length === 0 ? (
+          <div className="text-center py-8 text-slate-400">
+            Aucun client avec TVA. Allez dans la page Clients pour activer la TVA sur les clients concernés.
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-600">
+                    <th className="text-left py-3 px-2">Date limite</th>
+                    <th className="text-left py-3 px-2">Client</th>
+                    <th className="text-left py-3 px-2">Collaborateur</th>
+                    <th className="text-left py-3 px-2">Durée (h)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {repartitionData.map((item, index) => (
+                    <tr key={item.clientId} className="border-b border-slate-700">
+                      <td className="py-3 px-2">
+                        <select
+                          value={item.dateLimite}
+                          onChange={(e) => updateRepartition(index, 'dateLimite', parseInt(e.target.value))}
+                          className="bg-slate-700 text-white rounded px-2 py-1 border border-slate-600"
+                        >
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map(jour => (
+                            <option key={jour} value={jour}>{jour}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-3 px-2 text-white">{item.clientNom}</td>
+                      <td className="py-3 px-2">
+                        <select
+                          value={item.collaborateurId}
+                          onChange={(e) => updateRepartition(index, 'collaborateurId', e.target.value)}
+                          className="bg-slate-700 text-white rounded px-2 py-1 border border-slate-600"
+                        >
+                          <option value="">Sélectionner...</option>
+                          {equipeCollaborateurs.map(c => (
+                            <option key={c.id} value={c.id}>{c.nom}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-3 px-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={item.heures}
+                          onChange={(e) => updateRepartition(index, 'heures', parseFloat(e.target.value) || 0)}
+                          className="w-20 bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 text-center"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bouton de répartition */}
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={repartirCharges}
+                disabled={isGenerating || !isDataComplete()}
+                className={`px-6 py-3 rounded-lg font-bold transition flex items-center gap-2 ${
+                  isGenerating || !isDataComplete()
+                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    : `${accent.color} text-white ${accent.hover}`
+                }`}
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Répartition en cours...
+                  </>
+                ) : (
+                  'Répartir les charges'
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Résumé */}
+      <div className="bg-slate-800/90 backdrop-blur-sm rounded-lg p-4 border border-slate-700">
+        <p className="text-slate-400 text-sm">
+          Clients TVA : {clientsTVA.length} | Total heures prévues : {repartitionData.reduce((sum, item) => sum + (item.heures || 0), 0)}h
+        </p>
       </div>
     </div>
   );
@@ -2648,6 +3125,7 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
 function ClientModal({ client, onSave, onClose }) {
   const [nom, setNom] = useState(client?.nom || '');
   const [codePennylane, setCodePennylane] = useState(client?.code_pennylane || '');
+  const [tva, setTva] = useState(client?.tva || false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -2655,7 +3133,7 @@ function ClientModal({ client, onSave, onClose }) {
       alert('Le nom est obligatoire');
       return;
     }
-    onSave(nom.trim(), codePennylane.trim());
+    onSave(nom.trim(), codePennylane.trim(), tva);
   };
 
   return (
@@ -2684,14 +3162,27 @@ function ClientModal({ client, onSave, onClose }) {
 
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-1">Code Pennylane</label>
-            <input 
-              type="text" 
-              value={codePennylane} 
-              onChange={(e) => setCodePennylane(e.target.value)} 
+            <input
+              type="text"
+              value={codePennylane}
+              onChange={(e) => setCodePennylane(e.target.value)}
               placeholder="Pour future intégration API"
-              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" 
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
             />
             <p className="text-slate-500 text-xs mt-1">Optionnel - pour l'intégration future avec Pennylane</p>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tva}
+                onChange={(e) => setTva(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-slate-300">Client avec TVA mensuelle</span>
+            </label>
+            <p className="text-slate-500 text-xs mt-1">Cocher si ce client nécessite une déclaration TVA mensuelle</p>
           </div>
 
           <div className="flex gap-3 pt-2">
