@@ -2612,8 +2612,12 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
   const [isGenerating, setIsGenerating] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
 
-  // Clients TVA actifs
-  const clientsTVA = clients.filter(c => c.actif && c.tva);
+  // Clients TVA actifs appartenant au chef de mission connecté
+  const clientsTVA = clients.filter(c =>
+    c.actif &&
+    c.tva &&
+    (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+  );
 
   // Collaborateurs de l'équipe du chef de mission (+ lui-même)
   const equipeCollaborateurs = userCollaborateur ? [
