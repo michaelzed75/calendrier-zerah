@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt, FileText } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -78,6 +78,8 @@ export default function App() {
   const [collaborateurChefs, setCollaborateurChefs] = useState([]);
   const [clients, setClients] = useState([]);
   const [charges, setCharges] = useState([]);
+  const [impotsTaxes, setImpotsTaxes] = useState([]);
+  const [suiviEcheances, setSuiviEcheances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -200,6 +202,22 @@ export default function App() {
         .select('*');
       if (!chargesError && chargesData) {
         setCharges(chargesData);
+      }
+
+      // Charger impots_taxes
+      const { data: impotsTaxesData, error: impotsTaxesError } = await supabase
+        .from('impots_taxes')
+        .select('*');
+      if (!impotsTaxesError && impotsTaxesData) {
+        setImpotsTaxes(impotsTaxesData);
+      }
+
+      // Charger suivi_echeances
+      const { data: suiviData, error: suiviError } = await supabase
+        .from('suivi_echeances')
+        .select('*');
+      if (!suiviError && suiviData) {
+        setSuiviEcheances(suiviData);
       }
     } catch (err) {
       console.error('Erreur chargement données:', err);
@@ -349,15 +367,26 @@ export default function App() {
               Clients
             </button>
             {userCollaborateur?.est_chef_mission && (
-              <button
-                onClick={() => setCurrentPage('tva')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <Receipt size={18} />
-                TVA
-              </button>
+              <>
+                <button
+                  onClick={() => setCurrentPage('impots')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                    currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  <FileText size={18} />
+                  Impôts et Taxes
+                </button>
+                <button
+                  onClick={() => setCurrentPage('tva')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                    currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  <Receipt size={18} />
+                  Planification TVA
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowThemeModal(true)}
@@ -416,15 +445,26 @@ export default function App() {
               Clients
             </button>
             {userCollaborateur?.est_chef_mission && (
-              <button
-                onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
-                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-                }`}
-              >
-                <Receipt size={18} />
-                TVA
-              </button>
+              <>
+                <button
+                  onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
+                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                    currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  <FileText size={18} />
+                  Impôts et Taxes
+                </button>
+                <button
+                  onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
+                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                    currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  <Receipt size={18} />
+                  Planification TVA
+                </button>
+              </>
             )}
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
@@ -458,6 +498,9 @@ export default function App() {
           getAccessibleClients={getAccessibleClients}
           accent={accent}
           userCollaborateur={userCollaborateur}
+          impotsTaxes={impotsTaxes}
+          suiviEcheances={suiviEcheances}
+          setSuiviEcheances={setSuiviEcheances}
         />
       )}
       {currentPage === 'collaborateurs' && (
@@ -492,6 +535,18 @@ export default function App() {
           charges={charges}
           setCharges={setCharges}
           getEquipeOf={getEquipeOf}
+          accent={accent}
+          userCollaborateur={userCollaborateur}
+          impotsTaxes={impotsTaxes}
+        />
+      )}
+      {currentPage === 'impots' && userCollaborateur?.est_chef_mission && (
+        <ImpotsTaxesPage
+          clients={clients}
+          collaborateurs={collaborateurs}
+          impotsTaxes={impotsTaxes}
+          setImpotsTaxes={setImpotsTaxes}
+          suiviEcheances={suiviEcheances}
           accent={accent}
           userCollaborateur={userCollaborateur}
         />
@@ -802,7 +857,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
 // ============================================
 // PAGE CALENDRIER
 // ============================================
-function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur }) {
+function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur, impotsTaxes, suiviEcheances, setSuiviEcheances }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -816,6 +871,8 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const [editingCharge, setEditingCharge] = useState(null);
   const [expandedEquipes, setExpandedEquipes] = useState({});
   const [prefilledDate, setPrefilledDate] = useState(null);
+  const [draggedCharge, setDraggedCharge] = useState(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
 
   const activeCollaborateurs = collaborateurs.filter(c => c.actif);
   const activeClients = clients.filter(c => c.actif);
@@ -1012,6 +1069,26 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     }
   }, [setCharges]);
 
+  // Déplacer une charge à une nouvelle date (drag and drop)
+  const handleMoveCharge = useCallback(async (chargeId, newDate) => {
+    // Mise à jour optimiste
+    setCharges(prev => prev.map(c =>
+      c.id === chargeId ? { ...c, date_charge: newDate } : c
+    ));
+
+    try {
+      const { error } = await supabase
+        .from('charges')
+        .update({ date_charge: newDate })
+        .eq('id', chargeId);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Erreur déplacement charge:', err);
+      // Recharger les données en cas d'erreur
+    }
+  }, [setCharges]);
+
   const getChargesForDay = useCallback((collaborateurId, day) => {
     const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
     return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
@@ -1061,6 +1138,211 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       return sum + dayTotal;
     }, 0);
   }, [charges, weekDays]);
+
+  // Calculer les échéances fiscales pour une date donnée
+  const getEcheancesFiscales = useCallback((dateStr) => {
+    const echeances = [];
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayOfMonth = date.getDate();
+    const monthNum = date.getMonth() + 1; // 1-12
+    const dayOfWeek = date.getDay(); // 0=Dim, 1=Lun, ...
+
+    // Fonction helper: vérifie si une échéance théorique tombe sur cette date
+    // En tenant compte du report dimanche → lundi
+    const isEcheanceDay = (jourTheorique, moisCondition = true) => {
+      if (!moisCondition) return false;
+
+      // Créer la date théorique de l'échéance
+      const dateTheorique = new Date(year, monthNum - 1, jourTheorique);
+      const jourSemaineTheorique = dateTheorique.getDay();
+
+      // Si l'échéance théorique tombe un dimanche, elle est reportée au lundi
+      if (jourSemaineTheorique === 0) {
+        // L'échéance est reportée au lundi (jour + 1)
+        const dateLundi = new Date(dateTheorique);
+        dateLundi.setDate(dateLundi.getDate() + 1);
+        return dateLundi.getDate() === dayOfMonth && dateLundi.getMonth() + 1 === monthNum;
+      }
+
+      // Sinon, l'échéance reste au jour prévu
+      return dayOfMonth === jourTheorique;
+    };
+
+    // Clients du chef de mission connecté
+    const mesClients = clients.filter(c =>
+      c.actif &&
+      (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+    );
+
+    // Pour chaque client, vérifier les échéances
+    mesClients.forEach(client => {
+      const data = impotsTaxes.find(it => it.client_id === client.id && it.annee_fiscale === year);
+      if (!data) return;
+
+      // TVA
+      if (data.tva_jour && data.tva_periodicite) {
+        const tvaJour = parseInt(data.tva_jour);
+        let isTvaDay = false;
+
+        if (data.tva_periodicite === 'mensuel' && isEcheanceDay(tvaJour, true)) {
+          isTvaDay = true;
+        } else if (data.tva_periodicite === 'trimestriel' && isEcheanceDay(tvaJour, [1, 4, 7, 10].includes(monthNum))) {
+          isTvaDay = true;
+        } else if (data.tva_periodicite === 'semestriel' && isEcheanceDay(tvaJour, [7, 12].includes(monthNum))) {
+          isTvaDay = true;
+        }
+
+        if (isTvaDay) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'TVA', montant: null, dateEcheance: dateStr });
+        }
+      }
+
+      // IS Acomptes - dates fixes: 15/03, 15/06, 15/09, 15/12
+      if (data.soumis_is) {
+        if (isEcheanceDay(15, monthNum === 3) && data.is_acompte_03) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_03, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 6) && data.is_acompte_06) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_06, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 9) && data.is_acompte_09) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_09, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 12) && data.is_acompte_12) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_12, dateEcheance: dateStr });
+        }
+      }
+
+      // IS Solde - 15 du 4ème mois après clôture (ou 15/05 si clôture Décembre)
+      if (data.soumis_is) {
+        const moisClotureNom = data.mois_cloture || 'Décembre';
+        const moisMap = {
+          'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+          'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+        };
+        const moisClotureNum = moisMap[moisClotureNom] || 12;
+
+        if (moisClotureNum === 12) {
+          // Clôture Décembre → solde 15/05
+          if (isEcheanceDay(15, monthNum === 5)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'IS Solde', montant: null, dateEcheance: dateStr });
+          }
+        } else {
+          // Autres clôtures → 15 du 4ème mois suivant
+          let moisSolde = moisClotureNum + 4;
+          if (moisSolde > 12) moisSolde -= 12;
+          if (isEcheanceDay(15, monthNum === moisSolde)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'IS Solde', montant: null, dateEcheance: dateStr });
+          }
+        }
+      }
+
+      // Liasse fiscale - 03/05 si clôture 31/12, sinon 3 mois après clôture
+      if (data.date_cloture) {
+        const [jourCloture, moisCloture] = data.date_cloture.split('/').map(Number);
+        if (moisCloture === 12 && jourCloture === 31) {
+          // Clôture 31/12 → liasse 03/05
+          if (isEcheanceDay(3, monthNum === 5)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
+          }
+        } else {
+          // 3 mois après clôture
+          const moisLiasse = ((moisCloture + 2) % 12) + 1;
+          if (isEcheanceDay(jourCloture, monthNum === moisLiasse)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
+          }
+        }
+      }
+
+      // CFE - 15/12 toujours, + 15/06 si montant N-1 > 3000€
+      if (data.cfe_montant_n1) {
+        if (isEcheanceDay(15, monthNum === 12)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CFE', montant: data.cfe_montant_n1, dateEcheance: dateStr });
+        }
+        if (data.cfe_montant_n1 > 3000 && isEcheanceDay(15, monthNum === 6)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CFE Ac.', montant: Math.round(data.cfe_montant_n1 / 2), dateEcheance: dateStr });
+        }
+      }
+
+      // CVAE - 15/06, 15/09, 03/05
+      if (data.cvae) {
+        if (isEcheanceDay(15, monthNum === 6) || isEcheanceDay(15, monthNum === 9)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CVAE', montant: null, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(3, monthNum === 5)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CVAE Sol.', montant: null, dateEcheance: dateStr });
+        }
+      }
+
+      // TVTS - 15/01
+      if (data.tvts && isEcheanceDay(15, monthNum === 1)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'TVTS', montant: null, dateEcheance: dateStr });
+      }
+
+      // DAS2 - 01/05
+      if (data.das2 && isEcheanceDay(1, monthNum === 5)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'DAS2', montant: null, dateEcheance: dateStr });
+      }
+
+      // Taxe sur les salaires - 10/01
+      if (data.taxe_salaires && isEcheanceDay(10, monthNum === 1)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'Taxe Salaires', montant: null, dateEcheance: dateStr });
+      }
+    });
+
+    return echeances;
+  }, [clients, impotsTaxes, userCollaborateur]);
+
+  // Vérifier si une échéance est faite
+  const isEcheanceFaite = useCallback((clientId, typeEcheance, dateEcheance) => {
+    return suiviEcheances.some(s =>
+      s.client_id === clientId &&
+      s.type_echeance === typeEcheance &&
+      s.date_echeance === dateEcheance
+    );
+  }, [suiviEcheances]);
+
+  // Toggle le suivi d'une échéance
+  const toggleSuiviEcheance = async (clientId, typeEcheance, dateEcheance, anneeFiscale) => {
+    const existing = suiviEcheances.find(s =>
+      s.client_id === clientId &&
+      s.type_echeance === typeEcheance &&
+      s.date_echeance === dateEcheance
+    );
+
+    try {
+      if (existing) {
+        // Supprimer le suivi
+        const { error } = await supabase
+          .from('suivi_echeances')
+          .delete()
+          .eq('id', existing.id);
+
+        if (error) throw error;
+        setSuiviEcheances(prev => prev.filter(s => s.id !== existing.id));
+      } else {
+        // Créer le suivi
+        const { data, error } = await supabase
+          .from('suivi_echeances')
+          .insert({
+            client_id: clientId,
+            type_echeance: typeEcheance,
+            date_echeance: dateEcheance,
+            fait_par_id: userCollaborateur?.id,
+            fait_le: new Date().toISOString(),
+            annee_fiscale: anneeFiscale
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        setSuiviEcheances(prev => [...prev, data]);
+      }
+    } catch (err) {
+      console.error('Erreur toggle suivi échéance:', err);
+    }
+  };
 
   const handleNavigateWeek = (direction) => {
     setWeekOffset(weekOffset + direction);
@@ -1421,49 +1703,95 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
             {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
               <div key={day} className="text-center text-slate-400 text-sm font-semibold py-2">{day}</div>
             ))}
-            {allDays.map((day, idx) => (
-              <div key={idx} className="bg-slate-700 min-h-32 rounded-lg p-2 border border-slate-600">
-                {day && (
-                  <>
-                    <div className="flex justify-between items-center mb-2">
-                      <span
-                        className="text-white font-bold text-lg cursor-pointer hover:text-green-400 transition"
-                        onClick={() => openAddModalWithDate(day)}
-                        title="Ajouter une charge"
-                      >
-                        {day}
-                      </span>
-                      <button
-                        onClick={() => openDayView(day)}
-                        className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
-                        title="Voir détails"
-                      >
-                        <Eye size={14} />
-                      </button>
-                    </div>
-                    <div className="space-y-1">
-                      {filteredCollaborateurs.map(collab => {
-                        const totalHours = getTotalHoursForDay(collab.id, day);
-                        if (totalHours === 0) return null;
-                        return (
-                          <div
-                            key={collab.id}
-                            className={`flex justify-between items-center text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 ${
-                              totalHours > 8 ? 'bg-red-900/50 text-red-300' : 'bg-slate-600 text-slate-300'
-                            }`}
-                            onClick={() => openDayView(day)}
-                            title={getTooltipForDay(collab.id, day)}
-                          >
-                            <span className="truncate">{collab.nom.split(' ')[0]}</span>
-                            <span className="font-bold">{totalHours}h</span>
+            {allDays.map((day, idx) => {
+              const dateStr = day ? formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day)) : null;
+              const echeances = dateStr ? getEcheancesFiscales(dateStr) : [];
+              return (
+                <div
+                  key={idx}
+                  className="bg-slate-700 min-h-32 rounded-lg border border-slate-600 flex flex-col"
+                >
+                  {day && (
+                    <>
+                      {/* Partie haute - Échéances fiscales (fond vert) */}
+                      {echeances.length > 0 && (
+                        <div className="bg-emerald-900/60 rounded-t-lg p-1 border-b border-emerald-700/50">
+                          <div className="space-y-0.5 max-h-16 overflow-y-auto">
+                            {echeances.slice(0, 3).map((ech, echIdx) => {
+                              const isFait = isEcheanceFaite(ech.clientId, ech.type, ech.dateEcheance);
+                              return (
+                                <div
+                                  key={echIdx}
+                                  className={`text-xs truncate px-1 flex items-center gap-1 ${isFait ? 'text-emerald-400/50 line-through' : 'text-emerald-200'}`}
+                                  title={`${ech.client} - ${ech.type}${ech.montant ? ` : ${ech.montant}€` : ''}`}
+                                >
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleSuiviEcheance(ech.clientId, ech.type, ech.dateEcheance, currentDate.getFullYear());
+                                    }}
+                                    className={`w-3 h-3 rounded border flex-shrink-0 flex items-center justify-center ${
+                                      isFait
+                                        ? 'bg-emerald-500 border-emerald-500'
+                                        : 'border-emerald-400 hover:bg-emerald-700/50'
+                                    }`}
+                                    title={isFait ? 'Marquer comme non fait' : 'Marquer comme fait'}
+                                  >
+                                    {isFait && <Check size={8} className="text-white" />}
+                                  </button>
+                                  <span className={`font-semibold ${isFait ? 'text-emerald-500/50' : 'text-emerald-300'}`}>{ech.type}</span>
+                                  {ech.montant && <span className="ml-1">{ech.montant}€</span>}
+                                  <span className="text-emerald-400/70 text-[10px]">{ech.client.substring(0, 8)}</span>
+                                </div>
+                              );
+                            })}
+                            {echeances.length > 3 && (
+                              <div className="text-[10px] text-emerald-400/70 px-1">+{echeances.length - 3} autres</div>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
+                        </div>
+                      )}
+
+                      {/* Partie basse - Charges */}
+                      <div className={`p-2 flex-1 ${echeances.length === 0 ? 'rounded-lg' : ''}`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span
+                            className="text-white font-bold text-lg cursor-pointer hover:text-green-400 transition"
+                            onClick={() => openAddModalWithDate(day)}
+                            title="Ajouter une charge"
+                          >
+                            {day}
+                          </span>
+                          <button
+                            onClick={() => openDayView(day)}
+                            className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
+                            title="Voir détails"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        </div>
+                        <div className="space-y-0.5">
+                          {filteredCollaborateurs.map(collab => {
+                            const total = getTotalHoursForDay(collab.id, day);
+                            if (total === 0) return null;
+                            return (
+                              <div
+                                key={collab.id}
+                                className="flex justify-between text-xs bg-slate-600 px-1 rounded cursor-pointer hover:bg-slate-500"
+                                onClick={() => openDayView(day)}
+                              >
+                                <span className="truncate text-slate-300">{collab.nom.split(' ')[0]}</span>
+                                <span className={total > 8 ? 'text-red-400' : 'text-green-300'}>{total}h</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -1497,26 +1825,65 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                   </div>
                   {weekDays.map(date => {
                     const dateStr = formatDateToYMD(date);
-                    const aggregated = getAggregatedByClient(collab.id, dateStr);
+                    const dayCharges = getChargesForDateStr(collab.id, dateStr);
                     const dayTotal = getTotalHoursForDateStr(collab.id, dateStr);
+                    const isDropTarget = draggedCharge && draggedCharge.collaborateur_id === collab.id && dragOverDate === dateStr;
                     return (
-                      <div 
-                        key={dateStr} 
-                        className="flex-1 min-w-36 cursor-pointer hover:bg-slate-600 rounded p-1 transition"
-                        onClick={() => openDayViewFromDate(date)}
+                      <div
+                        key={dateStr}
+                        className={`flex-1 min-w-36 rounded p-1 transition min-h-[60px] ${
+                          isDropTarget
+                            ? 'bg-green-600/30 border-2 border-dashed border-green-400'
+                            : 'hover:bg-slate-600'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id) {
+                            setDragOverDate(dateStr);
+                          }
+                        }}
+                        onDragLeave={() => setDragOverDate(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id && draggedCharge.date_charge !== dateStr) {
+                            handleMoveCharge(draggedCharge.id, dateStr);
+                          }
+                          setDraggedCharge(null);
+                          setDragOverDate(null);
+                        }}
                       >
-                        <div className={`text-sm font-bold mb-1 ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}>
+                        <div
+                          className={`text-sm font-bold mb-1 cursor-pointer ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}
+                          onClick={() => openDayViewFromDate(date)}
+                        >
                           {dayTotal > 0 ? `${dayTotal}h` : '-'}
                         </div>
-                        {aggregated.length > 0 && (
+                        {dayCharges.length > 0 && (
                           <div className="space-y-0.5">
-                            {aggregated.slice(0, 3).map((item, idx) => (
-                              <div key={idx} className="text-xs text-slate-400 truncate">
-                                {item.client.substring(0, 10)}: {item.heures}h
+                            {dayCharges.slice(0, 4).map((charge) => (
+                              <div
+                                key={charge.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggedCharge(charge);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedCharge(null);
+                                  setDragOverDate(null);
+                                }}
+                                className={`text-xs px-1 py-0.5 rounded truncate cursor-grab active:cursor-grabbing ${
+                                  draggedCharge?.id === charge.id
+                                    ? 'bg-blue-500/50 text-blue-200 opacity-50'
+                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                                }`}
+                                title={`${clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu'} - ${charge.heures}h - Glisser pour déplacer`}
+                              >
+                                {(clients.find(c => c.id === charge.client_id)?.nom || '?').substring(0, 8)}: {charge.heures}h
                               </div>
                             ))}
-                            {aggregated.length > 3 && (
-                              <div className="text-xs text-slate-500">+{aggregated.length - 3} autres</div>
+                            {dayCharges.length > 4 && (
+                              <div className="text-xs text-slate-500">+{dayCharges.length - 4} autres</div>
                             )}
                           </div>
                         )}
@@ -2226,11 +2593,11 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     }
   };
 
-  const handleAddClient = async (nom, codePennylane, tva = false) => {
+  const handleAddClient = async (nom, codePennylane) => {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .insert([{ nom, code_pennylane: codePennylane, actif: true, tva }])
+        .insert([{ nom, code_pennylane: codePennylane, actif: true }])
         .select();
 
       if (error) throw error;
@@ -2243,17 +2610,17 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     setShowAddModal(false);
   };
 
-  const handleUpdateClient = async (id, nom, codePennylane, tva = false) => {
+  const handleUpdateClient = async (id, nom, codePennylane) => {
     try {
       const { error } = await supabase
         .from('clients')
-        .update({ nom, code_pennylane: codePennylane, tva })
+        .update({ nom, code_pennylane: codePennylane })
         .eq('id', id);
 
       if (error) throw error;
 
       setClients(prev => prev.map(c =>
-        c.id === id ? { ...c, nom, code_pennylane: codePennylane, tva } : c
+        c.id === id ? { ...c, nom, code_pennylane: codePennylane } : c
       ));
     } catch (err) {
       console.error('Erreur mise à jour client:', err);
@@ -2290,23 +2657,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     }
   };
 
-  const handleToggleTVA = async (id) => {
-    const client = clients.find(c => c.id === id);
-    try {
-      const { error } = await supabase
-        .from('clients')
-        .update({ tva: !client.tva })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setClients(prev => prev.map(c =>
-        c.id === id ? { ...c, tva: !c.tva } : c
-      ));
-    } catch (err) {
-      console.error('Erreur toggle TVA:', err);
-    }
-  };
 
   const handleDeleteClient = async (id) => {
     const client = clients.find(c => c.id === id);
@@ -2466,7 +2816,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 <th className="text-left py-3 px-4">Cabinet</th>
                 <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
-                <th className="text-center py-3 px-4">TVA</th>
                 <th className="text-center py-3 px-4">Actif</th>
                 <th className="text-center py-3 px-4">Actions</th>
               </tr>
@@ -2513,15 +2862,6 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       ) : (
                         <span className="text-slate-500">0</span>
                       )}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => handleToggleTVA(client.id)}
-                        className={`p-1 rounded transition ${client.tva ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
-                        title={client.tva ? 'Désactiver TVA' : 'Activer TVA'}
-                      >
-                        <Receipt size={18} />
-                      </button>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
@@ -2603,19 +2943,644 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 }
 
 // ============================================
+// PAGE IMPOTS & TAXES
+// ============================================
+function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes, suiviEcheances, accent, userCollaborateur }) {
+  const [anneeFiscale, setAnneeFiscale] = useState(new Date().getFullYear());
+  const [saving, setSaving] = useState({});
+  const [editingCell, setEditingCell] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+
+  // Clients du chef de mission connecté (actifs uniquement)
+  const mesClients = clients.filter(c =>
+    c.actif &&
+    (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+  );
+
+  // Obtenir les données d'un client pour l'année sélectionnée
+  const getClientData = (clientId) => {
+    return impotsTaxes.find(it => it.client_id === clientId && it.annee_fiscale === anneeFiscale) || {};
+  };
+
+  // Sauvegarder une modification
+  const saveField = async (clientId, field, value) => {
+    setSaving(prev => ({ ...prev, [`${clientId}-${field}`]: true }));
+
+    const existingData = impotsTaxes.find(it => it.client_id === clientId && it.annee_fiscale === anneeFiscale);
+
+    try {
+      if (existingData) {
+        // Update
+        const { data, error } = await supabase
+          .from('impots_taxes')
+          .update({ [field]: value, updated_at: new Date().toISOString() })
+          .eq('id', existingData.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setImpotsTaxes(prev => prev.map(it => it.id === existingData.id ? data : it));
+      } else {
+        // Insert
+        const { data, error } = await supabase
+          .from('impots_taxes')
+          .insert({
+            client_id: clientId,
+            annee_fiscale: anneeFiscale,
+            [field]: value
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setImpotsTaxes(prev => [...prev, data]);
+      }
+    } catch (err) {
+      console.error('Erreur sauvegarde:', err);
+      alert('Erreur lors de la sauvegarde');
+    }
+
+    setSaving(prev => ({ ...prev, [`${clientId}-${field}`]: false }));
+    setEditingCell(null);
+  };
+
+  // Composant cellule éditable pour texte/nombre
+  const EditableCell = ({ clientId, field, value, type = 'text', placeholder = '', className = '', disabled = false }) => {
+    const [localValue, setLocalValue] = useState(value || '');
+    const cellKey = `${clientId}-${field}`;
+    const isEditing = editingCell === cellKey;
+    const isSaving = saving[cellKey];
+
+    useEffect(() => {
+      setLocalValue(value || '');
+    }, [value]);
+
+    if (isSaving) {
+      return <div className="px-2 py-1 text-slate-400 text-xs">...</div>;
+    }
+
+    if (disabled) {
+      return (
+        <div className={`px-2 py-1 rounded text-xs min-h-[24px] text-slate-500 bg-slate-800 cursor-not-allowed ${className}`}>
+          -
+        </div>
+      );
+    }
+
+    if (isEditing) {
+      return (
+        <input
+          type={type}
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={() => saveField(clientId, field, type === 'number' ? (parseFloat(localValue) || null) : (localValue || null))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              saveField(clientId, field, type === 'number' ? (parseFloat(localValue) || null) : (localValue || null));
+            }
+            if (e.key === 'Escape') {
+              setLocalValue(value || '');
+              setEditingCell(null);
+            }
+          }}
+          autoFocus
+          className={`w-full bg-slate-600 text-white text-xs px-2 py-1 rounded border border-pink-500 focus:outline-none ${className}`}
+        />
+      );
+    }
+
+    return (
+      <div
+        onClick={() => setEditingCell(cellKey)}
+        className={`px-2 py-1 cursor-pointer hover:bg-slate-600 rounded text-xs min-h-[24px] ${value ? 'text-white' : 'text-slate-500'} ${className}`}
+      >
+        {value || placeholder || '-'}
+      </div>
+    );
+  };
+
+  // Composant cellule select
+  const SelectCell = ({ clientId, field, value, options, placeholder = '', disabled = false }) => {
+    const cellKey = `${clientId}-${field}`;
+    const isSaving = saving[cellKey];
+
+    if (isSaving) {
+      return <div className="px-2 py-1 text-slate-400 text-xs">...</div>;
+    }
+
+    return (
+      <select
+        value={value || ''}
+        onChange={(e) => saveField(clientId, field, e.target.value || null)}
+        disabled={disabled}
+        className={`w-full text-xs px-1 py-1 rounded border focus:outline-none ${
+          disabled
+            ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+            : 'bg-slate-700 text-white border-slate-600 focus:border-pink-500'
+        }`}
+      >
+        <option value="">{placeholder || '-'}</option>
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    );
+  };
+
+  // Composant cellule checkbox
+  const CheckboxCell = ({ clientId, field, value }) => {
+    const cellKey = `${clientId}-${field}`;
+    const isSaving = saving[cellKey];
+
+    if (isSaving) {
+      return <div className="px-2 py-1 text-slate-400 text-xs text-center">...</div>;
+    }
+
+    return (
+      <div className="flex justify-center">
+        <input
+          type="checkbox"
+          checked={value || false}
+          onChange={(e) => saveField(clientId, field, e.target.checked)}
+          className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-pink-500 focus:ring-pink-500"
+        />
+      </div>
+    );
+  };
+
+  // Obtenir le nom du collaborateur par son ID
+  const getCollaborateurNom = (id) => {
+    const collab = collaborateurs.find(c => c.id === id);
+    return collab ? collab.nom : 'Inconnu';
+  };
+
+  // Générer toutes les échéances de l'année pour export (faites et à faire)
+  const getAllEcheancesForYear = () => {
+    const allEcheances = [];
+
+    // Pour chaque client
+    mesClients.forEach(client => {
+      const data = impotsTaxes.find(it => it.client_id === client.id && it.annee_fiscale === anneeFiscale);
+      if (!data) return;
+
+      // Helper pour ajouter une échéance
+      const addEcheance = (type, dateStr, montant = null) => {
+        const suivi = suiviEcheances.find(s =>
+          s.client_id === client.id &&
+          s.type_echeance === type &&
+          s.date_echeance === dateStr
+        );
+        allEcheances.push({
+          client: client.nom,
+          clientId: client.id,
+          type,
+          dateEcheance: dateStr,
+          montant,
+          fait: !!suivi,
+          faitPar: suivi ? getCollaborateurNom(suivi.fait_par_id) : '',
+          faitLe: suivi?.fait_le ? new Date(suivi.fait_le).toLocaleString('fr-FR') : ''
+        });
+      };
+
+      // Helper pour calculer la date avec report dimanche → lundi
+      const getDateWithSundayReport = (year, month, day) => {
+        const date = new Date(year, month - 1, day);
+        if (date.getDay() === 0) {
+          date.setDate(date.getDate() + 1);
+        }
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      };
+
+      // TVA
+      if (data.tva_jour && data.tva_periodicite) {
+        const tvaJour = parseInt(data.tva_jour);
+        let moisTVA = [];
+        if (data.tva_periodicite === 'mensuel') {
+          moisTVA = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        } else if (data.tva_periodicite === 'trimestriel') {
+          moisTVA = [1, 4, 7, 10];
+        } else if (data.tva_periodicite === 'semestriel') {
+          moisTVA = [7, 12];
+        }
+        moisTVA.forEach(mois => {
+          addEcheance('TVA', getDateWithSundayReport(anneeFiscale, mois, tvaJour));
+        });
+      }
+
+      // IS Acomptes
+      if (data.soumis_is) {
+        if (data.is_acompte_03) addEcheance('IS', getDateWithSundayReport(anneeFiscale, 3, 15), data.is_acompte_03);
+        if (data.is_acompte_06) addEcheance('IS', getDateWithSundayReport(anneeFiscale, 6, 15), data.is_acompte_06);
+        if (data.is_acompte_09) addEcheance('IS', getDateWithSundayReport(anneeFiscale, 9, 15), data.is_acompte_09);
+        if (data.is_acompte_12) addEcheance('IS', getDateWithSundayReport(anneeFiscale, 12, 15), data.is_acompte_12);
+      }
+
+      // IS Solde et Liasse
+      if (data.date_cloture) {
+        const [jourCloture, moisCloture] = data.date_cloture.split('/').map(Number);
+        if (moisCloture === 12 && jourCloture === 31) {
+          if (data.soumis_is) addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, 5, 15));
+          addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, 5, 3));
+        } else {
+          if (data.soumis_is) {
+            const moisSolde = ((moisCloture + 3) % 12) + 1;
+            addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, moisSolde, 15));
+          }
+          const moisLiasse = ((moisCloture + 2) % 12) + 1;
+          addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, moisLiasse, jourCloture));
+        }
+      }
+
+      // CFE
+      if (data.cfe_montant_n1) {
+        addEcheance('CFE', getDateWithSundayReport(anneeFiscale, 12, 15), data.cfe_montant_n1);
+        if (data.cfe_montant_n1 > 3000) {
+          addEcheance('CFE Ac.', getDateWithSundayReport(anneeFiscale, 6, 15), Math.round(data.cfe_montant_n1 / 2));
+        }
+      }
+
+      // CVAE
+      if (data.cvae) {
+        addEcheance('CVAE', getDateWithSundayReport(anneeFiscale, 6, 15));
+        addEcheance('CVAE', getDateWithSundayReport(anneeFiscale, 9, 15));
+        addEcheance('CVAE Sol.', getDateWithSundayReport(anneeFiscale, 5, 3));
+      }
+
+      // TVTS
+      if (data.tvts) {
+        addEcheance('TVTS', getDateWithSundayReport(anneeFiscale, 1, 15));
+      }
+
+      // DAS2
+      if (data.das2) {
+        addEcheance('DAS2', getDateWithSundayReport(anneeFiscale, 5, 1));
+      }
+
+      // Taxe sur les salaires
+      if (data.taxe_salaires) {
+        addEcheance('Taxe Salaires', getDateWithSundayReport(anneeFiscale, 1, 10));
+      }
+    });
+
+    return allEcheances.sort((a, b) => new Date(a.dateEcheance) - new Date(b.dateEcheance));
+  };
+
+  // Compter les échéances faites et à faire
+  const getEcheancesStats = () => {
+    const all = getAllEcheancesForYear();
+    const faites = all.filter(e => e.fait).length;
+    const aFaire = all.filter(e => !e.fait).length;
+    return { total: all.length, faites, aFaire };
+  };
+
+  // Export CSV du suivi
+  const exportSuiviCSV = () => {
+    const data = getAllEcheancesForYear();
+    if (data.length === 0) {
+      alert('Aucune échéance configurée pour cette année');
+      return;
+    }
+
+    const headers = ['Client', 'Type', 'Date échéance', 'Montant', 'Statut', 'Fait par', 'Fait le'];
+    const csvContent = [
+      headers.join(';'),
+      ...data.map(row => [
+        row.client,
+        row.type,
+        row.dateEcheance,
+        row.montant || '',
+        row.fait ? 'Fait' : 'À faire',
+        row.faitPar,
+        row.faitLe
+      ].join(';'))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `suivi_echeances_${anneeFiscale}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setShowExportModal(false);
+  };
+
+  return (
+    <div className="p-4 md:p-6 relative z-10">
+      <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border border-slate-700">
+        {/* Header fixe */}
+        <div className="p-4 border-b border-slate-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <FileText className="text-white" size={24} />
+            <h1 className="text-xl font-bold text-white">Impôts & Taxes</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition"
+            >
+              <Download size={16} />
+              <span className="hidden md:inline">Export suivi</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-400">Année fiscale:</label>
+              <select
+                value={anneeFiscale}
+                onChange={(e) => setAnneeFiscale(parseInt(e.target.value))}
+                className="bg-slate-700 text-white rounded px-3 py-1 border border-slate-600"
+              >
+                {[2024, 2025, 2026, 2027, 2028].map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Tableau avec scroll horizontal et header sticky */}
+        <div className="overflow-x-auto">
+          <div className="max-h-[calc(100vh-250px)] overflow-y-auto">
+            <table className="w-full text-sm table-fixed">
+              <thead className="sticky top-0 z-10 bg-slate-800">
+                <tr className="text-slate-400 text-xs">
+                  <th className="text-left py-3 px-2 border-b border-slate-700 sticky left-0 bg-slate-800 w-[200px]">Client</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[80px]">Clôture</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Mois de clôture de l'exercice">Mois clôt.</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]">IS/IR</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]" title="Jour limite TVA">TVA J.</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Périodicité TVA">TVA Pér.</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 mars">IS 15/03</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 juin">IS 15/06</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 septembre">IS 15/09</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 décembre">IS 15/12</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Montant CFE N-1 (acompte si > 3000€)">CFE N-1</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="CVAE">CVAE</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Taxe Véhicules Sociétés">TVTS</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Déclaration Honoraires">DAS2</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Taxe sur les salaires (10/01)">TS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mesClients.length === 0 ? (
+                  <tr>
+                    <td colSpan="15" className="text-center py-8 text-slate-400">
+                      Aucun client assigné
+                    </td>
+                  </tr>
+                ) : (
+                  mesClients.map(client => {
+                    const data = getClientData(client.id);
+                    return (
+                      <tr key={client.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <td className="py-2 px-2 sticky left-0 bg-slate-800/95 font-medium text-white text-xs truncate">
+                          {client.nom}
+                        </td>
+                        <td className="py-1 px-1 text-center">
+                          <EditableCell
+                            clientId={client.id}
+                            field="date_cloture"
+                            value={data.date_cloture}
+                            placeholder="JJ/MM"
+                            className="text-center w-16"
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <SelectCell
+                            clientId={client.id}
+                            field="mois_cloture"
+                            value={data.mois_cloture || 'Décembre'}
+                            options={[
+                              { value: 'Janvier', label: 'Janvier' },
+                              { value: 'Février', label: 'Février' },
+                              { value: 'Mars', label: 'Mars' },
+                              { value: 'Avril', label: 'Avril' },
+                              { value: 'Mai', label: 'Mai' },
+                              { value: 'Juin', label: 'Juin' },
+                              { value: 'Juillet', label: 'Juillet' },
+                              { value: 'Août', label: 'Août' },
+                              { value: 'Septembre', label: 'Septembre' },
+                              { value: 'Octobre', label: 'Octobre' },
+                              { value: 'Novembre', label: 'Novembre' },
+                              { value: 'Décembre', label: 'Décembre' }
+                            ]}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <SelectCell
+                            clientId={client.id}
+                            field="soumis_is"
+                            value={data.soumis_is === true ? 'true' : data.soumis_is === false ? 'false' : ''}
+                            options={[
+                              { value: 'true', label: 'IS' },
+                              { value: 'false', label: 'IR' }
+                            ]}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <SelectCell
+                            clientId={client.id}
+                            field="tva_jour"
+                            value={data.tva_jour}
+                            options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                            placeholder="-"
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <SelectCell
+                            clientId={client.id}
+                            field="tva_periodicite"
+                            value={data.tva_periodicite}
+                            options={[
+                              { value: 'mensuel', label: 'Mens.' },
+                              { value: 'trimestriel', label: 'Trim.' },
+                              { value: 'semestriel', label: 'Sem.' }
+                            ]}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <EditableCell
+                            clientId={client.id}
+                            field="is_acompte_03"
+                            value={data.is_acompte_03}
+                            type="number"
+                            placeholder="€"
+                            className="text-center w-16"
+                            disabled={data.soumis_is === false}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <EditableCell
+                            clientId={client.id}
+                            field="is_acompte_06"
+                            value={data.is_acompte_06}
+                            type="number"
+                            placeholder="€"
+                            className="text-center w-16"
+                            disabled={data.soumis_is === false}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <EditableCell
+                            clientId={client.id}
+                            field="is_acompte_09"
+                            value={data.is_acompte_09}
+                            type="number"
+                            placeholder="€"
+                            className="text-center w-16"
+                            disabled={data.soumis_is === false}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <EditableCell
+                            clientId={client.id}
+                            field="is_acompte_12"
+                            value={data.is_acompte_12}
+                            type="number"
+                            placeholder="€"
+                            className="text-center w-16"
+                            disabled={data.soumis_is === false}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <EditableCell
+                            clientId={client.id}
+                            field="cfe_montant_n1"
+                            value={data.cfe_montant_n1}
+                            type="number"
+                            placeholder="€"
+                            className="text-center w-16"
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <CheckboxCell
+                            clientId={client.id}
+                            field="cvae"
+                            value={data.cvae}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <CheckboxCell
+                            clientId={client.id}
+                            field="tvts"
+                            value={data.tvts}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <CheckboxCell
+                            clientId={client.id}
+                            field="das2"
+                            value={data.das2}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <CheckboxCell
+                            clientId={client.id}
+                            field="taxe_salaires"
+                            value={data.taxe_salaires}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Légende */}
+        <div className="p-4 border-t border-slate-700 text-xs text-slate-400">
+          <p className="mb-2"><strong>Légende:</strong></p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <span>• <strong>Clôture:</strong> Date de clôture (JJ/MM)</span>
+            <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul solde IS)</span>
+            <span>• <strong>TVA J.:</strong> Jour limite déclaration TVA</span>
+            <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / Semestriel</span>
+            <span>• <strong>IS:</strong> Acomptes trimestriels + Solde (15 du 4e mois après clôture)</span>
+            <span>• <strong>CFE N-1:</strong> Si &gt; 3000€ → acompte 15/06</span>
+            <span>• <strong>CVAE:</strong> 15/06, 15/09, 03/05</span>
+            <span>• <strong>TVTS:</strong> 15 janvier</span>
+            <span>• <strong>DAS2:</strong> 1er mai</span>
+            <span>• <strong>TS:</strong> Taxe salaires 10 janvier</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal export suivi */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white">Export du suivi des échéances</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-4 text-slate-300 text-sm">
+              <p className="mb-2">Exporter la liste de toutes les échéances pour l'année {anneeFiscale}.</p>
+              <p className="text-slate-400 text-xs">Le fichier CSV contiendra: Client, Type, Date, Montant, Statut (Fait/À faire), Fait par, Date/heure.</p>
+            </div>
+            <div className="mb-4 p-3 bg-slate-700/50 rounded-lg space-y-1">
+              <p className="text-sm text-slate-300">
+                <strong>{getEcheancesStats().total}</strong> échéance(s) au total
+              </p>
+              <p className="text-sm text-emerald-400">
+                <strong>{getEcheancesStats().faites}</strong> faite(s)
+              </p>
+              <p className="text-sm text-amber-400">
+                <strong>{getEcheancesStats().aFaire}</strong> à faire
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={exportSuiviCSV}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center gap-2"
+              >
+                <Download size={16} />
+                Exporter CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // PAGE REPARTITION TVA
 // ============================================
-function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getEquipeOf, accent, userCollaborateur }) {
+function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getEquipeOf, accent, userCollaborateur, impotsTaxes }) {
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
   const [repartitionData, setRepartitionData] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
 
+  // Année fiscale courante pour récupérer les données impots_taxes
+  const anneeFiscale = new Date().getFullYear();
+
+  // Vérifier si un client a la TVA configurée dans impots_taxes
+  const clientHasTVA = (clientId) => {
+    const data = impotsTaxes.find(it => it.client_id === clientId && it.annee_fiscale === anneeFiscale);
+    return data?.tva_jour && data?.tva_periodicite;
+  };
+
   // Clients TVA actifs appartenant au chef de mission connecté
   const clientsTVA = clients.filter(c =>
     c.actif &&
-    c.tva &&
+    clientHasTVA(c.id) &&
     (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
   );
 
@@ -2624,6 +3589,12 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
     userCollaborateur,
     ...getEquipeOf(userCollaborateur.id)
   ] : [];
+
+  // Obtenir la date limite TVA depuis impots_taxes
+  const getTvaJourFromImpots = (clientId) => {
+    const data = impotsTaxes.find(it => it.client_id === clientId && it.annee_fiscale === anneeFiscale);
+    return data?.tva_jour || 19; // Par défaut 19 si non renseigné
+  };
 
   // Jours fériés français 2025-2027
   const joursFeries = [
@@ -2642,6 +3613,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
   const isInitialLoad = React.useRef(true);
 
   // Charger les données sauvegardées du localStorage (une seule fois)
+  // La date limite vient maintenant de impots_taxes, pas du localStorage
   useEffect(() => {
     if (clientsTVA.length > 0 && repartitionData.length === 0) {
       const savedData = localStorage.getItem('tvaRepartitionData');
@@ -2654,13 +3626,14 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
           clientNom: client.nom,
           collaborateurId: saved?.collaborateurId || '',
           heures: saved?.heures || 0,
-          dateLimite: saved?.dateLimite || 19
+          dateLimite: getTvaJourFromImpots(client.id) // Récupéré depuis impots_taxes
         };
       }));
     }
-  }, [clientsTVA]);
+  }, [clientsTVA, impotsTaxes]);
 
   // Sauvegarder les données dans le localStorage quand elles changent (pas au premier chargement)
+  // Note: on ne sauvegarde plus dateLimite car elle vient de impots_taxes
   useEffect(() => {
     if (isInitialLoad.current) {
       if (repartitionData.length > 0) {
@@ -2673,8 +3646,8 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
       repartitionData.forEach(item => {
         dataToSave[item.clientId] = {
           collaborateurId: item.collaborateurId,
-          heures: item.heures,
-          dateLimite: item.dateLimite
+          heures: item.heures
+          // dateLimite n'est plus sauvegardé ici, il vient de impots_taxes
         };
       });
       localStorage.setItem('tvaRepartitionData', JSON.stringify(dataToSave));
@@ -2938,27 +3911,34 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-slate-400 border-b border-slate-600">
-                    <th className="text-left py-3 px-2">Date limite</th>
                     <th className="text-left py-3 px-2">Client</th>
-                    <th className="text-left py-3 px-2">Collaborateur</th>
+                    <th className="text-left py-3 px-2" title="Défini dans l'onglet Impôts et Taxes">Jour TVA</th>
                     <th className="text-left py-3 px-2">Durée (h)</th>
+                    <th className="text-left py-3 px-2">Collaborateur</th>
                   </tr>
                 </thead>
                 <tbody>
                   {repartitionData.map((item, index) => (
                     <tr key={item.clientId} className="border-b border-slate-700">
-                      <td className="py-3 px-2">
-                        <select
-                          value={item.dateLimite}
-                          onChange={(e) => updateRepartition(index, 'dateLimite', parseInt(e.target.value))}
-                          className="bg-slate-700 text-white rounded px-2 py-1 border border-slate-600"
-                        >
-                          {Array.from({ length: 31 }, (_, i) => i + 1).map(jour => (
-                            <option key={jour} value={jour}>{jour}</option>
-                          ))}
-                        </select>
-                      </td>
                       <td className="py-3 px-2 text-white">{item.clientNom}</td>
+                      <td className="py-3 px-2">
+                        <span
+                          className="bg-slate-600 text-emerald-300 rounded px-3 py-1 font-semibold"
+                          title="Modifiable dans l'onglet Impôts et Taxes"
+                        >
+                          {item.dateLimite}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={item.heures}
+                          onChange={(e) => updateRepartition(index, 'heures', parseFloat(e.target.value) || 0)}
+                          className="w-20 bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 text-center"
+                        />
+                      </td>
                       <td className="py-3 px-2">
                         <select
                           value={item.collaborateurId}
@@ -2970,16 +3950,6 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
                             <option key={c.id} value={c.id}>{c.nom}</option>
                           ))}
                         </select>
-                      </td>
-                      <td className="py-3 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          value={item.heures}
-                          onChange={(e) => updateRepartition(index, 'heures', parseFloat(e.target.value) || 0)}
-                          className="w-20 bg-slate-700 text-white rounded px-2 py-1 border border-slate-600 text-center"
-                        />
                       </td>
                     </tr>
                   ))}
@@ -3129,7 +4099,6 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
 function ClientModal({ client, onSave, onClose }) {
   const [nom, setNom] = useState(client?.nom || '');
   const [codePennylane, setCodePennylane] = useState(client?.code_pennylane || '');
-  const [tva, setTva] = useState(client?.tva || false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -3137,7 +4106,7 @@ function ClientModal({ client, onSave, onClose }) {
       alert('Le nom est obligatoire');
       return;
     }
-    onSave(nom.trim(), codePennylane.trim(), tva);
+    onSave(nom.trim(), codePennylane.trim());
   };
 
   return (
@@ -3174,19 +4143,6 @@ function ClientModal({ client, onSave, onClose }) {
               className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
             />
             <p className="text-slate-500 text-xs mt-1">Optionnel - pour l'intégration future avec Pennylane</p>
-          </div>
-
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={tva}
-                onChange={(e) => setTva(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm font-medium text-slate-300">Client avec TVA mensuelle</span>
-            </label>
-            <p className="text-slate-500 text-xs mt-1">Cocher si ce client nécessite une déclaration TVA mensuelle</p>
           </div>
 
           <div className="flex gap-3 pt-2">
