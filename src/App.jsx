@@ -2993,12 +2993,81 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
   const [saving, setSaving] = useState({});
   const [editingCell, setEditingCell] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [copyingData, setCopyingData] = useState(false);
 
   // Clients du chef de mission connecté (actifs uniquement)
   const mesClients = clients.filter(c =>
     c.actif &&
     (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
   );
+
+  // Champs à exclure de la copie (acomptes IS à remplir chaque année)
+  const fieldsToExcludeFromCopy = ['is_acompte_03', 'is_acompte_06', 'is_acompte_09', 'is_acompte_12'];
+
+  // Copier les données de l'année précédente pour un client
+  const copyDataFromPreviousYear = async (clientId, newYear) => {
+    // Chercher les données de l'année précédente la plus récente
+    const previousYearData = impotsTaxes
+      .filter(it => it.client_id === clientId && it.annee_fiscale < newYear)
+      .sort((a, b) => b.annee_fiscale - a.annee_fiscale)[0];
+
+    if (!previousYearData) return null;
+
+    // Créer un nouvel objet sans les champs à exclure
+    const newData = {
+      client_id: clientId,
+      annee_fiscale: newYear
+    };
+
+    // Copier tous les champs sauf ceux à exclure et les champs système
+    const systemFields = ['id', 'client_id', 'annee_fiscale', 'created_at', 'updated_at'];
+    Object.keys(previousYearData).forEach(key => {
+      if (!systemFields.includes(key) && !fieldsToExcludeFromCopy.includes(key)) {
+        newData[key] = previousYearData[key];
+      }
+    });
+
+    try {
+      const { data, error } = await supabase
+        .from('impots_taxes')
+        .insert(newData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('Erreur copie données:', err);
+      return null;
+    }
+  };
+
+  // Gérer le changement d'année fiscale avec copie des données si nécessaire
+  const handleAnneeFiscaleChange = async (newYear) => {
+    setAnneeFiscale(newYear);
+
+    // Vérifier quels clients n'ont pas de données pour cette année
+    const clientsWithoutData = mesClients.filter(client =>
+      !impotsTaxes.some(it => it.client_id === client.id && it.annee_fiscale === newYear)
+    );
+
+    if (clientsWithoutData.length > 0) {
+      setCopyingData(true);
+      const newRecords = [];
+
+      for (const client of clientsWithoutData) {
+        const newRecord = await copyDataFromPreviousYear(client.id, newYear);
+        if (newRecord) {
+          newRecords.push(newRecord);
+        }
+      }
+
+      if (newRecords.length > 0) {
+        setImpotsTaxes(prev => [...prev, ...newRecords]);
+      }
+      setCopyingData(false);
+    }
+  };
 
   // Obtenir les données d'un client pour l'année sélectionnée
   const getClientData = (clientId) => {
@@ -3373,13 +3442,17 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               <label className="text-sm text-slate-400">Année fiscale:</label>
               <select
                 value={anneeFiscale}
-                onChange={(e) => setAnneeFiscale(parseInt(e.target.value))}
-                className="bg-slate-700 text-white rounded px-3 py-1 border border-slate-600"
+                onChange={(e) => handleAnneeFiscaleChange(parseInt(e.target.value))}
+                disabled={copyingData}
+                className="bg-slate-700 text-white rounded px-3 py-1 border border-slate-600 disabled:opacity-50"
               >
-                {[2024, 2025, 2026, 2027, 2028].map(year => (
+                {[2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032].map(year => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>
+              {copyingData && (
+                <span className="text-xs text-slate-400 animate-pulse">Copie des données...</span>
+              )}
             </div>
           </div>
         </div>
