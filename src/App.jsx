@@ -1238,20 +1238,27 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         }
       }
 
-      // Liasse fiscale - 03/05 si clôture 31/12, sinon 3 mois après clôture
-      if (data.date_cloture) {
-        const [jourCloture, moisCloture] = data.date_cloture.split('/').map(Number);
-        if (moisCloture === 12 && jourCloture === 31) {
-          // Clôture 31/12 → liasse 03/05
-          if (isEcheanceDay(3, monthNum === 5)) {
-            echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
-          }
-        } else {
-          // 3 mois après clôture
-          const moisLiasse = ((moisCloture + 2) % 12) + 1;
-          if (isEcheanceDay(jourCloture, monthNum === moisLiasse)) {
-            echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
-          }
+      // Liasse fiscale - basée sur mois_cloture (03/05 si clôture décembre, sinon dernier jour du 3ème mois après)
+      const moisClotureNomLiasse = data.mois_cloture || 'Décembre';
+      const moisMapLiasse = {
+        'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+        'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+      };
+      const moisClotureNumLiasse = moisMapLiasse[moisClotureNomLiasse] || 12;
+
+      if (moisClotureNumLiasse === 12) {
+        // Clôture décembre → liasse 03/05
+        if (isEcheanceDay(3, monthNum === 5)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
+        }
+      } else {
+        // Autres clôtures → dernier jour du 3ème mois après
+        let moisLiasse = moisClotureNumLiasse + 3;
+        if (moisLiasse > 12) moisLiasse -= 12;
+        // Dernier jour du mois
+        const dernierJour = new Date(year, moisLiasse, 0).getDate();
+        if (isEcheanceDay(dernierJour, monthNum === moisLiasse)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
         }
       }
 
@@ -3177,20 +3184,30 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         if (data.is_acompte_12) addEcheance('IS', getDateWithSundayReport(anneeFiscale, 12, 15), data.is_acompte_12);
       }
 
-      // IS Solde et Liasse
-      if (data.date_cloture) {
-        const [jourCloture, moisCloture] = data.date_cloture.split('/').map(Number);
-        if (moisCloture === 12 && jourCloture === 31) {
-          if (data.soumis_is) addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, 5, 15));
-          addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, 5, 3));
-        } else {
-          if (data.soumis_is) {
-            const moisSolde = ((moisCloture + 3) % 12) + 1;
-            addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, moisSolde, 15));
-          }
-          const moisLiasse = ((moisCloture + 2) % 12) + 1;
-          addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, moisLiasse, jourCloture));
+      // IS Solde et Liasse - basés sur mois_cloture
+      const moisClotureNom = data.mois_cloture || 'Décembre';
+      const moisMap = {
+        'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+        'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+      };
+      const moisClotureNum = moisMap[moisClotureNom] || 12;
+
+      if (moisClotureNum === 12) {
+        // Clôture décembre
+        if (data.soumis_is) addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, 5, 15));
+        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, 5, 3));
+      } else {
+        // Autres mois de clôture
+        if (data.soumis_is) {
+          let moisSolde = moisClotureNum + 4;
+          if (moisSolde > 12) moisSolde -= 12;
+          addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, moisSolde, 15));
         }
+        // Liasse: dernier jour du 3ème mois après clôture
+        let moisLiasse = moisClotureNum + 3;
+        if (moisLiasse > 12) moisLiasse -= 12;
+        const dernierJour = new Date(anneeFiscale, moisLiasse, 0).getDate();
+        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, moisLiasse, dernierJour));
       }
 
       // CFE
@@ -3306,7 +3323,6 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               <thead className="sticky top-0 z-10 bg-slate-800">
                 <tr className="text-slate-400 text-xs">
                   <th className="text-left py-3 px-2 border-b border-slate-700 sticky left-0 bg-slate-800 w-[200px]">Client</th>
-                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[80px]">Clôture</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Mois de clôture de l'exercice">Mois clôt.</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]">IS/IR</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]" title="Jour limite TVA">TVA J.</th>
@@ -3325,7 +3341,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               <tbody>
                 {mesClients.length === 0 ? (
                   <tr>
-                    <td colSpan="15" className="text-center py-8 text-slate-400">
+                    <td colSpan="14" className="text-center py-8 text-slate-400">
                       Aucun client assigné
                     </td>
                   </tr>
@@ -3336,15 +3352,6 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                       <tr key={client.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
                         <td className="py-2 px-2 sticky left-0 bg-slate-800/95 font-medium text-white text-xs truncate">
                           {client.nom}
-                        </td>
-                        <td className="py-1 px-1 text-center">
-                          <EditableCell
-                            clientId={client.id}
-                            field="date_cloture"
-                            value={data.date_cloture}
-                            placeholder="JJ/MM"
-                            className="text-center w-16"
-                          />
                         </td>
                         <td className="py-1 px-1">
                           <SelectCell
@@ -3494,8 +3501,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         <div className="p-4 border-t border-slate-700 text-xs text-slate-400">
           <p className="mb-2"><strong>Légende:</strong></p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            <span>• <strong>Clôture:</strong> Date de clôture (JJ/MM)</span>
-            <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul solde IS)</span>
+            <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul IS Solde et Liasse)</span>
             <span>• <strong>TVA J.:</strong> Jour limite déclaration TVA</span>
             <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / Semestriel</span>
             <span>• <strong>IS:</strong> Acomptes trimestriels + Solde (15 du 4e mois après clôture)</span>
