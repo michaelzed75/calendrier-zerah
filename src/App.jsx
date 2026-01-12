@@ -1266,7 +1266,9 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         }
       }
 
-      // Liasse fiscale - basée sur mois_cloture (03/05 si clôture décembre, sinon dernier jour du 3ème mois après)
+      // Liasse fiscale - basée sur mois_cloture (+15 jours télétransmission expert-comptable)
+      // Clôture décembre → 5 mai + 15 jours = 20 mai
+      // Autres clôtures → 3 mois après + 15 jours
       const moisClotureNomLiasse = data.mois_cloture || 'Décembre';
       const moisMapLiasse = {
         'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
@@ -1275,17 +1277,18 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       const moisClotureNumLiasse = moisMapLiasse[moisClotureNomLiasse] || 12;
 
       if (moisClotureNumLiasse === 12) {
-        // Clôture décembre → liasse 03/05
-        if (isEcheanceDay(3, monthNum === 5)) {
+        // Clôture décembre → liasse 20/05 (5 mai + 15 jours télétransmission)
+        if (isEcheanceDay(20, monthNum === 5)) {
           echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
         }
       } else {
-        // Autres clôtures → dernier jour du 3ème mois après
+        // Autres clôtures → 3 mois après la clôture + 15 jours
         let moisLiasse = moisClotureNumLiasse + 3;
         if (moisLiasse > 12) moisLiasse -= 12;
-        // Dernier jour du mois
-        const dernierJour = new Date(year, moisLiasse, 0).getDate();
-        if (isEcheanceDay(dernierJour, monthNum === moisLiasse)) {
+        // Dernier jour du 3e mois + 15 jours = 15 du 4e mois
+        let moisLiasse15 = moisLiasse + 1;
+        if (moisLiasse15 > 12) moisLiasse15 -= 12;
+        if (isEcheanceDay(15, monthNum === moisLiasse15)) {
           echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
         }
       }
@@ -3253,7 +3256,8 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
       if (moisClotureNum === 12) {
         // Clôture décembre
         if (data.soumis_is) addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, 5, 15));
-        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, 5, 3));
+        // Liasse: 20 mai (5 mai + 15 jours télétransmission)
+        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, 5, 20));
       } else {
         // Autres mois de clôture
         if (data.soumis_is) {
@@ -3261,11 +3265,12 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
           if (moisSolde > 12) moisSolde -= 12;
           addEcheance('IS Solde', getDateWithSundayReport(anneeFiscale, moisSolde, 15));
         }
-        // Liasse: dernier jour du 3ème mois après clôture
+        // Liasse: 3 mois après clôture + 15 jours = 15 du 4e mois
         let moisLiasse = moisClotureNum + 3;
         if (moisLiasse > 12) moisLiasse -= 12;
-        const dernierJour = new Date(anneeFiscale, moisLiasse, 0).getDate();
-        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, moisLiasse, dernierJour));
+        let moisLiasse15 = moisLiasse + 1;
+        if (moisLiasse15 > 12) moisLiasse15 -= 12;
+        addEcheance('Liasse', getDateWithSundayReport(anneeFiscale, moisLiasse15, 15));
       }
 
       // CFE
@@ -3578,6 +3583,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
             <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / CA12</span>
             <span>• <strong>CA12:</strong> Acomptes 15/07 + 15/12, déclaration 03/05 (ou 3 mois après clôture)</span>
             <span>• <strong>IS:</strong> Acomptes trimestriels + Solde (15 du 4e mois après clôture)</span>
+            <span>• <strong>Liasse:</strong> 20/05 si clôture décembre, sinon 15 du 4e mois après clôture (+15j télétransmission)</span>
             <span>• <strong>CFE N-1:</strong> Si &gt; 3000€ → acompte 15/06</span>
             <span>• <strong>CVAE:</strong> 15/06, 15/09, 03/05</span>
             <span>• <strong>TVTS:</strong> 15 janvier</span>
