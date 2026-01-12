@@ -1195,9 +1195,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
           echeances.push({ clientId: client.id, client: client.nom, type: 'TVA', montant: null, dateEcheance: dateStr });
         }
 
-        // CA12 (régime simplifié) - acomptes juillet et décembre
+        // CA12 (régime simplifié) - acomptes fixes en juillet et décembre (dates réglementaires)
         if (data.tva_periodicite === 'ca12') {
-          if (isEcheanceDay(tvaJour, [7, 12].includes(monthNum))) {
+          // Acomptes CA12: 55% en juillet, 40% en décembre - dates fixes au 15 du mois
+          if (isEcheanceDay(15, [7, 12].includes(monthNum))) {
             echeances.push({ clientId: client.id, client: client.nom, type: 'TVA Ac.', montant: null, dateEcheance: dateStr });
           }
           // Déclaration CA12 - 2ème jour ouvré après 1er mai si clôture décembre, sinon 3 mois après clôture
@@ -3207,9 +3208,9 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
 
         // CA12 (régime simplifié)
         if (data.tva_periodicite === 'ca12') {
-          // Acomptes juillet et décembre
+          // Acomptes CA12: dates fixes au 15 juillet et 15 décembre
           [7, 12].forEach(mois => {
-            addEcheance('TVA Ac.', getDateWithSundayReport(anneeFiscale, mois, tvaJour));
+            addEcheance('TVA Ac.', getDateWithSundayReport(anneeFiscale, mois, 15));
           });
 
           // Déclaration CA12
@@ -3455,6 +3456,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                             value={data.tva_jour}
                             options={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
                             placeholder="-"
+                            disabled={data.tva_periodicite === 'ca12'}
                           />
                         </td>
                         <td className="py-1 px-1">
@@ -3574,7 +3576,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
             <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul IS Solde, Liasse et CA12)</span>
             <span>• <strong>TVA J.:</strong> Jour limite déclaration TVA</span>
             <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / CA12</span>
-            <span>• <strong>CA12:</strong> Acomptes juillet + décembre, déclaration 03/05 (ou 3 mois après clôture)</span>
+            <span>• <strong>CA12:</strong> Acomptes 15/07 + 15/12, déclaration 03/05 (ou 3 mois après clôture)</span>
             <span>• <strong>IS:</strong> Acomptes trimestriels + Solde (15 du 4e mois après clôture)</span>
             <span>• <strong>CFE N-1:</strong> Si &gt; 3000€ → acompte 15/06</span>
             <span>• <strong>CVAE:</strong> 15/06, 15/09, 03/05</span>
