@@ -3001,8 +3001,10 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
   );
 
-  // Champs à exclure de la copie (acomptes IS à remplir chaque année)
-  const fieldsToExcludeFromCopy = ['is_acompte_03', 'is_acompte_06', 'is_acompte_09', 'is_acompte_12'];
+  // Champs à exclure de la copie (à remplir chaque année)
+  // - Acomptes IS (montants différents chaque année)
+  // - CFE N-1 (montant différent chaque année)
+  const fieldsToExcludeFromCopy = ['is_acompte_03', 'is_acompte_06', 'is_acompte_09', 'is_acompte_12', 'cfe_montant'];
 
   // Copier les données de l'année précédente pour un client
   const copyDataFromPreviousYear = async (clientId, newYear) => {
@@ -3074,6 +3076,44 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     return impotsTaxes.find(it => it.client_id === clientId && it.annee_fiscale === anneeFiscale) || {};
   };
 
+  // Propager une modification vers les années futures
+  const propagateToFutureYears = async (clientId, field, value) => {
+    // Ne pas propager les champs exclus (acomptes IS, CFE)
+    if (fieldsToExcludeFromCopy.includes(field)) return;
+
+    // Trouver les enregistrements des années futures pour ce client
+    const futureRecords = impotsTaxes.filter(
+      it => it.client_id === clientId && it.annee_fiscale > anneeFiscale
+    );
+
+    if (futureRecords.length === 0) return;
+
+    const updatedRecords = [];
+    for (const record of futureRecords) {
+      try {
+        const { data, error } = await supabase
+          .from('impots_taxes')
+          .update({ [field]: value, updated_at: new Date().toISOString() })
+          .eq('id', record.id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          updatedRecords.push(data);
+        }
+      } catch (err) {
+        console.error('Erreur propagation:', err);
+      }
+    }
+
+    if (updatedRecords.length > 0) {
+      setImpotsTaxes(prev => prev.map(it => {
+        const updated = updatedRecords.find(u => u.id === it.id);
+        return updated || it;
+      }));
+    }
+  };
+
   // Sauvegarder une modification
   const saveField = async (clientId, field, value) => {
     setSaving(prev => ({ ...prev, [`${clientId}-${field}`]: true }));
@@ -3093,6 +3133,9 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         if (error) throw error;
 
         setImpotsTaxes(prev => prev.map(it => it.id === existingData.id ? data : it));
+
+        // Propager vers les années futures (sauf champs exclus)
+        await propagateToFutureYears(clientId, field, value);
       } else {
         // Insert
         const { data, error } = await supabase
@@ -3108,6 +3151,9 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         if (error) throw error;
 
         setImpotsTaxes(prev => [...prev, data]);
+
+        // Propager vers les années futures (sauf champs exclus)
+        await propagateToFutureYears(clientId, field, value);
       }
     } catch (err) {
       console.error('Erreur sauvegarde:', err);
