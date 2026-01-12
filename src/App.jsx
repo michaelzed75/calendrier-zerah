@@ -1189,12 +1189,39 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
           isTvaDay = true;
         } else if (data.tva_periodicite === 'trimestriel' && isEcheanceDay(tvaJour, [1, 4, 7, 10].includes(monthNum))) {
           isTvaDay = true;
-        } else if (data.tva_periodicite === 'semestriel' && isEcheanceDay(tvaJour, [7, 12].includes(monthNum))) {
-          isTvaDay = true;
         }
 
         if (isTvaDay) {
           echeances.push({ clientId: client.id, client: client.nom, type: 'TVA', montant: null, dateEcheance: dateStr });
+        }
+
+        // CA12 (régime simplifié) - acomptes juillet et décembre
+        if (data.tva_periodicite === 'ca12') {
+          if (isEcheanceDay(tvaJour, [7, 12].includes(monthNum))) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'TVA Ac.', montant: null, dateEcheance: dateStr });
+          }
+          // Déclaration CA12 - 2ème jour ouvré après 1er mai si clôture décembre, sinon 3 mois après clôture
+          const moisClotureNomTVA = data.mois_cloture || 'Décembre';
+          const moisMapTVA = {
+            'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+            'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+          };
+          const moisClotureNumTVA = moisMapTVA[moisClotureNomTVA] || 12;
+
+          if (moisClotureNumTVA === 12) {
+            // Clôture décembre → CA12 le 3 mai (2ème jour ouvré après 1er mai)
+            if (isEcheanceDay(3, monthNum === 5)) {
+              echeances.push({ clientId: client.id, client: client.nom, type: 'CA12', montant: null, dateEcheance: dateStr });
+            }
+          } else {
+            // Autres clôtures → CA12 E dans les 3 mois après clôture (dernier jour du 3ème mois)
+            let moisCA12 = moisClotureNumTVA + 3;
+            if (moisCA12 > 12) moisCA12 -= 12;
+            const dernierJourCA12 = new Date(year, moisCA12, 0).getDate();
+            if (isEcheanceDay(dernierJourCA12, monthNum === moisCA12)) {
+              echeances.push({ clientId: client.id, client: client.nom, type: 'CA12 E', montant: null, dateEcheance: dateStr });
+            }
+          }
         }
       }
 
@@ -1295,6 +1322,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       // Taxe sur les salaires - 10/01
       if (data.taxe_salaires && isEcheanceDay(10, monthNum === 1)) {
         echeances.push({ clientId: client.id, client: client.nom, type: 'Taxe Salaires', montant: null, dateEcheance: dateStr });
+      }
+
+      // IFU - 15/02
+      if (data.ifu && isEcheanceDay(15, monthNum === 2)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'IFU', montant: null, dateEcheance: dateStr });
       }
     });
 
@@ -3168,12 +3200,37 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
           moisTVA = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         } else if (data.tva_periodicite === 'trimestriel') {
           moisTVA = [1, 4, 7, 10];
-        } else if (data.tva_periodicite === 'semestriel') {
-          moisTVA = [7, 12];
         }
         moisTVA.forEach(mois => {
           addEcheance('TVA', getDateWithSundayReport(anneeFiscale, mois, tvaJour));
         });
+
+        // CA12 (régime simplifié)
+        if (data.tva_periodicite === 'ca12') {
+          // Acomptes juillet et décembre
+          [7, 12].forEach(mois => {
+            addEcheance('TVA Ac.', getDateWithSundayReport(anneeFiscale, mois, tvaJour));
+          });
+
+          // Déclaration CA12
+          const moisClotureNomTVA = data.mois_cloture || 'Décembre';
+          const moisMapTVA = {
+            'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+            'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+          };
+          const moisClotureNumTVA = moisMapTVA[moisClotureNomTVA] || 12;
+
+          if (moisClotureNumTVA === 12) {
+            // Clôture décembre → CA12 le 3 mai
+            addEcheance('CA12', getDateWithSundayReport(anneeFiscale, 5, 3));
+          } else {
+            // Autres clôtures → CA12 E dans les 3 mois après clôture
+            let moisCA12 = moisClotureNumTVA + 3;
+            if (moisCA12 > 12) moisCA12 -= 12;
+            const dernierJourCA12 = new Date(anneeFiscale, moisCA12, 0).getDate();
+            addEcheance('CA12 E', getDateWithSundayReport(anneeFiscale, moisCA12, dernierJourCA12));
+          }
+        }
       }
 
       // IS Acomptes
@@ -3238,6 +3295,11 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
       // Taxe sur les salaires
       if (data.taxe_salaires) {
         addEcheance('Taxe Salaires', getDateWithSundayReport(anneeFiscale, 1, 10));
+      }
+
+      // IFU - 15 février
+      if (data.ifu) {
+        addEcheance('IFU', getDateWithSundayReport(anneeFiscale, 2, 15));
       }
     });
 
@@ -3336,12 +3398,13 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Taxe Véhicules Sociétés">TVTS</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Déclaration Honoraires">DAS2</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Taxe sur les salaires (10/01)">TS</th>
+                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[60px]" title="Imprimé Fiscal Unique (15/02)">IFU</th>
                 </tr>
               </thead>
               <tbody>
                 {mesClients.length === 0 ? (
                   <tr>
-                    <td colSpan="14" className="text-center py-8 text-slate-400">
+                    <td colSpan="15" className="text-center py-8 text-slate-400">
                       Aucun client assigné
                     </td>
                   </tr>
@@ -3402,7 +3465,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                             options={[
                               { value: 'mensuel', label: 'Mens.' },
                               { value: 'trimestriel', label: 'Trim.' },
-                              { value: 'semestriel', label: 'Sem.' }
+                              { value: 'ca12', label: 'CA12' }
                             ]}
                           />
                         </td>
@@ -3488,6 +3551,13 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                             value={data.taxe_salaires}
                           />
                         </td>
+                        <td className="py-1 px-1">
+                          <CheckboxCell
+                            clientId={client.id}
+                            field="ifu"
+                            value={data.ifu}
+                          />
+                        </td>
                       </tr>
                     );
                   })
@@ -3501,15 +3571,17 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         <div className="p-4 border-t border-slate-700 text-xs text-slate-400">
           <p className="mb-2"><strong>Légende:</strong></p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul IS Solde et Liasse)</span>
+            <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul IS Solde, Liasse et CA12)</span>
             <span>• <strong>TVA J.:</strong> Jour limite déclaration TVA</span>
-            <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / Semestriel</span>
+            <span>• <strong>TVA Pér.:</strong> Mensuel / Trimestriel / CA12</span>
+            <span>• <strong>CA12:</strong> Acomptes juillet + décembre, déclaration 03/05 (ou 3 mois après clôture)</span>
             <span>• <strong>IS:</strong> Acomptes trimestriels + Solde (15 du 4e mois après clôture)</span>
             <span>• <strong>CFE N-1:</strong> Si &gt; 3000€ → acompte 15/06</span>
             <span>• <strong>CVAE:</strong> 15/06, 15/09, 03/05</span>
             <span>• <strong>TVTS:</strong> 15 janvier</span>
             <span>• <strong>DAS2:</strong> 1er mai</span>
             <span>• <strong>TS:</strong> Taxe salaires 10 janvier</span>
+            <span>• <strong>IFU:</strong> Imprimé Fiscal Unique 15 février</span>
           </div>
         </div>
       </div>
