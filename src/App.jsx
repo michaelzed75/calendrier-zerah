@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt, FileText, Search } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -366,27 +366,27 @@ export default function App() {
               <Building2 size={18} />
               Clients
             </button>
+            {(userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
+              <button
+                onClick={() => setCurrentPage('impots')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                <FileText size={18} />
+                Impôts et Taxes
+              </button>
+            )}
             {userCollaborateur?.est_chef_mission && (
-              <>
-                <button
-                  onClick={() => setCurrentPage('impots')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                    currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  <FileText size={18} />
-                  Impôts et Taxes
-                </button>
-                <button
-                  onClick={() => setCurrentPage('tva')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                    currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  <Receipt size={18} />
-                  Planification TVA
-                </button>
-              </>
+              <button
+                onClick={() => setCurrentPage('tva')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                <Receipt size={18} />
+                Planification TVA
+              </button>
             )}
             <button
               onClick={() => setShowThemeModal(true)}
@@ -444,27 +444,27 @@ export default function App() {
               <Building2 size={18} />
               Clients
             </button>
+            {(userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
+              <button
+                onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                <FileText size={18} />
+                Impôts et Taxes
+              </button>
+            )}
             {userCollaborateur?.est_chef_mission && (
-              <>
-                <button
-                  onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
-                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                    currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-                  }`}
-                >
-                  <FileText size={18} />
-                  Impôts et Taxes
-                </button>
-                <button
-                  onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
-                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                    currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-                  }`}
-                >
-                  <Receipt size={18} />
-                  Planification TVA
-                </button>
-              </>
+              <button
+                onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                <Receipt size={18} />
+                Planification TVA
+              </button>
             )}
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
@@ -540,7 +540,7 @@ export default function App() {
           impotsTaxes={impotsTaxes}
         />
       )}
-      {currentPage === 'impots' && userCollaborateur?.est_chef_mission && (
+      {currentPage === 'impots' && (userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
         <ImpotsTaxesPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -2995,11 +2995,121 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
   const [showExportModal, setShowExportModal] = useState(false);
   const [copyingData, setCopyingData] = useState(false);
 
-  // Clients du chef de mission connecté (actifs uniquement)
-  const mesClients = clients.filter(c =>
-    c.actif &&
-    (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
-  );
+  // Nouveaux états pour filtres, recherche et tri
+  const [filtreChefMission, setFiltreChefMission] = useState('tous');
+  const [recherche, setRecherche] = useState('');
+  const [tri, setTri] = useState(() => {
+    const saved = localStorage.getItem('impotsTaxes_tri');
+    return saved ? JSON.parse(saved) : { colonne: 'nom', direction: 'asc' };
+  });
+
+  // Sauvegarder le tri en localStorage quand il change
+  useEffect(() => {
+    localStorage.setItem('impotsTaxes_tri', JSON.stringify(tri));
+  }, [tri]);
+
+  // Chefs de mission pour le filtre (admin uniquement)
+  const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
+
+  // Déterminer les clients à afficher selon le rôle
+  const getClientsDeBase = () => {
+    if (userCollaborateur?.is_admin) {
+      // Admin voit tous les clients actifs
+      return clients.filter(c => c.actif);
+    } else {
+      // Chef de mission voit ses clients
+      return clients.filter(c =>
+        c.actif &&
+        (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+      );
+    }
+  };
+
+  // Appliquer le filtre par chef de mission (admin uniquement)
+  const getClientsFiltresParChef = () => {
+    const base = getClientsDeBase();
+    if (!userCollaborateur?.is_admin || filtreChefMission === 'tous') {
+      return base;
+    }
+    if (filtreChefMission === 'sans_chef') {
+      return base.filter(c => !c.chef_mission_id);
+    }
+    return base.filter(c => String(c.chef_mission_id) === String(filtreChefMission));
+  };
+
+  // Appliquer la recherche
+  const getClientsFiltresParRecherche = () => {
+    const base = getClientsFiltresParChef();
+    if (!recherche.trim()) return base;
+    const rechercheLower = recherche.toLowerCase().trim();
+    return base.filter(c => c.nom.toLowerCase().includes(rechercheLower));
+  };
+
+  // Appliquer le tri
+  const getClientsTries = () => {
+    const base = getClientsFiltresParRecherche();
+    return [...base].sort((a, b) => {
+      let valA, valB;
+      const dataA = impotsTaxes.find(it => it.client_id === a.id && it.annee_fiscale === anneeFiscale) || {};
+      const dataB = impotsTaxes.find(it => it.client_id === b.id && it.annee_fiscale === anneeFiscale) || {};
+
+      switch (tri.colonne) {
+        case 'nom':
+          valA = a.nom.toLowerCase();
+          valB = b.nom.toLowerCase();
+          break;
+        case 'mois_cloture':
+          const moisOrdre = {
+            'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+            'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+          };
+          valA = moisOrdre[dataA.mois_cloture] || 12;
+          valB = moisOrdre[dataB.mois_cloture] || 12;
+          break;
+        case 'soumis_is':
+          valA = dataA.soumis_is === true ? 1 : dataA.soumis_is === false ? 2 : 3;
+          valB = dataB.soumis_is === true ? 1 : dataB.soumis_is === false ? 2 : 3;
+          break;
+        case 'tva_jour':
+          valA = parseInt(dataA.tva_jour) || 99;
+          valB = parseInt(dataB.tva_jour) || 99;
+          break;
+        case 'tva_periodicite':
+          const perOrdre = { 'mensuel': 1, 'trimestriel': 2, 'ca12': 3 };
+          valA = perOrdre[dataA.tva_periodicite] || 99;
+          valB = perOrdre[dataB.tva_periodicite] || 99;
+          break;
+        default:
+          valA = a.nom.toLowerCase();
+          valB = b.nom.toLowerCase();
+      }
+
+      if (valA < valB) return tri.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return tri.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  // Clients finaux à afficher
+  const mesClients = getClientsTries();
+
+  // Fonction pour changer le tri
+  const handleTriClick = (colonne) => {
+    setTri(prev => ({
+      colonne,
+      direction: prev.colonne === colonne && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // Composant pour l'icône de tri
+  const TriIcon = ({ colonne }) => {
+    if (tri.colonne !== colonne) return null;
+    return (
+      <span className="ml-1 text-pink-400">
+        {tri.direction === 'asc' ? '↑' : '↓'}
+      </span>
+    );
+  };
 
   // Champs à exclure de la copie (à remplir chaque année)
   // - Acomptes IS (montants différents chaque année)
@@ -3048,8 +3158,9 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
   const handleAnneeFiscaleChange = async (newYear) => {
     setAnneeFiscale(newYear);
 
-    // Vérifier quels clients n'ont pas de données pour cette année
-    const clientsWithoutData = mesClients.filter(client =>
+    // Vérifier quels clients n'ont pas de données pour cette année (utiliser tous les clients de base, pas les filtrés)
+    const tousLesClients = getClientsDeBase();
+    const clientsWithoutData = tousLesClients.filter(client =>
       !impotsTaxes.some(it => it.client_id === client.id && it.annee_fiscale === newYear)
     );
 
@@ -3471,49 +3582,125 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     <div className="p-4 md:p-6 relative z-10">
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-xl border border-slate-700">
         {/* Header fixe */}
-        <div className="p-4 border-b border-slate-700 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FileText className="text-white" size={24} />
-            <h1 className="text-xl font-bold text-white">Impôts & Taxes</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition"
-            >
-              <Download size={16} />
-              <span className="hidden md:inline">Export suivi</span>
-            </button>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-slate-400">Année fiscale:</label>
-              <select
-                value={anneeFiscale}
-                onChange={(e) => handleAnneeFiscaleChange(parseInt(e.target.value))}
-                disabled={copyingData}
-                className="bg-slate-700 text-white rounded px-3 py-1 border border-slate-600 disabled:opacity-50"
+        <div className="p-4 border-b border-slate-700 flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <FileText className="text-white" size={24} />
+              <h1 className="text-xl font-bold text-white">Impôts & Taxes</h1>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition"
               >
-                {[2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032].map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-              {copyingData && (
-                <span className="text-xs text-slate-400 animate-pulse">Copie des données...</span>
+                <Download size={16} />
+                <span className="hidden md:inline">Export suivi</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-400">Année fiscale:</label>
+                <select
+                  value={anneeFiscale}
+                  onChange={(e) => handleAnneeFiscaleChange(parseInt(e.target.value))}
+                  disabled={copyingData}
+                  className="bg-slate-700 text-white rounded px-3 py-1 border border-slate-600 disabled:opacity-50"
+                >
+                  {[2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032].map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+                {copyingData && (
+                  <span className="text-xs text-slate-400 animate-pulse">Copie des données...</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Barre de filtres et recherche */}
+          <div className="flex flex-col md:flex-row gap-3">
+            {/* Recherche par nom */}
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                placeholder="Rechercher un dossier..."
+                className="w-full bg-slate-700 text-white text-sm rounded-lg pl-9 pr-3 py-2 border border-slate-600 focus:border-pink-500 focus:outline-none"
+              />
+              {recherche && (
+                <button
+                  onClick={() => setRecherche('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X size={14} />
+                </button>
               )}
+            </div>
+
+            {/* Filtre par chef de mission (admin uniquement) */}
+            {userCollaborateur?.is_admin && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-400 whitespace-nowrap">Chef de mission:</label>
+                <select
+                  value={filtreChefMission}
+                  onChange={(e) => setFiltreChefMission(e.target.value)}
+                  className="bg-slate-700 text-white text-sm rounded-lg px-3 py-2 border border-slate-600 focus:border-pink-500 focus:outline-none"
+                >
+                  <option value="tous">Tous</option>
+                  <option value="sans_chef">Sans chef de mission</option>
+                  {chefsMission.map(chef => (
+                    <option key={chef.id} value={chef.id}>{chef.nom}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Compteur de résultats */}
+            <div className="flex items-center text-sm text-slate-400">
+              {mesClients.length} dossier{mesClients.length > 1 ? 's' : ''}
             </div>
           </div>
         </div>
 
         {/* Tableau avec scroll horizontal et header sticky */}
         <div className="overflow-x-auto">
-          <div className="max-h-[calc(100vh-250px)] overflow-y-auto">
+          <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
             <table className="w-full text-sm table-fixed">
               <thead className="sticky top-0 z-10 bg-slate-800">
                 <tr className="text-slate-400 text-xs">
-                  <th className="text-left py-3 px-2 border-b border-slate-700 sticky left-0 bg-slate-800 w-[200px]">Client</th>
-                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Mois de clôture de l'exercice">Mois clôt.</th>
-                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]">IS/IR</th>
-                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[70px]" title="Jour limite TVA">TVA J.</th>
-                  <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Périodicité TVA">TVA Pér.</th>
+                  <th
+                    className="text-left py-3 px-2 border-b border-slate-700 sticky left-0 bg-slate-800 w-[200px] cursor-pointer hover:text-white transition"
+                    onClick={() => handleTriClick('nom')}
+                  >
+                    Client<TriIcon colonne="nom" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-2 border-b border-slate-700 w-[90px] cursor-pointer hover:text-white transition"
+                    title="Mois de clôture de l'exercice"
+                    onClick={() => handleTriClick('mois_cloture')}
+                  >
+                    Mois clôt.<TriIcon colonne="mois_cloture" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-2 border-b border-slate-700 w-[70px] cursor-pointer hover:text-white transition"
+                    onClick={() => handleTriClick('soumis_is')}
+                  >
+                    IS/IR<TriIcon colonne="soumis_is" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-2 border-b border-slate-700 w-[70px] cursor-pointer hover:text-white transition"
+                    title="Jour limite TVA"
+                    onClick={() => handleTriClick('tva_jour')}
+                  >
+                    TVA J.<TriIcon colonne="tva_jour" />
+                  </th>
+                  <th
+                    className="text-center py-3 px-2 border-b border-slate-700 w-[90px] cursor-pointer hover:text-white transition"
+                    title="Périodicité TVA"
+                    onClick={() => handleTriClick('tva_periodicite')}
+                  >
+                    TVA Pér.<TriIcon colonne="tva_periodicite" />
+                  </th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 mars">IS 15/03</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 juin">IS 15/06</th>
                   <th className="text-center py-3 px-2 border-b border-slate-700 w-[90px]" title="Acompte IS 15 septembre">IS 15/09</th>
@@ -3530,7 +3717,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                 {mesClients.length === 0 ? (
                   <tr>
                     <td colSpan="15" className="text-center py-8 text-slate-400">
-                      Aucun client assigné
+                      {recherche ? 'Aucun dossier trouvé' : 'Aucun dossier'}
                     </td>
                   </tr>
                 ) : (
