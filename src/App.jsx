@@ -1774,7 +1774,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                     ⚠ Budget
                                   </span>
                                 )}
-                                {!hasTempsReelsForYesterday(chef.id) && (
+                                {hasTempsReelsForYesterday(chef.id) ? (
+                                  <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                    ✓ Temps
+                                  </span>
+                                ) : (
                                   <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
                                     ⚠ Temps
                                   </span>
@@ -1823,7 +1827,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                       ⚠ Budget
                                     </span>
                                   )}
-                                  {!hasTempsReelsForYesterday(membre.id) && (
+                                  {hasTempsReelsForYesterday(membre.id) ? (
+                                    <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                      ✓ Temps
+                                    </span>
+                                  ) : (
                                     <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
                                       ⚠ Temps
                                     </span>
@@ -1887,7 +1895,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                   ⚠ Budget
                                 </span>
                               )}
-                              {!hasTempsReelsForYesterday(collab.id) && (
+                              {hasTempsReelsForYesterday(collab.id) ? (
+                                <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                  ✓ Temps
+                                </span>
+                              ) : (
                                 <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
                                   ⚠ Temps
                                 </span>
