@@ -6206,7 +6206,13 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Users size={20} className="text-blue-400" />
-                  Collaborateurs ({uniquePennylaneCollabs.length})
+                  Collaborateurs
+                  {uniquePennylaneCollabs.length > 0 && (
+                    <span className="text-sm font-normal">
+                      (<span className="text-green-400">{uniquePennylaneCollabs.filter(p => mappingCollaborateurs[p]).length}</span>
+                      /{uniquePennylaneCollabs.length} mappés)
+                    </span>
+                  )}
                 </h3>
                 <button
                   onClick={autoMatchCollaborateurs}
@@ -6224,31 +6230,46 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </p>
               ) : (
                 <div className="grid gap-2 max-h-64 overflow-y-auto">
-                  {uniquePennylaneCollabs.map(pennylane => (
-                    <div key={pennylane} className="flex items-center gap-3 bg-slate-600/50 rounded-lg p-2">
-                      <div className="flex-1 text-white text-sm truncate" title={pennylane}>
-                        {pennylane}
-                      </div>
-                      <ArrowUpDown size={16} className="text-slate-400" />
-                      <select
-                        value={mappingCollaborateurs[pennylane] || ''}
-                        onChange={(e) => setMappingCollaborateurs({
-                          ...mappingCollaborateurs,
-                          [pennylane]: e.target.value ? parseInt(e.target.value) : null
-                        })}
-                        className={`w-48 px-3 py-1.5 rounded-lg text-sm ${
-                          mappingCollaborateurs[pennylane]
-                            ? 'bg-green-600/30 border-green-500 text-white'
-                            : 'bg-slate-700 border-slate-600 text-slate-300'
-                        } border`}
+                  {uniquePennylaneCollabs.map(pennylane => {
+                    const isMapped = !!mappingCollaborateurs[pennylane];
+                    return (
+                      <div
+                        key={pennylane}
+                        className={`flex items-center gap-3 rounded-lg p-2 border ${
+                          isMapped
+                            ? 'bg-green-900/30 border-green-600/50'
+                            : 'bg-slate-600/50 border-transparent'
+                        }`}
                       >
-                        <option value="">-- Non mappé --</option>
-                        {collaborateurs.map(c => (
-                          <option key={c.id} value={c.id}>{c.nom}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                        {isMapped ? (
+                          <Check size={16} className="text-green-400 flex-shrink-0" />
+                        ) : (
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-500 flex-shrink-0" />
+                        )}
+                        <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
+                          {pennylane}
+                        </div>
+                        <ArrowUpDown size={16} className="text-slate-400" />
+                        <select
+                          value={mappingCollaborateurs[pennylane] || ''}
+                          onChange={(e) => setMappingCollaborateurs({
+                            ...mappingCollaborateurs,
+                            [pennylane]: e.target.value ? parseInt(e.target.value) : null
+                          })}
+                          className={`w-48 px-3 py-1.5 rounded-lg text-sm ${
+                            isMapped
+                              ? 'bg-green-600/30 border-green-500 text-white'
+                              : 'bg-slate-700 border-slate-600 text-slate-300'
+                          } border`}
+                        >
+                          <option value="">-- Non mappé --</option>
+                          {collaborateurs.map(c => (
+                            <option key={c.id} value={c.id}>{c.nom}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -6258,7 +6279,13 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Building2 size={20} className="text-purple-400" />
-                  Clients ({uniquePennylaneClients.length})
+                  Clients
+                  {uniquePennylaneClients.length > 0 && (
+                    <span className="text-sm font-normal">
+                      (<span className="text-green-400">{uniquePennylaneClients.filter(p => mappingClients[p]).length}</span>
+                      /{uniquePennylaneClients.length} mappés)
+                    </span>
+                  )}
                 </h3>
                 <button
                   onClick={autoMatchClients}
@@ -6276,31 +6303,46 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </p>
               ) : (
                 <div className="grid gap-2 max-h-96 overflow-y-auto">
-                  {uniquePennylaneClients.map(pennylane => (
-                    <div key={pennylane} className="flex items-center gap-3 bg-slate-600/50 rounded-lg p-2">
-                      <div className="flex-1 text-white text-sm truncate" title={pennylane}>
-                        {pennylane}
-                      </div>
-                      <ArrowUpDown size={16} className="text-slate-400" />
-                      <select
-                        value={mappingClients[pennylane] || ''}
-                        onChange={(e) => setMappingClients({
-                          ...mappingClients,
-                          [pennylane]: e.target.value ? parseInt(e.target.value) : null
-                        })}
-                        className={`w-64 px-3 py-1.5 rounded-lg text-sm ${
-                          mappingClients[pennylane]
-                            ? 'bg-green-600/30 border-green-500 text-white'
-                            : 'bg-slate-700 border-slate-600 text-slate-300'
-                        } border`}
+                  {uniquePennylaneClients.map(pennylane => {
+                    const isMapped = !!mappingClients[pennylane];
+                    return (
+                      <div
+                        key={pennylane}
+                        className={`flex items-center gap-3 rounded-lg p-2 border ${
+                          isMapped
+                            ? 'bg-green-900/30 border-green-600/50'
+                            : 'bg-slate-600/50 border-transparent'
+                        }`}
                       >
-                        <option value="">-- Non mappé --</option>
-                        {clients.filter(c => c.actif !== false).map(c => (
-                          <option key={c.id} value={c.id}>{c.nom}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                        {isMapped ? (
+                          <Check size={16} className="text-green-400 flex-shrink-0" />
+                        ) : (
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-500 flex-shrink-0" />
+                        )}
+                        <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
+                          {pennylane}
+                        </div>
+                        <ArrowUpDown size={16} className="text-slate-400" />
+                        <select
+                          value={mappingClients[pennylane] || ''}
+                          onChange={(e) => setMappingClients({
+                            ...mappingClients,
+                            [pennylane]: e.target.value ? parseInt(e.target.value) : null
+                          })}
+                          className={`w-64 px-3 py-1.5 rounded-lg text-sm ${
+                            isMapped
+                              ? 'bg-green-600/30 border-green-500 text-white'
+                              : 'bg-slate-700 border-slate-600 text-slate-300'
+                          } border`}
+                        >
+                          <option value="">-- Non mappé --</option>
+                          {clients.filter(c => c.actif !== false).map(c => (
+                            <option key={c.id} value={c.id}>{c.nom}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
