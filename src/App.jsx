@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt, FileText, Search, Clock, Upload, Link2, BarChart3, ArrowUpDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogIn, LogOut, UserPlus, Shield, Mail, Lock, AlertCircle, Receipt, FileText, Search, Clock, Upload, Link2, BarChart3, ArrowUpDown, VolumeX, Volume2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -1137,6 +1137,76 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     return getChargesForDateStr(collaborateurId, dateStr).reduce((sum, c) => sum + parseFloat(c.heures), 0);
   }, [getChargesForDateStr]);
 
+  // Liste des collaborateurs en sourdine (stockée en localStorage)
+  const [budgetSourdine, setBudgetSourdine] = useState(() => {
+    const saved = localStorage.getItem('budgetSourdine');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('budgetSourdine', JSON.stringify(budgetSourdine));
+  }, [budgetSourdine]);
+
+  // Vérifier si un collaborateur a un budget saisi pour aujourd'hui
+  const hasBudgetForToday = useCallback((collaborateurId) => {
+    const today = formatDateToYMD(new Date());
+    const budgetsToday = charges.filter(c =>
+      c.collaborateur_id === collaborateurId &&
+      c.date_charge === today
+    );
+    return budgetsToday.length > 0;
+  }, [charges]);
+
+  // Temps réels depuis localStorage
+  const [tempsReelsLocal] = useState(() => {
+    const saved = localStorage.getItem('tempsReels');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Vérifier si un collaborateur a des temps réels saisis pour J-1 (après 10h)
+  const hasTempsReelsForYesterday = useCallback((collaborateurId) => {
+    const now = new Date();
+    // Seulement vérifier après 10h
+    if (now.getHours() < 10) return true; // Pas d'alerte avant 10h
+
+    // Calculer J-1 (hier)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDateToYMD(yesterday);
+
+    // Vérifier si c'était un jour ouvré (lundi-vendredi)
+    const dayOfWeek = yesterday.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) return true; // Week-end, pas d'alerte
+
+    // Chercher les temps réels pour ce collaborateur hier
+    const tempsHier = tempsReelsLocal.filter(t =>
+      t.collaborateur_id === collaborateurId &&
+      t.date === yesterdayStr
+    );
+
+    const totalHeures = tempsHier.reduce((sum, t) => sum + (t.heures || 0), 0);
+    return totalHeures > 0;
+  }, [tempsReelsLocal]);
+
+  // Vérifier si un collaborateur est en sourdine
+  const isInSourdine = useCallback((collaborateurId) => {
+    return budgetSourdine.includes(collaborateurId);
+  }, [budgetSourdine]);
+
+  // Toggle sourdine pour un collaborateur
+  const toggleSourdine = useCallback((collaborateurId) => {
+    setBudgetSourdine(prev =>
+      prev.includes(collaborateurId)
+        ? prev.filter(id => id !== collaborateurId)
+        : [...prev, collaborateurId]
+    );
+  }, []);
+
+  // Compter les alertes (collaborateurs sans budget aujourd'hui ou sans temps J-1, hors sourdine)
+  const alertCount = visibleCollaborateurs.filter(c =>
+    !isInSourdine(c.id) && (!hasBudgetForToday(c.id) || !hasTempsReelsForYesterday(c.id))
+  ).length;
+
   const getAggregatedByClient = useCallback((collaborateurId, dateStr) => {
     const dayCharges = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
     const aggregated = {};
@@ -1604,9 +1674,14 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
               </button>
             </div>
 
-            <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+            <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition relative">
               <Filter size={18} />
               Filtrer ({selectedCollaborateurs.length})
+              {alertCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                  {alertCount}
+                </span>
+              )}
             </button>
 
             <button onClick={() => setShowExportModal(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
@@ -1675,34 +1750,102 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                     {isExpanded && (
                       <div className="p-3 space-y-2">
                         {/* Le chef lui-même */}
-                        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
-                          <input
-                            type="checkbox"
-                            checked={selectedCollaborateurs.includes(chef.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, chef.id]);
-                              else setSelectedCollaborateurs(prev => prev.filter(id => id !== chef.id));
-                            }}
-                            className="rounded"
-                          />
-                          <span>{chef.nom}</span>
-                          <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>
-                        </label>
-
-                        {/* Les membres visibles */}
-                        {equipe.filter(m => m.actif).map(membre => (
-                          <label key={membre.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white pl-8">
+                        <div className="flex items-center gap-2 pl-8">
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
                             <input
                               type="checkbox"
-                              checked={selectedCollaborateurs.includes(membre.id)}
+                              checked={selectedCollaborateurs.includes(chef.id)}
                               onChange={(e) => {
-                                if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, membre.id]);
-                                else setSelectedCollaborateurs(prev => prev.filter(id => id !== membre.id));
+                                if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, chef.id]);
+                                else setSelectedCollaborateurs(prev => prev.filter(id => id !== chef.id));
                               }}
                               className="rounded"
                             />
-                            <span>{membre.nom}</span>
+                            <span>{chef.nom}</span>
+                            <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>
+                            {!isInSourdine(chef.id) && (
+                              <>
+                                {hasBudgetForToday(chef.id) ? (
+                                  <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                    ✓ Budget
+                                  </span>
+                                ) : (
+                                  <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                    ⚠ Budget
+                                  </span>
+                                )}
+                                {!hasTempsReelsForYesterday(chef.id) && (
+                                  <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                    ⚠ Temps
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            {isInSourdine(chef.id) && (
+                              <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                                <VolumeX size={12} className="inline" /> Sourdine
+                              </span>
+                            )}
                           </label>
+                          {userCollaborateur?.is_admin && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSourdine(chef.id); }}
+                              className={`p-1.5 rounded transition ${isInSourdine(chef.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                              title={isInSourdine(chef.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                            >
+                              {isInSourdine(chef.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Les membres visibles */}
+                        {equipe.filter(m => m.actif).map(membre => (
+                          <div key={membre.id} className="flex items-center gap-2 pl-8">
+                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                              <input
+                                type="checkbox"
+                                checked={selectedCollaborateurs.includes(membre.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, membre.id]);
+                                  else setSelectedCollaborateurs(prev => prev.filter(id => id !== membre.id));
+                                }}
+                                className="rounded"
+                              />
+                              <span>{membre.nom}</span>
+                              {!isInSourdine(membre.id) && (
+                                <>
+                                  {hasBudgetForToday(membre.id) ? (
+                                    <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                      ✓ Budget
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                      ⚠ Budget
+                                    </span>
+                                  )}
+                                  {!hasTempsReelsForYesterday(membre.id) && (
+                                    <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                      ⚠ Temps
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {isInSourdine(membre.id) && (
+                                <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                                  <VolumeX size={12} className="inline" /> Sourdine
+                                </span>
+                              )}
+                            </label>
+                            {userCollaborateur?.is_admin && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleSourdine(membre.id); }}
+                                className={`p-1.5 rounded transition ${isInSourdine(membre.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                                title={isInSourdine(membre.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                              >
+                                {isInSourdine(membre.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -1721,18 +1864,52 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                   <div className="bg-slate-700 rounded-lg p-3">
                     <div className="text-slate-400 text-sm mb-2">Autres collaborateurs</div>
                     {autonomes.map(collab => (
-                      <label key={collab.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedCollaborateurs.includes(collab.id)} 
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, collab.id]);
-                            else setSelectedCollaborateurs(prev => prev.filter(id => id !== collab.id));
-                          }} 
-                          className="rounded" 
-                        />
-                        <span>{collab.nom}</span>
-                      </label>
+                      <div key={collab.id} className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedCollaborateurs.includes(collab.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, collab.id]);
+                              else setSelectedCollaborateurs(prev => prev.filter(id => id !== collab.id));
+                            }}
+                            className="rounded"
+                          />
+                          <span>{collab.nom}</span>
+                          {!isInSourdine(collab.id) && (
+                            <>
+                              {hasBudgetForToday(collab.id) ? (
+                                <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                  ✓ Budget
+                                </span>
+                              ) : (
+                                <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                  ⚠ Budget
+                                </span>
+                              )}
+                              {!hasTempsReelsForYesterday(collab.id) && (
+                                <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                  ⚠ Temps
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {isInSourdine(collab.id) && (
+                            <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                              <VolumeX size={12} className="inline" /> Sourdine
+                            </span>
+                          )}
+                        </label>
+                        {userCollaborateur?.is_admin && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSourdine(collab.id); }}
+                            className={`p-1.5 rounded transition ${isInSourdine(collab.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                            title={isInSourdine(collab.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                          >
+                            {isInSourdine(collab.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 );
