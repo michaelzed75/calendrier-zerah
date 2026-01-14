@@ -1157,11 +1157,34 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     return budgetsToday.length > 0;
   }, [charges]);
 
-  // Temps réels depuis localStorage
-  const [tempsReelsLocal] = useState(() => {
-    const saved = localStorage.getItem('tempsReels');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Temps réels depuis Supabase
+  const [tempsReelsLocal, setTempsReelsLocal] = useState([]);
+
+  // Charger les temps réels depuis Supabase au démarrage et rafraîchir régulièrement
+  useEffect(() => {
+    const loadTempsReels = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('temps_reels')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (!error && data) {
+          setTempsReelsLocal(data);
+        }
+      } catch (err) {
+        console.error('Erreur chargement temps réels:', err);
+      }
+    };
+
+    // Charger au démarrage
+    loadTempsReels();
+
+    // Rafraîchir toutes les 30 secondes pour synchroniser avec les imports
+    const interval = setInterval(loadTempsReels, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Vérifier si un collaborateur a des temps réels saisis pour J-1 (après 10h)
   const hasTempsReelsForYesterday = useCallback((collaborateurId) => {
@@ -5642,30 +5665,20 @@ function AuthPage({ authPage, setAuthPage, accent }) {
 // ============================================
 function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }) {
   const [activeTab, setActiveTab] = useState('mapping'); // 'mapping', 'import', 'ecarts', 'journal'
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Mappings stockés en localStorage
-  const [mappingCollaborateurs, setMappingCollaborateurs] = useState(() => {
-    const saved = localStorage.getItem('mappingCollaborateurs');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [mappingClients, setMappingClients] = useState(() => {
-    const saved = localStorage.getItem('mappingClients');
-    return saved ? JSON.parse(saved) : {};
-  });
+  // Mappings depuis Supabase
+  const [mappingCollaborateurs, setMappingCollaborateurs] = useState({});
+  const [mappingClients, setMappingClients] = useState({});
 
   // Données importées
   const [importedData, setImportedData] = useState([]);
   const [importStats, setImportStats] = useState(null);
-  const [tempsReels, setTempsReels] = useState(() => {
-    const saved = localStorage.getItem('tempsReels');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [tempsReels, setTempsReels] = useState([]);
 
   // Journal des modifications
-  const [journalModifications, setJournalModifications] = useState(() => {
-    const saved = localStorage.getItem('journalModifications');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [journalModifications, setJournalModifications] = useState([]);
 
   // Filtres pour l'analyse des écarts
   const [filtreCollaborateur, setFiltreCollaborateur] = useState('');
@@ -5680,22 +5693,167 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   const [searchEcarts, setSearchEcarts] = useState('');
   const [sortEcarts, setSortEcarts] = useState({ column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
 
-  // Sauvegarde des mappings
+  // Charger les données depuis Supabase au démarrage
   useEffect(() => {
-    localStorage.setItem('mappingCollaborateurs', JSON.stringify(mappingCollaborateurs));
-  }, [mappingCollaborateurs]);
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Charger les mappings
+        const { data: mappingsData, error: mappingsError } = await supabase
+          .from('mappings_pennylane')
+          .select('*');
 
-  useEffect(() => {
-    localStorage.setItem('mappingClients', JSON.stringify(mappingClients));
-  }, [mappingClients]);
+        if (mappingsError) throw mappingsError;
 
-  useEffect(() => {
-    localStorage.setItem('tempsReels', JSON.stringify(tempsReels));
-  }, [tempsReels]);
+        // Convertir en objets { nomPennylane: entityId }
+        const collabMappings = {};
+        const clientMappings = {};
+        mappingsData?.forEach(m => {
+          if (m.type === 'collaborateur') {
+            collabMappings[m.nom_pennylane] = m.entity_id;
+          } else if (m.type === 'client') {
+            clientMappings[m.nom_pennylane] = m.entity_id;
+          }
+        });
+        setMappingCollaborateurs(collabMappings);
+        setMappingClients(clientMappings);
 
-  useEffect(() => {
-    localStorage.setItem('journalModifications', JSON.stringify(journalModifications));
-  }, [journalModifications]);
+        // Charger les temps réels
+        const { data: tempsData, error: tempsError } = await supabase
+          .from('temps_reels')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (tempsError) throw tempsError;
+        setTempsReels(tempsData || []);
+
+        // Charger le journal
+        const { data: journalData, error: journalError } = await supabase
+          .from('journal_imports')
+          .select('*')
+          .order('date_import', { ascending: false })
+          .limit(100);
+
+        if (journalError) throw journalError;
+        setJournalModifications(journalData || []);
+
+        // Migration: si des données existent en localStorage, les migrer vers Supabase
+        const localTemps = localStorage.getItem('tempsReels');
+        const localMappingsCollab = localStorage.getItem('mappingCollaborateurs');
+        const localMappingsClient = localStorage.getItem('mappingClients');
+
+        if (localTemps || localMappingsCollab || localMappingsClient) {
+          console.log('Migration des données localStorage vers Supabase...');
+
+          // Migrer les mappings collaborateurs
+          if (localMappingsCollab && Object.keys(collabMappings).length === 0) {
+            const parsed = JSON.parse(localMappingsCollab);
+            for (const [nomPennylane, entityId] of Object.entries(parsed)) {
+              if (entityId) {
+                await supabase.from('mappings_pennylane').upsert({
+                  type: 'collaborateur',
+                  nom_pennylane: nomPennylane,
+                  entity_id: entityId
+                }, { onConflict: 'type,nom_pennylane' });
+              }
+            }
+            setMappingCollaborateurs(parsed);
+          }
+
+          // Migrer les mappings clients
+          if (localMappingsClient && Object.keys(clientMappings).length === 0) {
+            const parsed = JSON.parse(localMappingsClient);
+            for (const [nomPennylane, entityId] of Object.entries(parsed)) {
+              if (entityId) {
+                await supabase.from('mappings_pennylane').upsert({
+                  type: 'client',
+                  nom_pennylane: nomPennylane,
+                  entity_id: entityId
+                }, { onConflict: 'type,nom_pennylane' });
+              }
+            }
+            setMappingClients(parsed);
+          }
+
+          // Migrer les temps réels
+          if (localTemps && tempsData?.length === 0) {
+            const parsed = JSON.parse(localTemps);
+            for (const t of parsed) {
+              await supabase.from('temps_reels').upsert({
+                collaborateur_id: t.collaborateur_id,
+                client_id: t.client_id,
+                date: t.date,
+                heures: t.heures,
+                commentaire: t.commentaire,
+                activite: t.activite,
+                type_mission: t.typeMission,
+                millesime: t.millesime
+              }, { onConflict: 'collaborateur_id,client_id,date' });
+            }
+            // Recharger les temps après migration
+            const { data: newTempsData } = await supabase
+              .from('temps_reels')
+              .select('*')
+              .order('date', { ascending: false });
+            setTempsReels(newTempsData || []);
+          }
+
+          // Nettoyer le localStorage après migration réussie
+          localStorage.removeItem('tempsReels');
+          localStorage.removeItem('mappingCollaborateurs');
+          localStorage.removeItem('mappingClients');
+          localStorage.removeItem('journalModifications');
+          console.log('Migration terminée, localStorage nettoyé');
+        }
+
+      } catch (err) {
+        console.error('Erreur chargement données:', err);
+      }
+      setLoading(false);
+    };
+
+    loadData();
+  }, []);
+
+  // Sauvegarder un mapping collaborateur dans Supabase
+  const saveMappingCollaborateur = async (nomPennylane, entityId) => {
+    if (entityId) {
+      await supabase.from('mappings_pennylane').upsert({
+        type: 'collaborateur',
+        nom_pennylane: nomPennylane,
+        entity_id: entityId
+      }, { onConflict: 'type,nom_pennylane' });
+    } else {
+      await supabase.from('mappings_pennylane')
+        .delete()
+        .eq('type', 'collaborateur')
+        .eq('nom_pennylane', nomPennylane);
+    }
+    setMappingCollaborateurs(prev => ({
+      ...prev,
+      [nomPennylane]: entityId || undefined
+    }));
+  };
+
+  // Sauvegarder un mapping client dans Supabase
+  const saveMappingClient = async (nomPennylane, entityId) => {
+    if (entityId) {
+      await supabase.from('mappings_pennylane').upsert({
+        type: 'client',
+        nom_pennylane: nomPennylane,
+        entity_id: entityId
+      }, { onConflict: 'type,nom_pennylane' });
+    } else {
+      await supabase.from('mappings_pennylane')
+        .delete()
+        .eq('type', 'client')
+        .eq('nom_pennylane', nomPennylane);
+    }
+    setMappingClients(prev => ({
+      ...prev,
+      [nomPennylane]: entityId || undefined
+    }));
+  };
 
   // Extraction des noms uniques depuis les données importées
   const [uniquePennylaneCollabs, setUniquePennylaneCollabs] = useState([]);
@@ -5794,9 +5952,10 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
     reader.readAsBinaryString(file);
   };
 
-  // Auto-matching des collaborateurs
-  const autoMatchCollaborateurs = () => {
+  // Auto-matching des collaborateurs (avec sauvegarde Supabase)
+  const autoMatchCollaborateurs = async () => {
     const newMapping = { ...mappingCollaborateurs };
+    const toSave = [];
 
     uniquePennylaneCollabs.forEach(pennylane => {
       if (newMapping[pennylane]) return; // Déjà mappé
@@ -5812,15 +5971,22 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
       if (match) {
         newMapping[pennylane] = match.id;
+        toSave.push({ type: 'collaborateur', nom_pennylane: pennylane, entity_id: match.id });
       }
     });
+
+    // Sauvegarder dans Supabase
+    if (toSave.length > 0) {
+      await supabase.from('mappings_pennylane').upsert(toSave, { onConflict: 'type,nom_pennylane' });
+    }
 
     setMappingCollaborateurs(newMapping);
   };
 
-  // Auto-matching des clients
-  const autoMatchClients = () => {
+  // Auto-matching des clients (avec sauvegarde Supabase)
+  const autoMatchClients = async () => {
     const newMapping = { ...mappingClients };
+    const toSave = [];
 
     uniquePennylaneClients.forEach(pennylane => {
       if (newMapping[pennylane]) return; // Déjà mappé
@@ -5847,173 +6013,224 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
       if (match) {
         newMapping[pennylane] = match.id;
+        toSave.push({ type: 'client', nom_pennylane: pennylane, entity_id: match.id });
       }
     });
+
+    // Sauvegarder dans Supabase
+    if (toSave.length > 0) {
+      await supabase.from('mappings_pennylane').upsert(toSave, { onConflict: 'type,nom_pennylane' });
+    }
 
     setMappingClients(newMapping);
   };
 
-  // Valider et enregistrer les temps réels (mode remplacement par période)
-  const handleValidateImport = () => {
-    // 1. Parser les nouvelles données
-    const newTempsReels = [];
-    let lignesIgnorees = 0;
+  // Valider et enregistrer les temps réels (mode remplacement par période) - SUPABASE
+  const handleValidateImport = async () => {
+    setSaving(true);
+    try {
+      // 1. Parser les nouvelles données
+      const newTempsReels = [];
+      let lignesIgnorees = 0;
 
-    importedData.forEach(row => {
-      const collaborateurId = mappingCollaborateurs[row.collaborateurPennylane];
-      const clientId = mappingClients[row.clientPennylane];
+      importedData.forEach(row => {
+        const collaborateurId = mappingCollaborateurs[row.collaborateurPennylane];
+        const clientId = mappingClients[row.clientPennylane];
 
-      if (!collaborateurId || !clientId) {
-        lignesIgnorees++;
+        if (!collaborateurId || !clientId) {
+          lignesIgnorees++;
+          return;
+        }
+
+        newTempsReels.push({
+          collaborateur_id: collaborateurId,
+          client_id: clientId,
+          date: row.date,
+          heures: row.dureeHeures,
+          commentaire: row.commentaire,
+          activite: row.activite,
+          type_mission: row.typeMission,
+          millesime: row.millesime
+        });
+      });
+
+      // 2. Déterminer la période du fichier importé
+      const dates = newTempsReels.map(t => t.date).filter(d => d);
+      if (dates.length === 0) {
+        alert('Aucune donnée valide à importer');
+        setSaving(false);
         return;
       }
+      const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
+      const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
 
-      newTempsReels.push({
-        collaborateur_id: collaborateurId,
-        client_id: clientId,
-        date: row.date,
-        heures: row.dureeHeures,
-        commentaire: row.commentaire,
-        activite: row.activite,
-        typeMission: row.typeMission,
-        millesime: row.millesime
+      // 3. Récupérer les anciennes données de cette période depuis Supabase
+      const { data: anciennesDonnees, error: fetchError } = await supabase
+        .from('temps_reels')
+        .select('*')
+        .gte('date', periodeDebut)
+        .lte('date', periodeFin);
+
+      if (fetchError) throw fetchError;
+
+      // 4. Agréger les nouvelles données par collaborateur/client/date
+      const aggregatedNew = {};
+      newTempsReels.forEach(t => {
+        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
+        if (!aggregatedNew[key]) {
+          aggregatedNew[key] = { ...t };
+        } else {
+          aggregatedNew[key].heures += t.heures;
+          if (t.commentaire && !aggregatedNew[key].commentaire?.includes(t.commentaire)) {
+            aggregatedNew[key].commentaire = aggregatedNew[key].commentaire
+              ? `${aggregatedNew[key].commentaire} | ${t.commentaire}`
+              : t.commentaire;
+          }
+        }
       });
-    });
+      const nouvellesDonneesAgregees = Object.values(aggregatedNew);
 
-    // 2. Déterminer la période du fichier importé
-    const dates = newTempsReels.map(t => t.date).filter(d => d);
-    if (dates.length === 0) {
-      alert('Aucune donnée valide à importer');
-      return;
-    }
-    const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
-    const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
+      // 5. Comparer et détecter les modifications
+      const modifications = {
+        ajouts: [],
+        modifications: [],
+        suppressions: []
+      };
 
-    // 3. Récupérer les anciennes données de cette période
-    const anciennesDonnees = tempsReels.filter(t => t.date >= periodeDebut && t.date <= periodeFin);
-    const donneesHorsPeriode = tempsReels.filter(t => t.date < periodeDebut || t.date > periodeFin);
+      // Index des anciennes données
+      const anciennesIndex = {};
+      (anciennesDonnees || []).forEach(t => {
+        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
+        anciennesIndex[key] = t;
+      });
 
-    // 4. Agréger les nouvelles données par collaborateur/client/date
-    const aggregatedNew = {};
-    newTempsReels.forEach(t => {
-      const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-      if (!aggregatedNew[key]) {
-        aggregatedNew[key] = { ...t };
-      } else {
-        aggregatedNew[key].heures += t.heures;
-        if (t.commentaire && !aggregatedNew[key].commentaire?.includes(t.commentaire)) {
-          aggregatedNew[key].commentaire = aggregatedNew[key].commentaire
-            ? `${aggregatedNew[key].commentaire} | ${t.commentaire}`
-            : t.commentaire;
+      // Index des nouvelles données
+      const nouvellesIndex = {};
+      nouvellesDonneesAgregees.forEach(t => {
+        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
+        nouvellesIndex[key] = t;
+      });
+
+      // Détecter ajouts et modifications
+      Object.keys(nouvellesIndex).forEach(key => {
+        const nouveau = nouvellesIndex[key];
+        const ancien = anciennesIndex[key];
+        const collab = collaborateurs.find(c => c.id === nouveau.collaborateur_id);
+        const client = clients.find(c => c.id === nouveau.client_id);
+
+        if (!ancien) {
+          modifications.ajouts.push({
+            collaborateur: collab?.nom || 'Inconnu',
+            client: client?.nom || 'Inconnu',
+            date: nouveau.date,
+            heures: nouveau.heures
+          });
+        } else if (Math.abs(parseFloat(ancien.heures) - nouveau.heures) > 0.01) {
+          modifications.modifications.push({
+            collaborateur: collab?.nom || 'Inconnu',
+            client: client?.nom || 'Inconnu',
+            date: nouveau.date,
+            anciennesHeures: parseFloat(ancien.heures),
+            nouvellesHeures: nouveau.heures,
+            ecart: Math.round((nouveau.heures - parseFloat(ancien.heures)) * 100) / 100
+          });
+        }
+      });
+
+      // Détecter suppressions
+      Object.keys(anciennesIndex).forEach(key => {
+        if (!nouvellesIndex[key]) {
+          const ancien = anciennesIndex[key];
+          const collab = collaborateurs.find(c => c.id === ancien.collaborateur_id);
+          const client = clients.find(c => c.id === ancien.client_id);
+          modifications.suppressions.push({
+            collaborateur: collab?.nom || 'Inconnu',
+            client: client?.nom || 'Inconnu',
+            date: ancien.date,
+            heures: parseFloat(ancien.heures)
+          });
+        }
+      });
+
+      // 6. Supprimer les anciennes données de la période
+      const { error: deleteError } = await supabase
+        .from('temps_reels')
+        .delete()
+        .gte('date', periodeDebut)
+        .lte('date', periodeFin);
+
+      if (deleteError) throw deleteError;
+
+      // 7. Insérer les nouvelles données
+      if (nouvellesDonneesAgregees.length > 0) {
+        const { error: insertError } = await supabase
+          .from('temps_reels')
+          .insert(nouvellesDonneesAgregees);
+
+        if (insertError) throw insertError;
+      }
+
+      // 8. Enregistrer dans le journal si des modifications ont eu lieu
+      const hasChanges = modifications.ajouts.length > 0 ||
+                         modifications.modifications.length > 0 ||
+                         modifications.suppressions.length > 0;
+
+      if (hasChanges) {
+        const { data: journalEntry, error: journalError } = await supabase
+          .from('journal_imports')
+          .insert({
+            periode_debut: periodeDebut,
+            periode_fin: periodeFin,
+            nb_ajouts: modifications.ajouts.length,
+            nb_modifications: modifications.modifications.length,
+            nb_suppressions: modifications.suppressions.length,
+            details: modifications
+          })
+          .select()
+          .single();
+
+        if (!journalError && journalEntry) {
+          setJournalModifications(prev => [journalEntry, ...prev]);
         }
       }
-    });
-    const nouvellesDonneesAgregees = Object.values(aggregatedNew);
 
-    // 5. Comparer et détecter les modifications
-    const modifications = {
-      date: new Date().toISOString(),
-      periodeDebut,
-      periodeFin,
-      ajouts: [],
-      modifications: [],
-      suppressions: []
-    };
+      // 9. Recharger les temps réels depuis Supabase
+      const { data: newTempsData } = await supabase
+        .from('temps_reels')
+        .select('*')
+        .order('date', { ascending: false });
 
-    // Index des anciennes données
-    const anciennesIndex = {};
-    anciennesDonnees.forEach(t => {
-      const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-      anciennesIndex[key] = t;
-    });
+      setTempsReels(newTempsData || []);
 
-    // Index des nouvelles données
-    const nouvellesIndex = {};
-    nouvellesDonneesAgregees.forEach(t => {
-      const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-      nouvellesIndex[key] = t;
-    });
+      // 10. Afficher le résumé
+      const resume = [
+        `Import terminé ! (Période: ${periodeDebut} → ${periodeFin})`,
+        '',
+        `✅ ${modifications.ajouts.length} ajout(s)`,
+        `📝 ${modifications.modifications.length} modification(s)`,
+        `🗑️ ${modifications.suppressions.length} suppression(s)`,
+        `⏭️ ${lignesIgnorees} ligne(s) ignorée(s) (mapping manquant)`,
+        '',
+        `📊 Données sauvegardées dans Supabase`
+      ].join('\n');
 
-    // Détecter ajouts et modifications
-    Object.keys(nouvellesIndex).forEach(key => {
-      const nouveau = nouvellesIndex[key];
-      const ancien = anciennesIndex[key];
-      const collab = collaborateurs.find(c => c.id === nouveau.collaborateur_id);
-      const client = clients.find(c => c.id === nouveau.client_id);
+      alert(resume);
 
-      if (!ancien) {
-        // Nouvelle entrée
-        modifications.ajouts.push({
-          collaborateur: collab?.nom || 'Inconnu',
-          client: client?.nom || 'Inconnu',
-          date: nouveau.date,
-          heures: nouveau.heures
-        });
-      } else if (Math.abs(ancien.heures - nouveau.heures) > 0.01) {
-        // Modification des heures
-        modifications.modifications.push({
-          collaborateur: collab?.nom || 'Inconnu',
-          client: client?.nom || 'Inconnu',
-          date: nouveau.date,
-          anciennesHeures: ancien.heures,
-          nouvellesHeures: nouveau.heures,
-          ecart: Math.round((nouveau.heures - ancien.heures) * 100) / 100
-        });
+      // Mettre à jour les filtres de période avec la période importée
+      setDateDebut(periodeDebut);
+      setDateFin(periodeFin);
+
+      // Aller au journal si des modifications importantes
+      if (modifications.suppressions.length > 0 || modifications.modifications.length > 0) {
+        setActiveTab('journal');
+      } else {
+        setActiveTab('ecarts');
       }
-    });
-
-    // Détecter suppressions
-    Object.keys(anciennesIndex).forEach(key => {
-      if (!nouvellesIndex[key]) {
-        const ancien = anciennesIndex[key];
-        const collab = collaborateurs.find(c => c.id === ancien.collaborateur_id);
-        const client = clients.find(c => c.id === ancien.client_id);
-        modifications.suppressions.push({
-          collaborateur: collab?.nom || 'Inconnu',
-          client: client?.nom || 'Inconnu',
-          date: ancien.date,
-          heures: ancien.heures
-        });
-      }
-    });
-
-    // 6. Enregistrer dans le journal si des modifications ont eu lieu
-    const hasChanges = modifications.ajouts.length > 0 ||
-                       modifications.modifications.length > 0 ||
-                       modifications.suppressions.length > 0;
-
-    if (hasChanges) {
-      setJournalModifications(prev => [modifications, ...prev].slice(0, 100)); // Garder les 100 derniers
+    } catch (err) {
+      console.error('Erreur import:', err);
+      alert('Erreur lors de l\'import: ' + err.message);
     }
-
-    // 7. Remplacer les données de la période par les nouvelles
-    const finalTempsReels = [...donneesHorsPeriode, ...nouvellesDonneesAgregees];
-    setTempsReels(finalTempsReels);
-
-    // 8. Afficher le résumé
-    const resume = [
-      `Import terminé ! (Période: ${periodeDebut} → ${periodeFin})`,
-      '',
-      `✅ ${modifications.ajouts.length} ajout(s)`,
-      `📝 ${modifications.modifications.length} modification(s)`,
-      `🗑️ ${modifications.suppressions.length} suppression(s)`,
-      `⏭️ ${lignesIgnorees} ligne(s) ignorée(s) (mapping manquant)`,
-      '',
-      `📊 Total: ${finalTempsReels.length} entrées`
-    ].join('\n');
-
-    alert(resume);
-
-    // Mettre à jour les filtres de période avec la période importée
-    setDateDebut(periodeDebut);
-    setDateFin(periodeFin);
-
-    // Aller au journal si des modifications importantes
-    if (modifications.suppressions.length > 0 || modifications.modifications.length > 0) {
-      setActiveTab('journal');
-    } else {
-      setActiveTab('ecarts');
-    }
+    setSaving(false);
   };
 
   // Calcul des écarts
@@ -6140,6 +6357,18 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   const mappingCollabsManquants = uniquePennylaneCollabs.filter(p => !mappingCollaborateurs[p]).length;
   const mappingClientsManquants = uniquePennylaneClients.filter(p => !mappingClients[p]).length;
 
+  // Afficher un écran de chargement au démarrage
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-12 shadow-xl border border-slate-700 text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-slate-300 text-lg">Chargement des données...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-6 shadow-xl border border-slate-700">
@@ -6148,6 +6377,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             <h2 className="text-2xl font-bold text-white flex items-center gap-3">
               <Clock className="text-pink-400" />
               Temps Réels & Analyse des Écarts
+              {saving && <span className="text-sm font-normal text-yellow-400 animate-pulse ml-2">(Sauvegarde...)</span>}
             </h2>
             <p className="text-slate-400 mt-1">Import des temps Pennylane et comparaison avec les temps budgétés</p>
           </div>
@@ -6264,10 +6494,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         <ArrowUpDown size={16} className="text-slate-400" />
                         <select
                           value={mappingCollaborateurs[pennylane] || ''}
-                          onChange={(e) => setMappingCollaborateurs({
-                            ...mappingCollaborateurs,
-                            [pennylane]: e.target.value ? parseInt(e.target.value) : null
-                          })}
+                          onChange={(e) => saveMappingCollaborateur(pennylane, e.target.value ? parseInt(e.target.value) : null)}
                           className={`w-48 px-3 py-1.5 rounded-lg text-sm ${
                             isMapped
                               ? 'bg-green-600/30 border-green-500 text-white'
@@ -6337,10 +6564,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         <ArrowUpDown size={16} className="text-slate-400" />
                         <select
                           value={mappingClients[pennylane] || ''}
-                          onChange={(e) => setMappingClients({
-                            ...mappingClients,
-                            [pennylane]: e.target.value ? parseInt(e.target.value) : null
-                          })}
+                          onChange={(e) => saveMappingClient(pennylane, e.target.value ? parseInt(e.target.value) : null)}
                           className={`w-64 px-3 py-1.5 rounded-lg text-sm ${
                             isMapped
                               ? 'bg-green-600/30 border-green-500 text-white'
@@ -6725,8 +6949,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             ) : (
               <div className="space-y-4">
                 {journalModifications.map((entry, idx) => {
-                  const dateImport = new Date(entry.date);
-                  const totalModifs = entry.ajouts.length + entry.modifications.length + entry.suppressions.length;
+                  // Support des deux formats: ancien (localStorage) et nouveau (Supabase)
+                  const dateImport = new Date(entry.date_import || entry.date);
+                  const details = entry.details || entry;
+                  const ajouts = details.ajouts || [];
+                  const modifications = details.modifications || [];
+                  const suppressions = details.suppressions || [];
+                  const periodeDebut = entry.periode_debut || entry.periodeDebut;
+                  const periodeFin = entry.periode_fin || entry.periodeFin;
 
                   return (
                     <div key={idx} className="bg-slate-700/50 rounded-lg overflow-hidden">
@@ -6743,23 +6973,23 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                             })}
                           </div>
                           <div className="text-slate-400 text-sm">
-                            Période: {entry.periodeDebut} → {entry.periodeFin}
+                            Période: {periodeDebut} → {periodeFin}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {entry.ajouts.length > 0 && (
+                          {ajouts.length > 0 && (
                             <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
-                              +{entry.ajouts.length} ajout(s)
+                              +{ajouts.length} ajout(s)
                             </span>
                           )}
-                          {entry.modifications.length > 0 && (
+                          {modifications.length > 0 && (
                             <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded">
-                              {entry.modifications.length} modif(s)
+                              {modifications.length} modif(s)
                             </span>
                           )}
-                          {entry.suppressions.length > 0 && (
+                          {suppressions.length > 0 && (
                             <span className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded">
-                              -{entry.suppressions.length} suppression(s)
+                              -{suppressions.length} suppression(s)
                             </span>
                           )}
                         </div>
@@ -6768,11 +6998,11 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       {/* Détails des modifications */}
                       <div className="p-4 space-y-4">
                         {/* Suppressions (en premier car plus critique) */}
-                        {entry.suppressions.length > 0 && (
+                        {suppressions.length > 0 && (
                           <div>
                             <h4 className="text-red-400 font-medium mb-2 flex items-center gap-2">
                               <Trash2 size={16} />
-                              Entrées supprimées ({entry.suppressions.length})
+                              Entrées supprimées ({suppressions.length})
                             </h4>
                             <div className="bg-red-500/10 rounded-lg overflow-hidden">
                               <table className="w-full text-sm">
@@ -6785,7 +7015,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {entry.suppressions.map((s, sIdx) => (
+                                  {suppressions.map((s, sIdx) => (
                                     <tr key={sIdx} className="border-t border-red-500/20">
                                       <td className="px-3 py-2 text-white">{s.collaborateur}</td>
                                       <td className="px-3 py-2 text-white">{s.client}</td>
@@ -6800,11 +7030,11 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         )}
 
                         {/* Modifications */}
-                        {entry.modifications.length > 0 && (
+                        {modifications.length > 0 && (
                           <div>
                             <h4 className="text-amber-400 font-medium mb-2 flex items-center gap-2">
                               <Pencil size={16} />
-                              Heures modifiées ({entry.modifications.length})
+                              Heures modifiées ({modifications.length})
                             </h4>
                             <div className="bg-amber-500/10 rounded-lg overflow-hidden">
                               <table className="w-full text-sm">
@@ -6819,7 +7049,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {entry.modifications.map((m, mIdx) => (
+                                  {modifications.map((m, mIdx) => (
                                     <tr key={mIdx} className="border-t border-amber-500/20">
                                       <td className="px-3 py-2 text-white">{m.collaborateur}</td>
                                       <td className="px-3 py-2 text-white">{m.client}</td>
@@ -6838,13 +7068,13 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         )}
 
                         {/* Ajouts (moins critique, replié par défaut si beaucoup) */}
-                        {entry.ajouts.length > 0 && (
+                        {ajouts.length > 0 && (
                           <div>
                             <h4 className="text-green-400 font-medium mb-2 flex items-center gap-2">
                               <Plus size={16} />
-                              Nouvelles entrées ({entry.ajouts.length})
+                              Nouvelles entrées ({ajouts.length})
                             </h4>
-                            {entry.ajouts.length <= 10 ? (
+                            {ajouts.length <= 10 ? (
                               <div className="bg-green-500/10 rounded-lg overflow-hidden">
                                 <table className="w-full text-sm">
                                   <thead className="bg-green-500/20">
@@ -6856,7 +7086,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {entry.ajouts.map((a, aIdx) => (
+                                    {ajouts.map((a, aIdx) => (
                                       <tr key={aIdx} className="border-t border-green-500/20">
                                         <td className="px-3 py-2 text-white">{a.collaborateur}</td>
                                         <td className="px-3 py-2 text-white">{a.client}</td>
@@ -6869,8 +7099,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                               </div>
                             ) : (
                               <div className="bg-green-500/10 rounded-lg p-3 text-green-300 text-sm">
-                                {entry.ajouts.length} nouvelles entrées ajoutées
-                                (total: {Math.round(entry.ajouts.reduce((sum, a) => sum + a.heures, 0) * 10) / 10}h)
+                                {ajouts.length} nouvelles entrées ajoutées
+                                (total: {Math.round(ajouts.reduce((sum, a) => sum + a.heures, 0) * 10) / 10}h)
                               </div>
                             )}
                           </div>
