@@ -9,12 +9,17 @@ CREATE TABLE IF NOT EXISTS temps_reels (
   activite TEXT,
   type_mission TEXT,
   millesime TEXT,
+  cabinet TEXT CHECK(cabinet IN ('Zerah Fiduciaire', 'Audit Up')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
-  -- Index pour les recherches fréquentes
-  CONSTRAINT unique_temps_reel UNIQUE(collaborateur_id, client_id, date)
+  -- Index pour les recherches fréquentes (maintenant par cabinet aussi)
+  CONSTRAINT unique_temps_reel UNIQUE(collaborateur_id, client_id, date, cabinet)
 );
+
+-- Migration: Ajouter la colonne cabinet si elle n'existe pas
+-- ALTER TABLE temps_reels ADD COLUMN IF NOT EXISTS cabinet TEXT CHECK(cabinet IN ('Zerah Fiduciaire', 'Audit Up'));
+-- UPDATE temps_reels SET cabinet = 'Zerah Fiduciaire' WHERE cabinet IS NULL;
 
 -- Index pour améliorer les performances
 CREATE INDEX IF NOT EXISTS idx_temps_reels_date ON temps_reels(date);
@@ -42,12 +47,16 @@ CREATE TABLE IF NOT EXISTS journal_imports (
   date_import TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   periode_debut DATE,
   periode_fin DATE,
+  cabinet TEXT CHECK(cabinet IN ('Zerah Fiduciaire', 'Audit Up')),
   nb_ajouts INTEGER DEFAULT 0,
   nb_modifications INTEGER DEFAULT 0,
   nb_suppressions INTEGER DEFAULT 0,
   details JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Migration: Ajouter la colonne cabinet à journal_imports si elle n'existe pas
+-- ALTER TABLE journal_imports ADD COLUMN IF NOT EXISTS cabinet TEXT CHECK(cabinet IN ('Zerah Fiduciaire', 'Audit Up'));
 
 -- Activer RLS (Row Level Security) si nécessaire
 ALTER TABLE temps_reels ENABLE ROW LEVEL SECURITY;
