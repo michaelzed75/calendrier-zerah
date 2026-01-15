@@ -5668,10 +5668,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Sélection du cabinet pour l'import
-  const [cabinetImport, setCabinetImport] = useState(''); // 'Zerah Fiduciaire' ou 'Audit Up'
-  const [showCabinetWarning, setShowCabinetWarning] = useState(false);
-  const [cabinetWarningMessage, setCabinetWarningMessage] = useState('');
+  // Variables obsolètes supprimées (Option 3 : plus de sélection de cabinet)
+  // Le cabinet se déduit maintenant du client mappé
 
   // Mappings depuis Supabase
   const [mappingCollaborateurs, setMappingCollaborateurs] = useState({});
@@ -5688,13 +5686,18 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   // Filtres pour l'analyse des écarts
   const [filtreCollaborateur, setFiltreCollaborateur] = useState('');
   const [filtreClient, setFiltreClient] = useState('');
-  const [filtrePeriode, setFiltrePeriode] = useState('mois'); // 'mois', 'trimestre', 'annee', 'custom'
+  const [filtrePeriode, setFiltrePeriode] = useState('jour'); // 'jour', 'mois', 'trimestre', 'annee', 'custom'
+  // Par défaut : J-1 (hier)
   const [dateDebut, setDateDebut] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 1);
+    d.setDate(d.getDate() - 1); // J-1
     return formatDateToYMD(d);
   });
-  const [dateFin, setDateFin] = useState(formatDateToYMD(new Date()));
+  const [dateFin, setDateFin] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1); // J-1
+    return formatDateToYMD(d);
+  });
   const [searchEcarts, setSearchEcarts] = useState('');
   const [sortEcarts, setSortEcarts] = useState({ column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
 
@@ -5954,50 +5957,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         totalHeures: Math.round(parsed.reduce((sum, r) => sum + r.dureeHeures, 0) * 100) / 100
       });
 
-      // Contrôle de cohérence : vérifier si des clients du cabinet sélectionné sont présents
-      if (cabinetImport) {
-        checkCabinetCoherence(uniqueClients, cabinetImport);
-      }
     };
     reader.readAsBinaryString(file);
-  };
-
-  // Vérifier la cohérence entre le cabinet sélectionné et les clients du fichier
-  const checkCabinetCoherence = (uniqueClientsFromFile, selectedCabinet) => {
-    // Trouver les clients mappés qui appartiennent au cabinet sélectionné
-    let clientsDuCabinet = 0;
-    let clientsAutreCabinet = 0;
-
-    uniqueClientsFromFile.forEach(clientPennylane => {
-      const clientId = mappingClients[clientPennylane];
-      if (clientId) {
-        const client = clients.find(c => c.id === clientId);
-        if (client) {
-          if (client.cabinet === selectedCabinet) {
-            clientsDuCabinet++;
-          } else if (client.cabinet && client.cabinet !== selectedCabinet) {
-            clientsAutreCabinet++;
-          }
-        }
-      }
-    });
-
-    // Si aucun client du cabinet sélectionné n'est trouvé mais des clients de l'autre cabinet sont présents
-    if (clientsDuCabinet === 0 && clientsAutreCabinet > 0) {
-      const autreCabinet = selectedCabinet === 'Zerah Fiduciaire' ? 'Audit Up' : 'Zerah Fiduciaire';
-      setCabinetWarningMessage(
-        `Attention : Aucun client ${selectedCabinet} n'a été trouvé dans ce fichier, mais ${clientsAutreCabinet} client(s) ${autreCabinet} ont été détectés. Êtes-vous sûr d'avoir sélectionné le bon cabinet ?`
-      );
-      setShowCabinetWarning(true);
-    } else if (clientsDuCabinet === 0) {
-      setCabinetWarningMessage(
-        `Attention : Aucun client ${selectedCabinet} n'a été trouvé dans ce fichier. Vérifiez que vous avez bien sélectionné le bon cabinet et que les mappings clients sont configurés.`
-      );
-      setShowCabinetWarning(true);
-    } else {
-      setShowCabinetWarning(false);
-      setCabinetWarningMessage('');
-    }
   };
 
   // Auto-matching des collaborateurs (avec sauvegarde Supabase)
@@ -6073,19 +6034,16 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
     setMappingClients(newMapping);
   };
 
-  // Valider et enregistrer les temps réels (mode remplacement par période ET par cabinet) - SUPABASE
+  // Valider et enregistrer les temps réels (mode FUSION INTELLIGENTE) - SUPABASE
+  // Option A : Ajouter/Mettre à jour sans jamais supprimer automatiquement
+  // Option 3 : Le cabinet se déduit du client, pas de champ cabinet sur les temps
   const handleValidateImport = async () => {
-    // Vérifier qu'un cabinet est sélectionné
-    if (!cabinetImport) {
-      alert('Veuillez sélectionner un cabinet (Zerah Fiduciaire ou Audit Up) avant de valider l\'import.');
-      return;
-    }
-
     setSaving(true);
     try {
-      // 1. Parser les nouvelles données
+      // 1. Parser les nouvelles données (sans cabinet)
       const newTempsReels = [];
       let lignesIgnorees = 0;
+      const lignesIgnoreesDetails = [];
 
       importedData.forEach(row => {
         const collaborateurId = mappingCollaborateurs[row.collaborateurPennylane];
@@ -6093,6 +6051,11 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
         if (!collaborateurId || !clientId) {
           lignesIgnorees++;
+          lignesIgnoreesDetails.push({
+            collaborateur: row.collaborateurPennylane,
+            client: row.clientPennylane,
+            raison: !collaborateurId ? 'Collaborateur non mappé' : 'Client non mappé'
+          });
           return;
         }
 
@@ -6104,39 +6067,28 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           commentaire: row.commentaire,
           activite: row.activite,
           type_mission: row.typeMission,
-          millesime: row.millesime,
-          cabinet: cabinetImport // Ajouter le cabinet sélectionné
+          millesime: row.millesime
+          // Plus de champ cabinet - il se déduit du client
         });
       });
 
-      // 2. Déterminer la période du fichier importé
-      const dates = newTempsReels.map(t => t.date).filter(d => d);
-      if (dates.length === 0) {
-        alert('Aucune donnée valide à importer');
+      // 2. Vérifier qu'il y a des données à importer
+      if (newTempsReels.length === 0) {
+        alert('Aucune donnée valide à importer.\n\nVérifiez que les mappings collaborateurs et clients sont configurés.');
         setSaving(false);
         return;
       }
-      const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
-      const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
 
-      // 3. Récupérer les anciennes données de cette période ET du cabinet sélectionné depuis Supabase
-      const { data: anciennesDonnees, error: fetchError } = await supabase
-        .from('temps_reels')
-        .select('*')
-        .gte('date', periodeDebut)
-        .lte('date', periodeFin)
-        .eq('cabinet', cabinetImport); // Filtrer par cabinet
-
-      if (fetchError) throw fetchError;
-
-      // 4. Agréger les nouvelles données par collaborateur/client/date
+      // 3. Agréger les nouvelles données par collaborateur/client/date
       const aggregatedNew = {};
       newTempsReels.forEach(t => {
         const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
         if (!aggregatedNew[key]) {
           aggregatedNew[key] = { ...t };
         } else {
+          // Additionner les heures pour la même combinaison
           aggregatedNew[key].heures += t.heures;
+          // Concaténer les commentaires distincts
           if (t.commentaire && !aggregatedNew[key].commentaire?.includes(t.commentaire)) {
             aggregatedNew[key].commentaire = aggregatedNew[key].commentaire
               ? `${aggregatedNew[key].commentaire} | ${t.commentaire}`
@@ -6146,91 +6098,119 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       });
       const nouvellesDonneesAgregees = Object.values(aggregatedNew);
 
-      // 5. Comparer et détecter les modifications
+      // 4. Déterminer la période pour le journal
+      const dates = nouvellesDonneesAgregees.map(t => t.date).filter(d => d);
+      const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
+      const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
+
+      // 5. Récupérer les données existantes pour ces combinaisons spécifiques
+      // On ne récupère QUE les combinaisons qui sont dans le fichier importé
+      const keysToCheck = nouvellesDonneesAgregees.map(t => ({
+        collaborateur_id: t.collaborateur_id,
+        client_id: t.client_id,
+        date: t.date
+      }));
+
+      // Requête pour récupérer les temps existants qui correspondent aux clés importées
+      const { data: existingTemps, error: fetchError } = await supabase
+        .from('temps_reels')
+        .select('*')
+        .gte('date', periodeDebut)
+        .lte('date', periodeFin);
+
+      if (fetchError) throw fetchError;
+
+      // Indexer les données existantes
+      const existingIndex = {};
+      (existingTemps || []).forEach(t => {
+        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
+        existingIndex[key] = t;
+      });
+
+      // 6. FUSION INTELLIGENTE : Séparer ajouts et mises à jour
       const modifications = {
         ajouts: [],
         modifications: [],
-        suppressions: []
+        inchanges: []
       };
 
-      // Index des anciennes données (seulement celles du cabinet sélectionné)
-      const anciennesIndex = {};
-      (anciennesDonnees || []).forEach(t => {
-        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-        anciennesIndex[key] = t;
-      });
+      const toInsert = [];
+      const toUpdate = [];
 
-      // Index des nouvelles données
-      const nouvellesIndex = {};
-      nouvellesDonneesAgregees.forEach(t => {
-        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-        nouvellesIndex[key] = t;
-      });
-
-      // Détecter ajouts et modifications
-      Object.keys(nouvellesIndex).forEach(key => {
-        const nouveau = nouvellesIndex[key];
-        const ancien = anciennesIndex[key];
+      nouvellesDonneesAgregees.forEach(nouveau => {
+        const key = `${nouveau.collaborateur_id}-${nouveau.client_id}-${nouveau.date}`;
+        const existant = existingIndex[key];
         const collab = collaborateurs.find(c => c.id === nouveau.collaborateur_id);
         const client = clients.find(c => c.id === nouveau.client_id);
 
-        if (!ancien) {
+        if (!existant) {
+          // AJOUT : La combinaison n'existe pas encore
+          toInsert.push(nouveau);
           modifications.ajouts.push({
             collaborateur: collab?.nom || 'Inconnu',
             client: client?.nom || 'Inconnu',
             date: nouveau.date,
-            heures: nouveau.heures
+            heures: Math.round(nouveau.heures * 100) / 100
           });
-        } else if (Math.abs(parseFloat(ancien.heures) - nouveau.heures) > 0.01) {
-          modifications.modifications.push({
-            collaborateur: collab?.nom || 'Inconnu',
-            client: client?.nom || 'Inconnu',
-            date: nouveau.date,
-            anciennesHeures: parseFloat(ancien.heures),
-            nouvellesHeures: nouveau.heures,
-            ecart: Math.round((nouveau.heures - parseFloat(ancien.heures)) * 100) / 100
-          });
+        } else {
+          // Vérifier si les heures sont différentes
+          const heuresExistantes = parseFloat(existant.heures);
+          const heuresNouvelles = nouveau.heures;
+
+          if (Math.abs(heuresExistantes - heuresNouvelles) > 0.01) {
+            // MODIFICATION : Les heures sont différentes
+            toUpdate.push({
+              id: existant.id,
+              ...nouveau
+            });
+            modifications.modifications.push({
+              collaborateur: collab?.nom || 'Inconnu',
+              client: client?.nom || 'Inconnu',
+              date: nouveau.date,
+              anciennesHeures: heuresExistantes,
+              nouvellesHeures: Math.round(heuresNouvelles * 100) / 100,
+              ecart: Math.round((heuresNouvelles - heuresExistantes) * 100) / 100
+            });
+          } else {
+            // INCHANGE : Les heures sont identiques
+            modifications.inchanges.push({
+              collaborateur: collab?.nom || 'Inconnu',
+              client: client?.nom || 'Inconnu',
+              date: nouveau.date,
+              heures: heuresExistantes
+            });
+          }
         }
       });
 
-      // Détecter suppressions
-      Object.keys(anciennesIndex).forEach(key => {
-        if (!nouvellesIndex[key]) {
-          const ancien = anciennesIndex[key];
-          const collab = collaborateurs.find(c => c.id === ancien.collaborateur_id);
-          const client = clients.find(c => c.id === ancien.client_id);
-          modifications.suppressions.push({
-            collaborateur: collab?.nom || 'Inconnu',
-            client: client?.nom || 'Inconnu',
-            date: ancien.date,
-            heures: parseFloat(ancien.heures)
-          });
-        }
-      });
-
-      // 6. Supprimer les anciennes données de la période ET du cabinet sélectionné uniquement
-      const { error: deleteError } = await supabase
-        .from('temps_reels')
-        .delete()
-        .gte('date', periodeDebut)
-        .lte('date', periodeFin)
-        .eq('cabinet', cabinetImport); // Ne supprimer que les données du cabinet sélectionné
-
-      if (deleteError) throw deleteError;
-
-      // 7. Insérer les nouvelles données
-      if (nouvellesDonneesAgregees.length > 0) {
+      // 7. Exécuter les insertions
+      if (toInsert.length > 0) {
         const { error: insertError } = await supabase
           .from('temps_reels')
-          .insert(nouvellesDonneesAgregees);
+          .insert(toInsert);
 
         if (insertError) throw insertError;
       }
 
-      // 8. Enregistrer dans le journal si des modifications ont eu lieu
-      const hasChanges = modifications.ajouts.length > 0 ||
-                         modifications.modifications.length > 0 ||
-                         modifications.suppressions.length > 0;
+      // 8. Exécuter les mises à jour une par une (upsert)
+      for (const item of toUpdate) {
+        const { id, ...dataWithoutId } = item;
+        const { error: updateError } = await supabase
+          .from('temps_reels')
+          .update({
+            heures: dataWithoutId.heures,
+            commentaire: dataWithoutId.commentaire,
+            activite: dataWithoutId.activite,
+            type_mission: dataWithoutId.type_mission,
+            millesime: dataWithoutId.millesime
+          })
+          .eq('id', id);
+
+        if (updateError) throw updateError;
+      }
+
+      // 9. Enregistrer dans le journal
+      const hasChanges = modifications.ajouts.length > 0 || modifications.modifications.length > 0;
 
       if (hasChanges) {
         const { data: journalEntry, error: journalError } = await supabase
@@ -6238,11 +6218,13 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           .insert({
             periode_debut: periodeDebut,
             periode_fin: periodeFin,
-            cabinet: cabinetImport, // Ajouter le cabinet dans le journal
             nb_ajouts: modifications.ajouts.length,
             nb_modifications: modifications.modifications.length,
-            nb_suppressions: modifications.suppressions.length,
-            details: modifications
+            nb_suppressions: 0, // Plus jamais de suppression automatique !
+            details: {
+              ...modifications,
+              lignesIgnorees: lignesIgnoreesDetails.slice(0, 20) // Limiter pour ne pas surcharger
+            }
           })
           .select()
           .single();
@@ -6252,7 +6234,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         }
       }
 
-      // 9. Recharger les temps réels depuis Supabase
+      // 10. Recharger les temps réels depuis Supabase
       const { data: newTempsData } = await supabase
         .from('temps_reels')
         .select('*')
@@ -6260,32 +6242,25 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
       setTempsReels(newTempsData || []);
 
-      // 10. Afficher le résumé
+      // 11. Afficher le résumé
       const resume = [
-        `Import terminé pour ${cabinetImport} !`,
-        `Période: ${periodeDebut} → ${periodeFin}`,
+        `Import terminé (mode fusion) !`,
+        `Période concernée: ${periodeDebut} au ${periodeFin}`,
         '',
-        `✅ ${modifications.ajouts.length} ajout(s)`,
-        `📝 ${modifications.modifications.length} modification(s)`,
-        `🗑️ ${modifications.suppressions.length} suppression(s)`,
-        `⏭️ ${lignesIgnorees} ligne(s) ignorée(s) (mapping manquant)`,
+        `${modifications.ajouts.length} nouveau(x) temps ajouté(s)`,
+        `${modifications.modifications.length} temps mis à jour`,
+        `${modifications.inchanges.length} temps inchangé(s)`,
+        `${lignesIgnorees} ligne(s) ignorée(s) (mapping manquant)`,
         '',
-        `📊 Données sauvegardées dans Supabase`,
-        `ℹ️ Les données de l'autre cabinet n'ont pas été modifiées`
+        `Aucune donnée supprimée (mode fusion)`
       ].join('\n');
 
       alert(resume);
 
-      // Mettre à jour les filtres de période avec la période importée
-      setDateDebut(periodeDebut);
-      setDateFin(periodeFin);
+      // Ne plus modifier les filtres après import - ils restent sur J-1
+      // Aller à l'onglet écarts
+      setActiveTab('ecarts');
 
-      // Aller au journal si des modifications importantes
-      if (modifications.suppressions.length > 0 || modifications.modifications.length > 0) {
-        setActiveTab('journal');
-      } else {
-        setActiveTab('ecarts');
-      }
     } catch (err) {
       console.error('Erreur import:', err);
       alert('Erreur lors de l\'import: ' + err.message);
@@ -6648,114 +6623,36 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         {/* Onglet Import */}
         {activeTab === 'import' && (
           <div className="space-y-6">
-            {/* Sélection du cabinet - OBLIGATOIRE avant l'import */}
-            <div className="bg-slate-700/50 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <Building2 size={20} />
-                Pour quel cabinet importez-vous ces temps ?
-              </h3>
-              <p className="text-slate-400 text-sm mb-4">
-                Sélectionnez le cabinet source. Seules les données de ce cabinet seront remplacées pour la période importée.
-              </p>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => {
-                    setCabinetImport('Zerah Fiduciaire');
-                    setShowCabinetWarning(false);
-                    // Re-vérifier la cohérence si des données sont déjà importées
-                    if (uniquePennylaneClients.length > 0) {
-                      checkCabinetCoherence(uniquePennylaneClients, 'Zerah Fiduciaire');
-                    }
-                  }}
-                  className={`flex-1 p-4 rounded-lg border-2 transition ${
-                    cabinetImport === 'Zerah Fiduciaire'
-                      ? 'border-blue-500 bg-blue-500/20 text-white'
-                      : 'border-slate-600 bg-slate-600/30 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  <div className="font-semibold text-lg">Zerah Fiduciaire</div>
-                </button>
-                <button
-                  onClick={() => {
-                    setCabinetImport('Audit Up');
-                    setShowCabinetWarning(false);
-                    // Re-vérifier la cohérence si des données sont déjà importées
-                    if (uniquePennylaneClients.length > 0) {
-                      checkCabinetCoherence(uniquePennylaneClients, 'Audit Up');
-                    }
-                  }}
-                  className={`flex-1 p-4 rounded-lg border-2 transition ${
-                    cabinetImport === 'Audit Up'
-                      ? 'border-purple-500 bg-purple-500/20 text-white'
-                      : 'border-slate-600 bg-slate-600/30 text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  <div className="font-semibold text-lg">Audit Up</div>
-                </button>
+            {/* Info mode fusion */}
+            <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 flex items-start gap-3">
+              <Check className="text-green-400 flex-shrink-0 mt-0.5" size={24} />
+              <div>
+                <p className="text-green-400 font-medium mb-1">Mode Fusion Intelligente</p>
+                <p className="text-slate-300 text-sm">
+                  Les temps importés seront ajoutés ou mis à jour. Les données existantes non présentes dans le fichier ne seront jamais supprimées.
+                  Le cabinet est automatiquement déterminé par le client.
+                </p>
               </div>
-              {cabinetImport && (
-                <div className={`mt-3 text-sm ${cabinetImport === 'Zerah Fiduciaire' ? 'text-blue-400' : 'text-purple-400'}`}>
-                  ✓ Cabinet sélectionné : {cabinetImport}
-                </div>
-              )}
             </div>
 
             {/* Zone d'upload */}
-            <div className={`border-2 border-dashed rounded-xl p-8 text-center transition ${
-              cabinetImport
-                ? 'border-slate-600 hover:border-pink-500'
-                : 'border-slate-700 opacity-50 cursor-not-allowed'
-            }`}>
+            <div className="border-2 border-dashed rounded-xl p-8 text-center transition border-slate-600 hover:border-pink-500">
               <Upload size={48} className="mx-auto text-slate-400 mb-4" />
               <p className="text-white text-lg mb-2">Importez votre fichier Excel Pennylane</p>
               <p className="text-slate-400 text-sm mb-4">
                 Format attendu: Collaborateur, Client, Date, Durée Facturée, etc.
               </p>
-              {!cabinetImport ? (
-                <p className="text-amber-400 text-sm mb-4">
-                  ⚠️ Veuillez d'abord sélectionner un cabinet ci-dessus
-                </p>
-              ) : (
-                <label className={`inline-flex items-center gap-2 px-6 py-3 ${accent.color} ${accent.hover} text-white rounded-lg cursor-pointer transition`}>
-                  <Upload size={20} />
-                  Choisir un fichier
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-              )}
+              <label className={`inline-flex items-center gap-2 px-6 py-3 ${accent.color} ${accent.hover} text-white rounded-lg cursor-pointer transition`}>
+                <Upload size={20} />
+                Choisir un fichier
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
             </div>
-
-            {/* Avertissement de cohérence cabinet */}
-            {showCabinetWarning && (
-              <div className="bg-amber-500/20 border border-amber-500 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="text-amber-400 flex-shrink-0 mt-0.5" size={24} />
-                <div className="flex-1">
-                  <p className="text-amber-400 font-medium mb-2">Vérification recommandée</p>
-                  <p className="text-slate-300 text-sm mb-3">{cabinetWarningMessage}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowCabinetWarning(false)}
-                      className="px-4 py-2 bg-amber-500/30 text-amber-300 rounded hover:bg-amber-500/50 transition text-sm"
-                    >
-                      Continuer quand même
-                    </button>
-                    <button
-                      onClick={() => {
-                        setCabinetImport(cabinetImport === 'Zerah Fiduciaire' ? 'Audit Up' : 'Zerah Fiduciaire');
-                        setShowCabinetWarning(false);
-                      }}
-                      className="px-4 py-2 bg-slate-600 text-white rounded hover:bg-slate-500 transition text-sm"
-                    >
-                      Changer de cabinet
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Statistiques d'import */}
             {importStats && (
