@@ -12,7 +12,29 @@
       "Bash(npm run dev:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(find:*)",
+      "Bash(xargs ls:*)",
+      "Bash(ls -lh \"C:\\\\Users\\\\poste-z04\\\\Documents\\\\calendrier-zerah\\\\scripts\"\" | grep \".sql \")",
+      "Bash(node scripts/setup-temps-reels.js:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nTemps Réels: import séparé par cabinet \\(Zerah/Audit Up\\)\n\n- Ajout sélection obligatoire du cabinet avant import Excel\n- Import ne remplace que les données du cabinet sélectionné\n- Contrôle de cohérence avec avertissement si fichier incorrect\n- Nouvelle colonne ''cabinet'' dans temps_reels et journal_imports\n- Script de migration SQL inclus\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)",
+      "Bash(timeout:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nTemps Réels: mode fusion intelligente + suppression cabinet\n\n- Mode fusion: ajouter/mettre à jour sans jamais supprimer automatiquement\n- Suppression du champ cabinet \\(se déduit du client mappé\\)\n- Suppression du sélecteur de cabinet dans l''interface\n- Filtre écarts par défaut sur J-1 \\(au lieu de la période importée\\)\n- Script SQL de migration inclus\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Bash(powershell:*)",
+      "Bash(npx vercel:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run test:run:*)",
+      "Bash(npm test:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)"
     ]
   }
 }

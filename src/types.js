@@ -40,6 +40,7 @@
  * @property {number|null} chef_mission_id - ID du chef de mission assigné
  * @property {string|null} pennylane_id - ID Pennylane pour la synchronisation
  * @property {string|null} code_pennylane - Code Pennylane
+ * @property {string|null} pennylane_client_api_key - Clé API Pennylane du client
  */
 
 /**
@@ -354,6 +355,103 @@
  * @property {function(): void} onClose - Fermer le modal
  * @property {function(string, string): void} onExport - Exporter (dateDebut, dateFin)
  * @property {AccentColor} accent - Couleur d'accent
+ */
+
+// ============================================
+// TYPES POUR LES TESTS COMPTABLES
+// ============================================
+
+/**
+ * @typedef {Object} TestComptableDefinition
+ * @property {number} id - Identifiant unique
+ * @property {string} code - Code unique du test (ex: 'doublons_fournisseurs')
+ * @property {string} nom - Nom affiché du test
+ * @property {string|null} description - Description détaillée
+ * @property {string|null} categorie - Catégorie (FEC, rapprochement, etc.)
+ * @property {boolean} actif - Si le test est actif
+ * @property {number} ordre_affichage - Ordre d'affichage
+ */
+
+/**
+ * @typedef {'en_cours'|'termine'|'erreur'} TestExecutionStatut
+ */
+
+/**
+ * @typedef {Object} TestComptableExecution
+ * @property {number} id - Identifiant unique
+ * @property {number} client_id - ID du client testé
+ * @property {string} test_code - Code du test exécuté
+ * @property {number} collaborateur_id - ID du collaborateur qui a lancé le test
+ * @property {number} millesime - Année fiscale testée
+ * @property {string} date_execution - Date/heure d'exécution
+ * @property {TestExecutionStatut} statut - Statut de l'exécution
+ * @property {number|null} duree_ms - Durée d'exécution en ms
+ * @property {number} nombre_anomalies - Nombre d'anomalies détectées
+ */
+
+/**
+ * @typedef {'info'|'warning'|'error'|'critical'} SeveriteAnomalie
+ */
+
+/**
+ * @typedef {Object} TestComptableResultat
+ * @property {number} id - Identifiant unique
+ * @property {number} execution_id - ID de l'exécution
+ * @property {string} type_anomalie - Type d'anomalie détectée
+ * @property {SeveriteAnomalie} severite - Niveau de sévérité
+ * @property {Object} donnees - Données de l'anomalie (flexible)
+ * @property {string|null} commentaire - Commentaire optionnel
+ * @property {boolean} traite - Si l'anomalie a été traitée
+ * @property {number|null} traite_par - ID du collaborateur qui a traité
+ * @property {string|null} traite_le - Date de traitement
+ */
+
+/**
+ * @typedef {Object} TestsComptablesPageProps
+ * @property {Client[]} clients - Liste des clients
+ * @property {Collaborateur[]} collaborateurs - Liste des collaborateurs
+ * @property {Collaborateur|null} userCollaborateur - Collaborateur connecté
+ * @property {function(Collaborateur|null): Client[]} getAccessibleClients - Obtenir les clients accessibles
+ * @property {AccentColor} accent - Couleur d'accent
+ */
+
+/**
+ * @typedef {Object} FECEntry
+ * @property {string} JournalCode - Code du journal
+ * @property {string} JournalLib - Libellé du journal
+ * @property {string} EcritureNum - Numéro d'écriture
+ * @property {string} EcritureDate - Date de l'écriture
+ * @property {string} CompteNum - Numéro de compte
+ * @property {string} CompteLib - Libellé du compte
+ * @property {string} CompAuxNum - Numéro de compte auxiliaire
+ * @property {string} CompAuxLib - Libellé compte auxiliaire
+ * @property {string} PieceRef - Référence de la pièce
+ * @property {string} PieceDate - Date de la pièce
+ * @property {string} EcritureLib - Libellé de l'écriture
+ * @property {number} Debit - Montant débit
+ * @property {number} Credit - Montant crédit
+ * @property {string} EcritureLet - Lettrage
+ * @property {string} DateLet - Date de lettrage
+ * @property {string} ValidDate - Date de validation
+ * @property {number} Montantdevise - Montant en devise
+ * @property {string} Idevise - Code devise
+ */
+
+/**
+ * @typedef {Object} TestResultAnomalie
+ * @property {string} type_anomalie - Type de l'anomalie
+ * @property {SeveriteAnomalie} severite - Niveau de sévérité
+ * @property {Object} donnees - Données spécifiques à l'anomalie
+ * @property {string} [commentaire] - Commentaire explicatif
+ */
+
+/**
+ * @typedef {Object} TestDefinition
+ * @property {string} code - Code unique du test
+ * @property {string} nom - Nom affiché
+ * @property {string} description - Description du test
+ * @property {string[]} requiredData - Données requises ('fec', 'invoices', etc.)
+ * @property {function(Object): Promise<TestResultAnomalie[]>} execute - Fonction d'exécution
  */
 
 // ============================================

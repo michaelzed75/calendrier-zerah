@@ -1,8 +1,9 @@
 // @ts-check
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, Check, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
+import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -25,6 +26,14 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [searchTerm, setSearchTerm] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
+
+  // États pour la modal API Key
+  const [apiKeyModalClient, setApiKeyModalClient] = useState(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [testingApiKey, setTestingApiKey] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState(/** @type {'idle'|'success'|'error'|'testing'} */ ('idle'));
+  const [apiKeyError, setApiKeyError] = useState('');
 
   // Chefs de mission pour l'assignation
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
@@ -212,6 +221,137 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     return charges.filter(c => c.client_id === clientId).length;
   };
 
+  // Ouvrir la modal pour configurer la clé API
+  const openApiKeyModal = (client) => {
+    setApiKeyModalClient(client);
+    setApiKeyInput(client.pennylane_client_api_key || '');
+    setApiKeyStatus('idle');
+    setApiKeyError('');
+  };
+
+  // Tester la clé API
+  const handleTestApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setApiKeyError('Veuillez entrer une clé API');
+      return;
+    }
+
+    setTestingApiKey(true);
+    setApiKeyStatus('testing');
+    setApiKeyError('');
+
+    try {
+      const result = await testConnection(apiKeyInput.trim());
+
+      if (result.success) {
+        setApiKeyStatus('success');
+        setApiKeyError('');
+      } else {
+        setApiKeyStatus('error');
+        setApiKeyError(result.error || 'Connexion échouée');
+      }
+    } catch (err) {
+      setApiKeyStatus('error');
+      setApiKeyError(err instanceof Error ? err.message : 'Erreur de test');
+    }
+
+    setTestingApiKey(false);
+  };
+
+  // Sauvegarder la clé API (avec test préalable)
+  const handleSaveApiKey = async () => {
+    if (!apiKeyModalClient) return;
+
+    // Si clé vide, on supprime directement
+    if (!apiKeyInput.trim()) {
+      setSavingApiKey(true);
+      try {
+        const { error } = await supabase
+          .from('clients')
+          .update({ pennylane_client_api_key: null })
+          .eq('id', apiKeyModalClient.id);
+
+        if (error) throw error;
+
+        setClients(prev => prev.map(c =>
+          c.id === apiKeyModalClient.id
+            ? { ...c, pennylane_client_api_key: null }
+            : c
+        ));
+
+        setApiKeyStatus('success');
+        setTimeout(() => {
+          setApiKeyModalClient(null);
+          setApiKeyInput('');
+          setApiKeyStatus('idle');
+          setApiKeyError('');
+        }, 1000);
+      } catch (err) {
+        console.error('Erreur suppression API key:', err);
+        setApiKeyStatus('error');
+        setApiKeyError('Erreur lors de la suppression');
+      }
+      setSavingApiKey(false);
+      return;
+    }
+
+    // Tester d'abord si pas encore fait
+    if (apiKeyStatus !== 'success') {
+      setTestingApiKey(true);
+      setApiKeyStatus('testing');
+      setApiKeyError('');
+
+      try {
+        const result = await testConnection(apiKeyInput.trim());
+
+        if (!result.success) {
+          setApiKeyStatus('error');
+          setApiKeyError(result.error || 'La clé API est invalide');
+          setTestingApiKey(false);
+          return;
+        }
+      } catch (err) {
+        setApiKeyStatus('error');
+        setApiKeyError(err instanceof Error ? err.message : 'Erreur de test');
+        setTestingApiKey(false);
+        return;
+      }
+      setTestingApiKey(false);
+    }
+
+    // Sauvegarder en BDD
+    setSavingApiKey(true);
+
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ pennylane_client_api_key: apiKeyInput.trim() })
+        .eq('id', apiKeyModalClient.id);
+
+      if (error) throw error;
+
+      setClients(prev => prev.map(c =>
+        c.id === apiKeyModalClient.id
+          ? { ...c, pennylane_client_api_key: apiKeyInput.trim() }
+          : c
+      ));
+
+      setApiKeyStatus('success');
+      setTimeout(() => {
+        setApiKeyModalClient(null);
+        setApiKeyInput('');
+        setApiKeyStatus('idle');
+        setApiKeyError('');
+      }, 1500);
+    } catch (err) {
+      console.error('Erreur sauvegarde API key:', err);
+      setApiKeyStatus('error');
+      setApiKeyError('Erreur lors de la sauvegarde en base de données');
+    }
+
+    setSavingApiKey(false);
+  };
+
   // Obtenir le nom du chef de mission
   const getChefName = (chefId) => {
     const chef = collaborateurs.find(c => c.id === chefId);
@@ -340,6 +480,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 <th className="text-left py-3 px-4">Cabinet</th>
                 <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
+                <th className="text-center py-3 px-4">API</th>
                 <th className="text-center py-3 px-4">Actif</th>
                 <th className="text-center py-3 px-4">Actions</th>
               </tr>
@@ -386,6 +527,19 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       ) : (
                         <span className="text-slate-500">0</span>
                       )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => openApiKeyModal(client)}
+                        className={`p-1 rounded transition ${
+                          client.pennylane_client_api_key
+                            ? 'text-green-400 hover:bg-green-900/30'
+                            : 'text-slate-500 hover:bg-slate-700'
+                        }`}
+                        title={client.pennylane_client_api_key ? 'Clé API configurée' : 'Configurer la clé API'}
+                      >
+                        <Key size={18} />
+                      </button>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
@@ -460,6 +614,130 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             onMerge={handleMergeClient}
             onClose={() => setMergingClient(null)}
           />
+        )}
+
+        {/* Modal clé API Pennylane */}
+        {apiKeyModalClient && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Key size={20} className="text-yellow-400" />
+                  Clé API Pennylane
+                </h3>
+                <button
+                  onClick={() => { setApiKeyModalClient(null); setApiKeyInput(''); setApiKeyStatus('idle'); setApiKeyError(''); }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p className="text-slate-400 text-sm mb-4">
+                Configurez la clé API Pennylane pour le client <strong className="text-white">{apiKeyModalClient.nom}</strong>.
+                Cette clé permet d'accéder aux données comptables (FEC, factures...) pour les tests.
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-300 mb-1">Clé API</label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyStatus('idle'); setApiKeyError(''); }}
+                    placeholder="pk_..."
+                    className={`flex-1 bg-slate-700 text-white rounded px-3 py-2 border focus:outline-none ${
+                      apiKeyStatus === 'success' ? 'border-green-500' :
+                      apiKeyStatus === 'error' ? 'border-red-500' :
+                      'border-slate-600 focus:border-blue-500'
+                    }`}
+                  />
+                  <button
+                    onClick={handleTestApiKey}
+                    disabled={testingApiKey || !apiKeyInput.trim()}
+                    className={`px-3 py-2 rounded flex items-center gap-2 transition ${
+                      testingApiKey || !apiKeyInput.trim()
+                        ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-600 text-white hover:bg-slate-500'
+                    }`}
+                    title="Tester la connexion"
+                  >
+                    {testingApiKey ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : apiKeyStatus === 'success' ? (
+                      <Wifi size={18} className="text-green-400" />
+                    ) : apiKeyStatus === 'error' ? (
+                      <WifiOff size={18} className="text-red-400" />
+                    ) : (
+                      <Wifi size={18} />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Laissez vide pour supprimer la clé. Cliquez sur l'icône wifi pour tester.
+                </p>
+              </div>
+
+              {/* Statut du test */}
+              {apiKeyStatus === 'testing' && (
+                <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded text-blue-400 text-sm flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  Test de la connexion en cours...
+                </div>
+              )}
+
+              {apiKeyStatus === 'success' && (
+                <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-sm flex items-center gap-2">
+                  <CheckCircle size={16} />
+                  Connexion réussie ! Clé API valide.
+                </div>
+              )}
+
+              {apiKeyStatus === 'error' && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle size={16} />
+                    <span className="font-medium">Erreur de connexion</span>
+                  </div>
+                  {apiKeyError && (
+                    <p className="text-xs ml-6 text-red-300">{apiKeyError}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setApiKeyModalClient(null); setApiKeyInput(''); setApiKeyStatus('idle'); setApiKeyError(''); }}
+                  className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleSaveApiKey}
+                  disabled={savingApiKey || testingApiKey}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded transition ${
+                    savingApiKey || testingApiKey
+                      ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {savingApiKey ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Sauvegarde...
+                    </>
+                  ) : testingApiKey ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Test...
+                    </>
+                  ) : (
+                    'Tester & Sauvegarder'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

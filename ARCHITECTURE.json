@@ -78,7 +78,7 @@
         "tests": "AuthPage.test.jsx (13 tests)"
       },
       "CalendarPage.jsx": {
-        "lines": 3750,
+        "lines": 1424,
         "role": "Page principale - Calendrier",
         "typing": "@ts-check + JSDoc",
         "features": [
@@ -98,7 +98,7 @@
           "userCollaborateur", "impotsTaxes", "suiviEcheances", "setSuiviEcheances"
         ],
         "modals_used": ["AddChargeModal", "EditChargeModal", "ExportModal"],
-        "note": "Fichier trop long - refactoring recommandé"
+        "refactoring_done": "Janvier 2025 - Réduction de 3773 à 1424 lignes (-62%) - Suppression code dupliqué des autres pages"
       },
       "CollaborateursPage.jsx": {
         "lines": 500,
@@ -119,7 +119,7 @@
         "modals_used": ["CollaborateurModal"]
       },
       "ClientsPage.jsx": {
-        "lines": 455,
+        "lines": 658,
         "role": "Gestion des clients",
         "typing": "@ts-check + JSDoc",
         "features": [
@@ -128,13 +128,34 @@
           "Synchronisation avec Pennylane API",
           "Fusion de clients (mapping Pennylane)",
           "Assignation chef de mission",
-          "Distinction cabinet Zerah / Audit Up"
+          "Distinction cabinet Zerah / Audit Up",
+          "Configuration clé API Pennylane par client",
+          "Test de connexion API avant sauvegarde (validation automatique)"
         ],
         "props": [
           "clients", "setClients", "charges", "setCharges",
           "collaborateurs", "accent", "userCollaborateur"
         ],
         "modals_used": ["ClientModal", "MergeClientModal"]
+      },
+      "TestsComptablesPage.jsx": {
+        "lines": 632,
+        "role": "Tests comptables automatisés",
+        "typing": "@ts-check + JSDoc",
+        "features": [
+          "Sélection client avec clé API Pennylane",
+          "Sélection millésime (année fiscale)",
+          "Exécution de tests comptables (doublons fournisseurs, double saisie...)",
+          "Affichage des anomalies détectées avec sévérité",
+          "Historique des exécutions par client",
+          "Export Excel des résultats",
+          "Configuration clé API depuis la page"
+        ],
+        "props": [
+          "clients", "collaborateurs", "userCollaborateur",
+          "getAccessibleClients", "accent"
+        ],
+        "access": "Clients avec clé API Pennylane configurée"
       },
       "ImpotsTaxesPage.jsx": {
         "lines": 970,
@@ -241,6 +262,40 @@
         ],
         "tests": "dateUtils.test.js (10 tests)"
       },
+      "testsComptables/": {
+        "description": "Module de tests comptables automatisés",
+        "files": {
+          "index.js": "Export centralisé des fonctions de test",
+          "pennylaneClientApi.js": {
+            "role": "Client API Pennylane v2",
+            "exports": [
+              "callPennylaneAPI(apiKey, endpoint, params) - Appel générique via proxy",
+              "getFEC(apiKey, millesime) - Récupère le FEC d'un exercice",
+              "getSupplierInvoices(apiKey, millesime) - Factures fournisseurs",
+              "getCustomerInvoices(apiKey, millesime) - Factures clients",
+              "getBankTransactions(apiKey, millesime) - Opérations bancaires",
+              "getChartOfAccounts(apiKey) - Plan comptable",
+              "getSuppliers(apiKey) - Liste fournisseurs",
+              "testConnection(apiKey) - Test de validité de la clé API"
+            ]
+          },
+          "testRunner.js": {
+            "role": "Orchestrateur d'exécution des tests",
+            "exports": [
+              "runTest(params) - Exécute un test et sauvegarde les résultats",
+              "getExecutionHistory(clientId) - Historique des exécutions",
+              "getExecutionResults(executionId) - Résultats détaillés",
+              "markAsProcessed(resultatId, collaborateurId) - Marquer comme traité"
+            ]
+          },
+          "exportResults.js": "Export Excel des résultats de tests",
+          "tests/": {
+            "doublonsFournisseurs.js": "Détection doublons comptes 401 (similarité Levenshtein)",
+            "doubleSaisie.js": "Détection double saisie factures/banque",
+            "index.js": "Registry des tests disponibles"
+          }
+        }
+      },
       "businessLogic.js": {
         "typing": "@ts-check + JSDoc",
         "role": "Fonctions de logique métier extraites pour testabilité",
@@ -249,11 +304,22 @@
           "getEquipeOf(chefId, collaborateurChefs, collaborateurs) - Obtenir l'équipe d'un chef",
           "getAccessibleClients(collaborateur, clients, collaborateurChefs, collaborateurs) - Clients accessibles selon permissions",
           "canEditCharge(userCollaborateur, chargeCollaborateurId, ...) - Vérifier droit de modification",
-          "getVisibleCharges(userCollaborateur, charges, ...) - Charges visibles selon permissions"
+          "getVisibleCharges(userCollaborateur, charges, ...) - Charges visibles selon permissions",
+          "getChargesForDate(charges, collaborateurId, dateStr) - Filtrer charges par date",
+          "getTotalHoursForDate(charges, collaborateurId, dateStr) - Total heures par date",
+          "getAggregatedByClient(charges, clients, collaborateurId, dateStr) - Heures agrégées par client",
+          "getVisibleCollaborateurs(userCollaborateur, activeCollaborateurs, collaborateurChefs) - Collaborateurs visibles selon droits",
+          "hasBudgetForDate(charges, collaborateurId, dateStr) - Vérifie si budget existe",
+          "hasTempsReelsForDate(tempsReels, collaborateurId, dateStr) - Vérifie si temps réels saisis",
+          "isJourOuvre(date) - Vérifie si jour ouvré (lundi-vendredi)",
+          "getWeekDays(currentDate, weekOffset) - Calcule les 7 jours d'une semaine",
+          "getWeekTotal(charges, collaborateurId, weekDays, formatDateToYMD) - Total heures sur semaine",
+          "countAlerts(collaborateurs, charges, tempsReels, ...) - Compte les alertes collaborateurs"
         ],
         "tests": [
           "businessLogic.test.js (22 tests unitaires)",
-          "businessLogic.scenarios.test.js (25 tests scénarios métier)"
+          "businessLogic.scenarios.test.js (25 tests scénarios métier)",
+          "calendarLogic.test.js (35 tests fonctions calendrier)"
         ]
       }
     },
@@ -305,9 +371,13 @@
       "src/components/modals/ThemeModal.test.jsx": {
         "tests": 10,
         "coverage": "Rendu, onglets, sélection thèmes et couleurs"
+      },
+      "src/utils/calendarLogic.test.js": {
+        "tests": 35,
+        "coverage": "Fonctions calendrier: getChargesForDate, getTotalHoursForDate, getAggregatedByClient, getVisibleCollaborateurs, hasBudgetForDate, hasTempsReelsForDate, isJourOuvre, getWeekDays, getWeekTotal, countAlerts"
       }
     },
-    "total_tests": 96
+    "total_tests": 131
   },
   "database_tables": {
     "collaborateurs": {
@@ -487,11 +557,51 @@
     "text_secondary": "text-slate-300 ou text-slate-400"
   },
   "known_issues_and_todos": [
-    "CalendarPage.jsx est encore très long (3750 lignes) - refactoring recommandé",
     "Pas de gestion d'erreurs centralisée",
     "Les jours fériés sont codés en dur (2025-2027)",
     "Les clés API sont en dur dans le code (Unsplash, Supabase) - à déplacer vers .env"
   ],
+  "api/": {
+    "description": "Fonctions serverless Vercel",
+    "pennylane-proxy.js": {
+      "role": "Proxy API Pennylane pour éviter CORS",
+      "endpoint": "/api/pennylane-proxy",
+      "method": "GET/POST",
+      "headers_required": ["X-Pennylane-Api-Key"],
+      "query_params": ["endpoint", "...autres params transmis à Pennylane"],
+      "target_api": "https://app.pennylane.com/api/external/v2"
+    }
+  },
+  "database_tables_tests_comptables": {
+    "tests_comptables_executions": {
+      "description": "Historique des exécutions de tests",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "client_id": "INTEGER REFERENCES clients(id)",
+        "test_code": "TEXT (code du test exécuté)",
+        "collaborateur_id": "INTEGER REFERENCES collaborateurs(id)",
+        "millesime": "INTEGER (année fiscale)",
+        "date_execution": "TIMESTAMP DEFAULT NOW()",
+        "statut": "TEXT ('en_cours', 'termine', 'erreur')",
+        "duree_ms": "INTEGER",
+        "nombre_anomalies": "INTEGER DEFAULT 0"
+      }
+    },
+    "tests_comptables_resultats": {
+      "description": "Anomalies détectées par les tests",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "execution_id": "INTEGER REFERENCES tests_comptables_executions(id)",
+        "type_anomalie": "TEXT",
+        "severite": "TEXT ('info', 'warning', 'error', 'critical')",
+        "donnees": "JSONB (données spécifiques à l'anomalie)",
+        "commentaire": "TEXT",
+        "traite": "BOOLEAN DEFAULT false",
+        "traite_par": "INTEGER REFERENCES collaborateurs(id)",
+        "traite_le": "TIMESTAMP"
+      }
+    }
+  },
   "recent_changes": {
     "2025-01": [
       "Ajout typage JSDoc + @ts-check sur tous les fichiers",
@@ -499,7 +609,16 @@
       "Extraction des fonctions métier dans businessLogic.js",
       "Setup framework de tests Vitest + React Testing Library",
       "Ajout de 96 tests (unitaires, composants, scénarios métier)",
-      "Fix imports icônes manquants sur plusieurs pages"
+      "Fix imports icônes manquants sur plusieurs pages",
+      "Extension businessLogic.js avec 10 nouvelles fonctions calendrier",
+      "Création calendarLogic.test.js (35 tests pré-refactoring)",
+      "Refactoring CalendarPage.jsx: 3773 → 1424 lignes (-62%) - suppression code dupliqué",
+      "Total tests: 131",
+      "Ajout module tests comptables (testsComptables/)",
+      "Ajout proxy API Pennylane (api/pennylane-proxy.js)",
+      "Ajout page TestsComptablesPage.jsx",
+      "Ajout validation clé API Pennylane avec test de connexion dans ClientsPage",
+      "Ajout champ pennylane_client_api_key sur clients"
     ]
   }
 }

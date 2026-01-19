@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock } from 'lucide-react';
+import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock, ClipboardCheck } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import AuthPage from './components/pages/AuthPage';
 import CalendarPage from './components/pages/CalendarPage';
@@ -9,6 +9,7 @@ import ImpotsTaxesPage from './components/pages/ImpotsTaxesPage';
 import CollaborateursPage from './components/pages/CollaborateursPage';
 import ClientsPage from './components/pages/ClientsPage';
 import RepartitionTVAPage from './components/pages/RepartitionTVAPage';
+import TestsComptablesPage from './components/pages/TestsComptablesPage';
 import { ThemeModal } from './components/modals';
 import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
 
@@ -24,7 +25,7 @@ import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
  * @typedef {import('./types.js').ImageCredits} ImageCredits
  */
 
-/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'} PageName */
+/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'|'tests-comptables'} PageName */
 
 // ============================================
 // COMPOSANT PRINCIPAL - APP
@@ -421,6 +422,15 @@ export default function App() {
               </button>
             )}
             <button
+              onClick={() => setCurrentPage('tests-comptables')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              }`}
+            >
+              <ClipboardCheck size={18} />
+              Tests
+            </button>
+            <button
               onClick={() => setShowThemeModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
               title="Personnaliser le fond"
@@ -509,6 +519,15 @@ export default function App() {
                 Temps Réels
               </button>
             )}
+            <button
+              onClick={() => { setCurrentPage('tests-comptables'); setShowMobileMenu(false); }}
+              className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+              }`}
+            >
+              <ClipboardCheck size={18} />
+              Tests Comptables
+            </button>
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
               className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-slate-300 transition"
@@ -600,6 +619,15 @@ export default function App() {
           collaborateurs={collaborateurs}
           charges={charges}
           setCharges={setCharges}
+          accent={accent}
+        />
+      )}
+      {currentPage === 'tests-comptables' && (
+        <TestsComptablesPage
+          clients={clients}
+          collaborateurs={collaborateurs}
+          userCollaborateur={userCollaborateur}
+          getAccessibleClients={getAccessibleClients}
           accent={accent}
         />
       )}
