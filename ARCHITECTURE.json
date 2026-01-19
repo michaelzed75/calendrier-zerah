@@ -10,7 +10,9 @@
     "backend": "Supabase (PostgreSQL + Auth + Edge Functions)",
     "export": "xlsx (SheetJS) pour export Excel",
     "deployment": "Vercel (auto-deploy depuis GitHub)",
-    "api_externe": "Pennylane API (synchronisation clients)"
+    "api_externe": "Pennylane API (synchronisation clients)",
+    "typing": "JSDoc + @ts-check (typage progressif sans TypeScript)",
+    "testing": "Vitest + React Testing Library"
   },
   "environment_variables": {
     "VITE_SUPABASE_URL": "URL du projet Supabase",
@@ -23,6 +25,7 @@
       "App.jsx": {
         "lines": 570,
         "role": "Composant racine",
+        "typing": "@ts-check + JSDoc annotations",
         "responsibilities": [
           "Gestion de l'authentification (user, userCollaborateur)",
           "Chargement initial des données depuis Supabase",
@@ -39,25 +42,45 @@
           "backgroundTheme", "backgroundImage", "accentColor"
         ]
       },
-      "supabaseClient.js": "Configuration et export du client Supabase",
+      "supabaseClient.js": {
+        "role": "Configuration et export du client Supabase",
+        "typing": "@ts-check + JSDoc"
+      },
+      "types.js": {
+        "role": "Définitions de types JSDoc centralisées",
+        "lines": 320,
+        "exports": [
+          "Collaborateur", "CollaborateurChef", "Client", "Charge",
+          "ImpotsTaxes", "SuiviEcheance", "AccentColor", "BackgroundTheme",
+          "GradientTheme", "UnsplashCategory", "ImageCredits",
+          "AuthPageProps", "CalendarPageProps", "CollaborateursPageProps",
+          "ClientsPageProps", "ImpotsTaxesPageProps", "RepartitionTVAPageProps",
+          "TempsReelsPageProps", "ThemeModalProps", "CollaborateurModalProps",
+          "ClientModalProps", "MergeClientModalProps", "AddChargeModalProps",
+          "EditChargeModalProps", "ExportModalProps"
+        ]
+      },
       "main.jsx": "Point d'entrée React (ReactDOM.createRoot)",
       "index.css": "Import Tailwind CSS (@tailwind base/components/utilities)"
     },
     "src/components/pages/": {
       "AuthPage.jsx": {
-        "lines": 440,
+        "lines": 449,
         "role": "Authentification",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Formulaire de connexion (email/password)",
           "Formulaire d'inscription",
-          "Mot de passe oublié (reset via Supabase)",
+          "Mot de passe oublié (reset via Supabase avec OTP)",
           "Messages d'erreur et succès"
         ],
-        "props": ["authPage", "setAuthPage", "accent"]
+        "props": ["authPage", "setAuthPage", "accent"],
+        "tests": "AuthPage.test.jsx (13 tests)"
       },
       "CalendarPage.jsx": {
         "lines": 3750,
         "role": "Page principale - Calendrier",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Vue semaine (par défaut) avec colonnes par collaborateur",
           "Vue mois avec grille calendrier",
@@ -74,11 +97,13 @@
           "getChefsOf", "getEquipeOf", "getAccessibleClients", "accent",
           "userCollaborateur", "impotsTaxes", "suiviEcheances", "setSuiviEcheances"
         ],
-        "modals_used": ["AddChargeModal", "EditChargeModal", "ExportModal"]
+        "modals_used": ["AddChargeModal", "EditChargeModal", "ExportModal"],
+        "note": "Fichier trop long - refactoring recommandé"
       },
       "CollaborateursPage.jsx": {
         "lines": 500,
         "role": "Gestion des collaborateurs",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Liste des collaborateurs avec statut actif/inactif",
           "Ajout/modification de collaborateur",
@@ -96,6 +121,7 @@
       "ClientsPage.jsx": {
         "lines": 455,
         "role": "Gestion des clients",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Liste des clients avec filtres (cabinet, recherche)",
           "Ajout/modification de client",
@@ -113,6 +139,7 @@
       "ImpotsTaxesPage.jsx": {
         "lines": 970,
         "role": "Suivi des échéances fiscales",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Grille annuelle par client et type d'échéance",
           "Configuration TVA (jour, périodicité)",
@@ -131,6 +158,7 @@
       "RepartitionTVAPage.jsx": {
         "lines": 380,
         "role": "Planification automatique TVA",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Sélection période de planification",
           "Liste des clients avec TVA configurée",
@@ -149,6 +177,7 @@
       "TempsReelsPage.jsx": {
         "lines": 1510,
         "role": "Import des temps réels Pennylane",
+        "typing": "@ts-check + JSDoc",
         "features": [
           "Import fichier Excel (format Pennylane)",
           "Mapping automatique collaborateurs (par email)",
@@ -168,51 +197,117 @@
       "index.js": "Export centralisé: { ThemeModal, CollaborateurModal, ClientModal, MergeClientModal, AddChargeModal, EditChargeModal, ExportModal }",
       "ThemeModal.jsx": {
         "role": "Personnalisation visuelle",
-        "features": ["Sélection gradient de fond", "Images Unsplash par catégorie", "Couleur d'accent (pink, blue, green, etc.)"]
+        "typing": "@ts-check + JSDoc",
+        "features": ["Sélection gradient de fond", "Images Unsplash par catégorie", "Couleur d'accent (pink, blue, green, etc.)"],
+        "tests": "ThemeModal.test.jsx (10 tests)"
       },
       "CollaborateurModal.jsx": {
         "role": "Formulaire collaborateur",
+        "typing": "@ts-check + JSDoc",
         "fields": ["nom", "email", "couleur", "actif", "est_chef_mission", "is_admin", "chefs assignés"]
       },
       "ClientModal.jsx": {
         "role": "Formulaire client",
+        "typing": "@ts-check + JSDoc",
         "fields": ["nom", "cabinet", "actif", "chef_mission_id"]
       },
       "MergeClientModal.jsx": {
         "role": "Fusion de clients",
+        "typing": "@ts-check + JSDoc",
         "purpose": "Lier un client Pennylane à un client existant (met à jour pennylane_id)"
       },
       "AddChargeModal.jsx": {
         "role": "Ajout de charge",
+        "typing": "@ts-check + JSDoc",
         "fields": ["collaborateur", "client", "date", "heures", "type (budgété/réalisé)", "detail"]
       },
       "EditChargeModal.jsx": {
         "role": "Modification de charge",
+        "typing": "@ts-check + JSDoc",
         "features": ["Modification heures/detail", "Suppression", "Ajout heures réalisées"]
       },
       "ExportModal.jsx": {
         "role": "Export Excel",
+        "typing": "@ts-check + JSDoc",
         "features": ["Sélection date début/fin", "Export format xlsx"]
       }
     },
     "src/utils/": {
       "dateUtils.js": {
+        "typing": "@ts-check + JSDoc",
         "exports": [
           "formatDateToYMD(date) - Date -> 'YYYY-MM-DD'",
           "parseDateString(str) - 'YYYY-MM-DD' -> Date locale"
+        ],
+        "tests": "dateUtils.test.js (10 tests)"
+      },
+      "businessLogic.js": {
+        "typing": "@ts-check + JSDoc",
+        "role": "Fonctions de logique métier extraites pour testabilité",
+        "exports": [
+          "getChefsOf(collaborateurId, collaborateurChefs, collaborateurs) - Obtenir les chefs d'un collaborateur",
+          "getEquipeOf(chefId, collaborateurChefs, collaborateurs) - Obtenir l'équipe d'un chef",
+          "getAccessibleClients(collaborateur, clients, collaborateurChefs, collaborateurs) - Clients accessibles selon permissions",
+          "canEditCharge(userCollaborateur, chargeCollaborateurId, ...) - Vérifier droit de modification",
+          "getVisibleCharges(userCollaborateur, charges, ...) - Charges visibles selon permissions"
+        ],
+        "tests": [
+          "businessLogic.test.js (22 tests unitaires)",
+          "businessLogic.scenarios.test.js (25 tests scénarios métier)"
         ]
       }
     },
     "src/constants/": {
       "theme.js": {
+        "typing": "@ts-check + JSDoc",
         "exports": [
           "GRADIENT_THEMES - Liste des dégradés disponibles",
           "ACCENT_COLORS - Couleurs d'accent (pink, blue, green, purple, orange)",
           "UNSPLASH_CATEGORIES - Catégories d'images (nature, city, abstract, etc.)",
           "UNSPLASH_ACCESS_KEY - Clé API Unsplash"
-        ]
+        ],
+        "tests": "theme.test.js (16 tests)"
       }
+    },
+    "src/test/": {
+      "setup.js": "Configuration jest-dom pour les tests"
     }
+  },
+  "testing": {
+    "framework": "Vitest + React Testing Library",
+    "config_file": "vitest.config.js",
+    "commands": {
+      "npm test": "Lance les tests en mode watch",
+      "npm run test:run": "Lance les tests une fois",
+      "npm run test:coverage": "Lance les tests avec rapport de couverture"
+    },
+    "test_files": {
+      "src/utils/dateUtils.test.js": {
+        "tests": 10,
+        "coverage": "formatDateToYMD, parseDateString"
+      },
+      "src/utils/businessLogic.test.js": {
+        "tests": 22,
+        "coverage": "getChefsOf, getEquipeOf, getAccessibleClients, canEditCharge, getVisibleCharges"
+      },
+      "src/utils/businessLogic.scenarios.test.js": {
+        "tests": 25,
+        "coverage": "Scénarios métier réalistes cabinet comptable (hiérarchie, permissions, cas limites)"
+      },
+      "src/constants/theme.test.js": {
+        "tests": 16,
+        "coverage": "GRADIENT_THEMES, ACCENT_COLORS, UNSPLASH_CATEGORIES"
+      },
+      "src/components/pages/AuthPage.test.jsx": {
+        "tests": 13,
+        "coverage": "Rendu formulaires login/register/forgot, navigation"
+      },
+      "src/components/modals/ThemeModal.test.jsx": {
+        "tests": 10,
+        "coverage": "Rendu, onglets, sélection thèmes et couleurs"
+      }
+    },
+    "total_tests": 96
   },
   "database_tables": {
     "collaborateurs": {
@@ -322,6 +417,7 @@
     }
   },
   "helper_functions_in_app": {
+    "note": "Ces fonctions sont définies dans App.jsx et utilisent les fonctions de businessLogic.js",
     "getChefsOf(collaborateurId)": "Retourne la liste des chefs d'un collaborateur",
     "getEquipeOf(chefId)": "Retourne la liste des membres de l'équipe d'un chef",
     "getAccessibleClients(collaborateur)": "Retourne les clients accessibles selon le rôle",
@@ -391,9 +487,19 @@
     "text_secondary": "text-slate-300 ou text-slate-400"
   },
   "known_issues_and_todos": [
-    "CalendarPage.jsx est encore très long (3750 lignes) - pourrait être découpé davantage",
-    "Pas de tests automatisés",
+    "CalendarPage.jsx est encore très long (3750 lignes) - refactoring recommandé",
     "Pas de gestion d'erreurs centralisée",
-    "Les jours fériés sont codés en dur (2025-2027)"
-  ]
+    "Les jours fériés sont codés en dur (2025-2027)",
+    "Les clés API sont en dur dans le code (Unsplash, Supabase) - à déplacer vers .env"
+  ],
+  "recent_changes": {
+    "2025-01": [
+      "Ajout typage JSDoc + @ts-check sur tous les fichiers",
+      "Création de types.js avec toutes les définitions de types",
+      "Extraction des fonctions métier dans businessLogic.js",
+      "Setup framework de tests Vitest + React Testing Library",
+      "Ajout de 96 tests (unitaires, composants, scénarios métier)",
+      "Fix imports icônes manquants sur plusieurs pages"
+    ]
+  }
 }
