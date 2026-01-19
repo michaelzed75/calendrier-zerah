@@ -1,9 +1,25 @@
+// @ts-check
 import React, { useState, useEffect } from 'react';
-import { FileText, Search, X } from 'lucide-react';
+import { FileText, Search, X, Download } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
+
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').ImpotsTaxes} ImpotsTaxes
+ * @typedef {import('../../types.js').SuiviEcheance} SuiviEcheance
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').ImpotsTaxesPageProps} ImpotsTaxesPageProps
+ */
 
 // PAGE IMPOTS & TAXES
 // ============================================
+
+/**
+ * Page de configuration et suivi des impôts et taxes
+ * @param {ImpotsTaxesPageProps} props
+ * @returns {JSX.Element}
+ */
 function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes, suiviEcheances, accent, userCollaborateur }) {
   const [anneeFiscale, setAnneeFiscale] = useState(new Date().getFullYear());
   const [saving, setSaving] = useState({});

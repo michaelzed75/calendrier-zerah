@@ -1,8 +1,22 @@
+// @ts-check
 import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, Mail, Check, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { CollaborateurModal } from '../modals';
 
+/**
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').CollaborateurChef} CollaborateurChef
+ * @typedef {import('../../types.js').Charge} Charge
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').CollaborateursPageProps} CollaborateursPageProps
+ */
+
+/**
+ * Page de gestion des collaborateurs
+ * @param {CollaborateursPageProps} props
+ * @returns {JSX.Element}
+ */
 function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);

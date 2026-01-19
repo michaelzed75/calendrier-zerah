@@ -1,6 +1,26 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').CollaborateurChef} CollaborateurChef
+ */
+
+/**
+ * @typedef {Object} CollaborateurModalProps
+ * @property {Collaborateur|null} [collaborateur] - Collaborateur à éditer (null pour création)
+ * @property {Collaborateur[]} chefsMission - Liste des chefs de mission disponibles
+ * @property {CollaborateurChef[]} collaborateurChefs - Liaisons existantes
+ * @property {function(string, boolean, number[]): void} onSave - Callback de sauvegarde
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal d'ajout/modification d'un collaborateur
+ * @param {CollaborateurModalProps} props
+ * @returns {JSX.Element}
+ */
 function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, onSave, onClose }) {
   const [nom, setNom] = useState(collaborateur?.nom || '');
   const [estChefMission, setEstChefMission] = useState(collaborateur?.est_chef_mission || false);

@@ -1,6 +1,26 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ */
+
+/**
+ * @typedef {Object} AddChargeModalProps
+ * @property {Client[]} clients - Liste des clients disponibles
+ * @property {Collaborateur[]} collaborateurs - Liste des collaborateurs disponibles
+ * @property {string} defaultDate - Date par défaut au format YYYY-MM-DD
+ * @property {function(number, number, string, number, string, string): void} onAdd - Callback d'ajout
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal d'ajout d'une nouvelle charge de travail
+ * @param {AddChargeModalProps} props
+ * @returns {JSX.Element}
+ */
 function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }) {
   if (!collaborateurs || collaborateurs.length === 0) {
     return (

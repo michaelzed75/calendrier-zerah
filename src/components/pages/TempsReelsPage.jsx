@@ -1,10 +1,30 @@
+// @ts-check
 import React, { useState, useEffect } from 'react';
 import { Upload, Search, RefreshCw, Check, X, Trash2, AlertCircle, Pencil, Link2, BarChart3, ArrowUpDown, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { formatDateToYMD } from '../../utils/dateUtils';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').Charge} Charge
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').TempsReelsPageProps} TempsReelsPageProps
+ * @typedef {import('../../types.js').TempsReel} TempsReel
+ * @typedef {import('../../types.js').ImportedTempsRow} ImportedTempsRow
+ * @typedef {import('../../types.js').ImportStats} ImportStats
+ * @typedef {import('../../types.js').JournalImport} JournalImport
+ */
+
 // PAGE TEMPS RÉELS - Import et Analyse des Écarts
 // ============================================
+
+/**
+ * Page d'import des temps réels et analyse des écarts
+ * @param {TempsReelsPageProps} props
+ * @returns {JSX.Element}
+ */
 function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }) {
   const [activeTab, setActiveTab] = useState('mapping'); // 'mapping', 'import', 'ecarts', 'journal'
   const [loading, setLoading] = useState(true);

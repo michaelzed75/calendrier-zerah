@@ -1,6 +1,23 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ */
+
+/**
+ * @typedef {Object} ClientModalProps
+ * @property {Client|null} [client] - Client à éditer (null pour création)
+ * @property {function(string, string): void} onSave - Callback de sauvegarde (nom, codePennylane)
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal d'ajout/modification d'un client
+ * @param {ClientModalProps} props
+ * @returns {JSX.Element}
+ */
 function ClientModal({ client, onSave, onClose }) {
   const [nom, setNom] = useState(client?.nom || '');
   const [codePennylane, setCodePennylane] = useState(client?.code_pennylane || '');

@@ -1,7 +1,22 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { formatDateToYMD } from '../../utils/dateUtils';
 
+/**
+ * @typedef {Object} ExportModalProps
+ * @property {'month'|'week'|'day'} viewMode - Mode de vue actuel
+ * @property {Date} currentDate - Date courante du calendrier
+ * @property {Date[]} [weekDays] - Jours de la semaine (pour mode semaine)
+ * @property {function(string, string): void} onExport - Callback d'export (dateDebut, dateFin)
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal d'export Excel avec sélection de période
+ * @param {ExportModalProps} props
+ * @returns {JSX.Element}
+ */
 function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
   const getWeekDaysForExport = () => {
     if (weekDays && weekDays.length > 0) return weekDays;

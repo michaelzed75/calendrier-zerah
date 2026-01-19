@@ -1,6 +1,21 @@
+// @ts-check
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').Charge} Charge
+ * @typedef {import('../../types.js').ImpotsTaxes} ImpotsTaxes
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').RepartitionTVAPageProps} RepartitionTVAPageProps
+ */
+
+/**
+ * Page de planification automatique de la TVA
+ * @param {RepartitionTVAPageProps} props
+ * @returns {JSX.Element}
+ */
 function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getEquipeOf, accent, userCollaborateur, impotsTaxes }) {
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');

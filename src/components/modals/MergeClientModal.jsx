@@ -1,6 +1,26 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Charge} Charge
+ */
+
+/**
+ * @typedef {Object} MergeClientModalProps
+ * @property {Client} sourceClient - Client source à fusionner (sera supprimé)
+ * @property {Client[]} clients - Liste de tous les clients
+ * @property {Charge[]} charges - Liste des charges (pour compter celles du client source)
+ * @property {function(number, number): void} onMerge - Callback de fusion (sourceId, targetId)
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal de fusion de clients (transfert des charges vers un autre client)
+ * @param {MergeClientModalProps} props
+ * @returns {JSX.Element}
+ */
 function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) {
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');

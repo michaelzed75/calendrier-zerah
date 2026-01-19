@@ -1,6 +1,6 @@
+// @ts-check
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogOut, Shield, AlertCircle, Receipt, FileText, Search, Clock, Upload, Link2, BarChart3, ArrowUpDown, VolumeX, Volume2, Mail } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import AuthPage from './components/pages/AuthPage';
 import CalendarPage from './components/pages/CalendarPage';
@@ -9,36 +9,73 @@ import ImpotsTaxesPage from './components/pages/ImpotsTaxesPage';
 import CollaborateursPage from './components/pages/CollaborateursPage';
 import ClientsPage from './components/pages/ClientsPage';
 import RepartitionTVAPage from './components/pages/RepartitionTVAPage';
-import { ThemeModal, CollaborateurModal, ClientModal, MergeClientModal, AddChargeModal, EditChargeModal, ExportModal } from './components/modals';
-import { formatDateToYMD, parseDateString } from './utils/dateUtils';
-import { GRADIENT_THEMES, ACCENT_COLORS, UNSPLASH_CATEGORIES, UNSPLASH_ACCESS_KEY } from './constants/theme';
+import { ThemeModal } from './components/modals';
+import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
+
+/**
+ * @typedef {import('./types.js').Collaborateur} Collaborateur
+ * @typedef {import('./types.js').CollaborateurChef} CollaborateurChef
+ * @typedef {import('./types.js').Client} Client
+ * @typedef {import('./types.js').Charge} Charge
+ * @typedef {import('./types.js').ImpotsTaxes} ImpotsTaxes
+ * @typedef {import('./types.js').SuiviEcheance} SuiviEcheance
+ * @typedef {import('./types.js').AccentColor} AccentColor
+ * @typedef {import('./types.js').BackgroundTheme} BackgroundTheme
+ * @typedef {import('./types.js').ImageCredits} ImageCredits
+ */
+
+/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'} PageName */
 
 // ============================================
 // COMPOSANT PRINCIPAL - APP
 // ============================================
+
+/**
+ * Composant racine de l'application
+ * Gère l'authentification, le chargement des données et la navigation
+ * @returns {JSX.Element}
+ */
 export default function App() {
   // État d'authentification
+  /** @type {[import('@supabase/supabase-js').User|null, function]} */
   const [user, setUser] = useState(null);
+  /** @type {[Collaborateur|null, function]} */
   const [userCollaborateur, setUserCollaborateur] = useState(null);
+  /** @type {[boolean, function]} */
   const [authLoading, setAuthLoading] = useState(true);
-  const [authPage, setAuthPage] = useState('login'); // 'login', 'register', 'forgot'
+  /** @type {['login'|'register'|'forgot', function]} */
+  const [authPage, setAuthPage] = useState('login');
 
-  const [currentPage, setCurrentPage] = useState('calendar');
+  /** @type {[PageName, function]} */
+  const [currentPage, setCurrentPage] = useState(/** @type {PageName} */ ('calendar'));
+  /** @type {[Collaborateur[], function]} */
   const [collaborateurs, setCollaborateurs] = useState([]);
+  /** @type {[CollaborateurChef[], function]} */
   const [collaborateurChefs, setCollaborateurChefs] = useState([]);
+  /** @type {[Client[], function]} */
   const [clients, setClients] = useState([]);
+  /** @type {[Charge[], function]} */
   const [charges, setCharges] = useState([]);
+  /** @type {[ImpotsTaxes[], function]} */
   const [impotsTaxes, setImpotsTaxes] = useState([]);
+  /** @type {[SuiviEcheance[], function]} */
   const [suiviEcheances, setSuiviEcheances] = useState([]);
+  /** @type {[boolean, function]} */
   const [loading, setLoading] = useState(true);
+  /** @type {[boolean, function]} */
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  /** @type {[boolean, function]} */
   const [showThemeModal, setShowThemeModal] = useState(false);
+  /** @type {[BackgroundTheme, function]} */
   const [backgroundTheme, setBackgroundTheme] = useState(() => {
     const saved = localStorage.getItem('backgroundTheme');
     return saved ? JSON.parse(saved) : { type: 'gradient', value: 'aurora' };
   });
+  /** @type {[string|null, function]} */
   const [backgroundImage, setBackgroundImage] = useState(null);
+  /** @type {[ImageCredits|null, function]} */
   const [imageCredits, setImageCredits] = useState(null);
+  /** @type {[string, function]} */
   const [accentColor, setAccentColor] = useState(() => {
     const saved = localStorage.getItem('accentColor');
     return saved || 'pink';
@@ -89,7 +126,11 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Charger le collaborateur lié à l'utilisateur
+  /**
+   * Charge le collaborateur lié à l'utilisateur connecté
+   * @param {string} email - Email de l'utilisateur
+   * @returns {Promise<void>}
+   */
   const loadUserCollaborateur = async (email) => {
     const { data, error } = await supabase
       .from('collaborateurs')
@@ -98,11 +139,14 @@ export default function App() {
       .single();
 
     if (!error && data) {
-      setUserCollaborateur(data);
+      setUserCollaborateur(/** @type {Collaborateur} */ (data));
     }
   };
 
-  // Déconnexion
+  /**
+   * Déconnecte l'utilisateur
+   * @returns {Promise<void>}
+   */
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -116,9 +160,13 @@ export default function App() {
     }
   }, [user]);
 
+  /**
+   * Charge toutes les données depuis Supabase
+   * @returns {Promise<void>}
+   */
   const loadAllData = async () => {
     setLoading(true);
-    
+
     try {
       // Charger collaborateurs
       const { data: collabData, error: collabError } = await supabase
@@ -126,7 +174,7 @@ export default function App() {
         .select('*')
         .order('id');
       if (!collabError && collabData) {
-        setCollaborateurs(collabData);
+        setCollaborateurs(/** @type {Collaborateur[]} */ (collabData));
       }
 
       // Charger liaisons collaborateur-chefs
@@ -134,7 +182,7 @@ export default function App() {
         .from('collaborateur_chefs')
         .select('*');
       if (!chefsError && chefsData) {
-        setCollaborateurChefs(chefsData);
+        setCollaborateurChefs(/** @type {CollaborateurChef[]} */ (chefsData));
       }
 
       // Charger clients
@@ -143,7 +191,7 @@ export default function App() {
         .select('*')
         .order('id');
       if (!clientsError && clientsData) {
-        setClients(clientsData);
+        setClients(/** @type {Client[]} */ (clientsData));
       }
 
       // Charger charges
@@ -151,7 +199,7 @@ export default function App() {
         .from('charges')
         .select('*');
       if (!chargesError && chargesData) {
-        setCharges(chargesData);
+        setCharges(/** @type {Charge[]} */ (chargesData));
       }
 
       // Charger impots_taxes
@@ -159,7 +207,7 @@ export default function App() {
         .from('impots_taxes')
         .select('*');
       if (!impotsTaxesError && impotsTaxesData) {
-        setImpotsTaxes(impotsTaxesData);
+        setImpotsTaxes(/** @type {ImpotsTaxes[]} */ (impotsTaxesData));
       }
 
       // Charger suivi_echeances
@@ -167,7 +215,7 @@ export default function App() {
         .from('suivi_echeances')
         .select('*');
       if (!suiviError && suiviData) {
-        setSuiviEcheances(suiviData);
+        setSuiviEcheances(/** @type {SuiviEcheance[]} */ (suiviData));
       }
     } catch (err) {
       console.error('Erreur chargement données:', err);
@@ -176,7 +224,11 @@ export default function App() {
     setLoading(false);
   };
 
-  // Obtenir les chefs d'un collaborateur
+  /**
+   * Obtient les chefs de mission d'un collaborateur
+   * @param {number} collaborateurId - ID du collaborateur
+   * @returns {Collaborateur[]} Liste des chefs de mission
+   */
   const getChefsOf = (collaborateurId) => {
     const chefIds = collaborateurChefs
       .filter(cc => cc.collaborateur_id === collaborateurId)
@@ -184,7 +236,11 @@ export default function App() {
     return collaborateurs.filter(c => chefIds.includes(c.id));
   };
 
-  // Obtenir l'équipe d'un chef
+  /**
+   * Obtient l'équipe d'un chef de mission
+   * @param {number} chefId - ID du chef de mission
+   * @returns {Collaborateur[]} Liste des membres de l'équipe
+   */
   const getEquipeOf = (chefId) => {
     const membreIds = collaborateurChefs
       .filter(cc => cc.chef_id === chefId)
@@ -192,7 +248,11 @@ export default function App() {
     return collaborateurs.filter(c => membreIds.includes(c.id));
   };
 
-  // Obtenir les clients accessibles pour un collaborateur (pour ajouter des charges)
+  /**
+   * Obtient les clients accessibles pour un collaborateur
+   * @param {Collaborateur|null} collaborateur - Le collaborateur
+   * @returns {Client[]} Liste des clients accessibles
+   */
   const getAccessibleClients = (collaborateur) => {
     if (!collaborateur) return clients.filter(c => c.actif);
 
@@ -215,7 +275,10 @@ export default function App() {
     );
   };
 
-  // Calculer le style de fond
+  /**
+   * Calcule le style CSS pour le fond
+   * @returns {React.CSSProperties} Style CSS pour le fond
+   */
   const getBackgroundStyle = () => {
     if (backgroundTheme.type === 'image' && backgroundImage) {
       return {
@@ -228,6 +291,10 @@ export default function App() {
     return {};
   };
 
+  /**
+   * Obtient les classes Tailwind pour le fond
+   * @returns {string} Classes Tailwind
+   */
   const getBackgroundClass = () => {
     if (backgroundTheme.type === 'gradient') {
       const theme = GRADIENT_THEMES.find(t => t.id === backgroundTheme.value);
@@ -236,12 +303,16 @@ export default function App() {
     return '';
   };
 
-  // Obtenir les classes pour la couleur d'accent
+  /**
+   * Obtient la configuration de la couleur d'accent
+   * @returns {AccentColor} Configuration de la couleur d'accent
+   */
   const getAccentClasses = () => {
     const accent = ACCENT_COLORS.find(c => c.id === accentColor) || ACCENT_COLORS[0];
-    return accent;
+    return /** @type {AccentColor} */ (accent);
   };
 
+  /** @type {AccentColor} */
   const accent = getAccentClasses();
 
   // Écran de chargement auth

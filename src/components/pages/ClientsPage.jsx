@@ -1,8 +1,22 @@
+// @ts-check
 import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, Check } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Charge} Charge
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').ClientsPageProps} ClientsPageProps
+ */
+
+/**
+ * Page de gestion des clients
+ * @param {ClientsPageProps} props
+ * @returns {JSX.Element}
+ */
 function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs, accent, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);

@@ -1,7 +1,20 @@
+// @ts-check
 import React, { useState } from 'react';
 import { Palette, X, Check, Image, RefreshCw } from 'lucide-react';
 import { GRADIENT_THEMES, ACCENT_COLORS, UNSPLASH_CATEGORIES, UNSPLASH_ACCESS_KEY } from '../../constants/theme';
 
+/**
+ * @typedef {import('../../types.js').ThemeModalProps} ThemeModalProps
+ * @typedef {import('../../types.js').BackgroundTheme} BackgroundTheme
+ * @typedef {import('../../types.js').GradientTheme} GradientTheme
+ * @typedef {import('../../types.js').UnsplashCategory} UnsplashCategory
+ */
+
+/**
+ * Modal de personnalisation du thème (fond et couleur d'accent)
+ * @param {ThemeModalProps} props
+ * @returns {JSX.Element}
+ */
 function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor, setAccentColor }) {
   const [activeTab, setActiveTab] = useState('gradients');
   const [unsplashPhotos, setUnsplashPhotos] = useState([]);

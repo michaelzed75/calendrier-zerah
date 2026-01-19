@@ -1,6 +1,27 @@
+// @ts-check
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
+/**
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').Charge} Charge
+ */
+
+/**
+ * @typedef {Object} EditChargeModalProps
+ * @property {Charge} charge - La charge à modifier
+ * @property {Client[]} clients - Liste des clients disponibles
+ * @property {Collaborateur[]} collaborateurs - Liste des collaborateurs disponibles
+ * @property {function(number, number, number, string, number, string, string): void} onUpdate - Callback de mise à jour
+ * @property {function(): void} onClose - Callback de fermeture
+ */
+
+/**
+ * Modal de modification d'une charge de travail existante
+ * @param {EditChargeModalProps} props
+ * @returns {JSX.Element}
+ */
 function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose }) {
   if (!collaborateurs || collaborateurs.length === 0) {
     return (

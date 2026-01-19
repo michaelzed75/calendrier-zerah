@@ -1,3 +1,4 @@
+// @ts-check
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, VolumeX, Volume2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -5,9 +6,30 @@ import { supabase } from '../../supabaseClient';
 import { AddChargeModal, EditChargeModal, ExportModal } from '../modals';
 import { formatDateToYMD, parseDateString } from '../../utils/dateUtils';
 
+/**
+ * @typedef {import('../../types.js').Collaborateur} Collaborateur
+ * @typedef {import('../../types.js').CollaborateurChef} CollaborateurChef
+ * @typedef {import('../../types.js').Client} Client
+ * @typedef {import('../../types.js').Charge} Charge
+ * @typedef {import('../../types.js').ImpotsTaxes} ImpotsTaxes
+ * @typedef {import('../../types.js').SuiviEcheance} SuiviEcheance
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').EcheanceFiscale} EcheanceFiscale
+ * @typedef {import('../../types.js').TempsReel} TempsReel
+ * @typedef {import('../../types.js').CalendarPageProps} CalendarPageProps
+ */
+
+/** @typedef {'month'|'week'|'day'} ViewMode */
+
 // ============================================
 // PAGE CALENDRIER
 // ============================================
+
+/**
+ * Page principale du calendrier de gestion des charges
+ * @param {CalendarPageProps} props
+ * @returns {JSX.Element}
+ */
 function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur, impotsTaxes, suiviEcheances, setSuiviEcheances }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);

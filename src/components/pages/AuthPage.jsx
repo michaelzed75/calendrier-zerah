@@ -1,7 +1,18 @@
+// @ts-check
 import React, { useState, useEffect } from 'react';
 import { LogIn, UserPlus, Mail, Lock, AlertCircle } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
+/**
+ * @typedef {import('../../types.js').AccentColor} AccentColor
+ * @typedef {import('../../types.js').AuthPageProps} AuthPageProps
+ */
+
+/**
+ * Page d'authentification (connexion, inscription, mot de passe oublié)
+ * @param {AuthPageProps} props
+ * @returns {JSX.Element}
+ */
 function AuthPage({ authPage, setAuthPage, accent }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
