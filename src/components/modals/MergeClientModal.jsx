@@ -1,0 +1,111 @@
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+
+function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) {
+  const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Clients Pennylane disponibles pour la fusion (actifs, avec cabinet)
+  const pennylaneClients = clients.filter(c =>
+    c.cabinet && c.actif && c.id !== sourceClient.id
+  );
+
+  const filteredClients = pennylaneClients.filter(c =>
+    c.nom.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Compter les charges du client source
+  const sourceChargesCount = charges.filter(c => c.client_id === sourceClient.id).length;
+
+  const handleMerge = () => {
+    if (!selectedTargetId) {
+      alert('Veuillez sélectionner un client cible');
+      return;
+    }
+    const targetClient = clients.find(c => c.id === parseInt(selectedTargetId));
+    if (confirm(`Fusionner "${sourceClient.nom}" vers "${targetClient.nom}" ?\n\n${sourceChargesCount} charge(s) seront transférées.\nLe client "${sourceClient.nom}" sera supprimé.`)) {
+      onMerge(sourceClient.id, parseInt(selectedTargetId));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-lg p-6 max-w-lg w-full border border-slate-700 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white">Fusionner le client</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="bg-slate-700/50 rounded-lg p-4 mb-4">
+          <p className="text-sm text-slate-400 mb-1">Client source (sera supprimé)</p>
+          <p className="text-white font-medium">{sourceClient.nom}</p>
+          {sourceChargesCount > 0 && (
+            <p className="text-orange-400 text-sm mt-2">
+              {sourceChargesCount} charge(s) seront transférées
+            </p>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Fusionner vers (client Pennylane)
+          </label>
+          <input
+            type="text"
+            placeholder="Rechercher un client..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 mb-2"
+          />
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {filteredClients.map(client => (
+              <div
+                key={client.id}
+                onClick={() => setSelectedTargetId(String(client.id))}
+                className={`p-3 rounded cursor-pointer transition ${
+                  selectedTargetId === String(client.id)
+                    ? 'bg-orange-600/30 border border-orange-500'
+                    : 'bg-slate-700 hover:bg-slate-600'
+                }`}
+              >
+                <div className="text-white">{client.nom}</div>
+                <div className="text-xs text-slate-400 flex gap-2 mt-1">
+                  <span className={`px-1.5 py-0.5 rounded ${
+                    client.cabinet === 'Audit Up' ? 'bg-purple-600/30 text-purple-300' : 'bg-blue-600/30 text-blue-300'
+                  }`}>
+                    {client.cabinet}
+                  </span>
+                  {client.code_pennylane && <span>{client.code_pennylane}</span>}
+                </div>
+              </div>
+            ))}
+            {filteredClients.length === 0 && (
+              <p className="text-slate-500 text-center py-4">Aucun client trouvé</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded transition"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleMerge}
+            disabled={!selectedTargetId}
+            className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded transition"
+          >
+            Fusionner
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default MergeClientModal;
