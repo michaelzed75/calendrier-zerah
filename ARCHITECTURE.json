@@ -1,0 +1,399 @@
+{
+  "project": "calendrier-zerah",
+  "description": "Application de gestion de planning pour cabinet comptable Audit Up - Gestion des charges de travail, échéances fiscales et temps réels",
+  "repository": "https://github.com/michaelzed75/calendrier-zerah",
+  "deployment_url": "https://calendrier-zerah.vercel.app",
+  "tech_stack": {
+    "frontend": "React 18 + Vite 4",
+    "styling": "Tailwind CSS",
+    "icons": "lucide-react",
+    "backend": "Supabase (PostgreSQL + Auth + Edge Functions)",
+    "export": "xlsx (SheetJS) pour export Excel",
+    "deployment": "Vercel (auto-deploy depuis GitHub)",
+    "api_externe": "Pennylane API (synchronisation clients)"
+  },
+  "environment_variables": {
+    "VITE_SUPABASE_URL": "URL du projet Supabase",
+    "VITE_SUPABASE_ANON_KEY": "Clé anonyme Supabase (publique, OK en dur)",
+    "VITE_PENNYLANE_API_KEY": "Clé API Pennylane (sensible, à mettre en env)",
+    "UNSPLASH_ACCESS_KEY": "Clé API Unsplash pour images de fond (dans constants/theme.js)"
+  },
+  "structure": {
+    "src/": {
+      "App.jsx": {
+        "lines": 570,
+        "role": "Composant racine",
+        "responsibilities": [
+          "Gestion de l'authentification (user, userCollaborateur)",
+          "Chargement initial des données depuis Supabase",
+          "Navigation entre pages (currentPage state)",
+          "Gestion du thème de fond et couleur d'accent",
+          "Menu desktop et mobile",
+          "Passage des props à toutes les pages enfants"
+        ],
+        "state_managed": [
+          "user", "userCollaborateur", "authLoading",
+          "collaborateurs", "collaborateurChefs", "clients", "charges",
+          "impotsTaxes", "suiviEcheances", "loading",
+          "currentPage", "showMobileMenu", "showThemeModal",
+          "backgroundTheme", "backgroundImage", "accentColor"
+        ]
+      },
+      "supabaseClient.js": "Configuration et export du client Supabase",
+      "main.jsx": "Point d'entrée React (ReactDOM.createRoot)",
+      "index.css": "Import Tailwind CSS (@tailwind base/components/utilities)"
+    },
+    "src/components/pages/": {
+      "AuthPage.jsx": {
+        "lines": 440,
+        "role": "Authentification",
+        "features": [
+          "Formulaire de connexion (email/password)",
+          "Formulaire d'inscription",
+          "Mot de passe oublié (reset via Supabase)",
+          "Messages d'erreur et succès"
+        ],
+        "props": ["authPage", "setAuthPage", "accent"]
+      },
+      "CalendarPage.jsx": {
+        "lines": 3750,
+        "role": "Page principale - Calendrier",
+        "features": [
+          "Vue semaine (par défaut) avec colonnes par collaborateur",
+          "Vue mois avec grille calendrier",
+          "Vue jour détaillée",
+          "Ajout/modification/suppression de charges",
+          "Filtres par collaborateur, client, type",
+          "Système d'alertes fiscales (bulles colorées)",
+          "Export Excel avec sélection de période",
+          "Affichage des temps réels vs budgétés",
+          "Navigation semaine précédente/suivante"
+        ],
+        "props": [
+          "collaborateurs", "collaborateurChefs", "clients", "charges", "setCharges",
+          "getChefsOf", "getEquipeOf", "getAccessibleClients", "accent",
+          "userCollaborateur", "impotsTaxes", "suiviEcheances", "setSuiviEcheances"
+        ],
+        "modals_used": ["AddChargeModal", "EditChargeModal", "ExportModal"]
+      },
+      "CollaborateursPage.jsx": {
+        "lines": 500,
+        "role": "Gestion des collaborateurs",
+        "features": [
+          "Liste des collaborateurs avec statut actif/inactif",
+          "Ajout/modification de collaborateur",
+          "Assignation des chefs de mission (relation N-N)",
+          "Modification email inline",
+          "Envoi de rappels email (test admin / tous)",
+          "Badge admin et chef de mission"
+        ],
+        "props": [
+          "collaborateurs", "setCollaborateurs", "collaborateurChefs", "setCollaborateurChefs",
+          "charges", "getChefsOf", "getEquipeOf", "accent", "isAdmin", "userCollaborateur"
+        ],
+        "modals_used": ["CollaborateurModal"]
+      },
+      "ClientsPage.jsx": {
+        "lines": 455,
+        "role": "Gestion des clients",
+        "features": [
+          "Liste des clients avec filtres (cabinet, recherche)",
+          "Ajout/modification de client",
+          "Synchronisation avec Pennylane API",
+          "Fusion de clients (mapping Pennylane)",
+          "Assignation chef de mission",
+          "Distinction cabinet Zerah / Audit Up"
+        ],
+        "props": [
+          "clients", "setClients", "charges", "setCharges",
+          "collaborateurs", "accent", "userCollaborateur"
+        ],
+        "modals_used": ["ClientModal", "MergeClientModal"]
+      },
+      "ImpotsTaxesPage.jsx": {
+        "lines": 970,
+        "role": "Suivi des échéances fiscales",
+        "features": [
+          "Grille annuelle par client et type d'échéance",
+          "Configuration TVA (jour, périodicité)",
+          "Configuration IS, CVAE, CFE, etc.",
+          "Cases à cocher fait/pas fait par mois",
+          "Sauvegarde automatique dans suivi_echeances",
+          "Filtres par chef de mission",
+          "Année fiscale sélectionnable"
+        ],
+        "props": [
+          "clients", "collaborateurs", "impotsTaxes", "setImpotsTaxes",
+          "suiviEcheances", "accent", "userCollaborateur"
+        ],
+        "access": "chef_mission ou admin uniquement"
+      },
+      "RepartitionTVAPage.jsx": {
+        "lines": 380,
+        "role": "Planification automatique TVA",
+        "features": [
+          "Sélection période de planification",
+          "Liste des clients avec TVA configurée",
+          "Assignation collaborateur par client",
+          "Saisie durée estimée par client",
+          "Répartition automatique sur jours ouvrés",
+          "Validation capacité collaborateurs",
+          "Prise en compte jours fériés français"
+        ],
+        "props": [
+          "clients", "collaborateurs", "charges", "setCharges",
+          "getEquipeOf", "accent", "userCollaborateur", "impotsTaxes"
+        ],
+        "access": "chef_mission uniquement"
+      },
+      "TempsReelsPage.jsx": {
+        "lines": 1510,
+        "role": "Import des temps réels Pennylane",
+        "features": [
+          "Import fichier Excel (format Pennylane)",
+          "Mapping automatique collaborateurs (par email)",
+          "Mapping clients avec création de liaisons",
+          "Mode fusion intelligente ou remplacement",
+          "Distinction par cabinet (Zerah/Audit Up)",
+          "Prévisualisation avant import",
+          "Gestion des clients non mappés"
+        ],
+        "props": [
+          "clients", "collaborateurs", "charges", "setCharges", "accent"
+        ],
+        "access": "chef_mission uniquement"
+      }
+    },
+    "src/components/modals/": {
+      "index.js": "Export centralisé: { ThemeModal, CollaborateurModal, ClientModal, MergeClientModal, AddChargeModal, EditChargeModal, ExportModal }",
+      "ThemeModal.jsx": {
+        "role": "Personnalisation visuelle",
+        "features": ["Sélection gradient de fond", "Images Unsplash par catégorie", "Couleur d'accent (pink, blue, green, etc.)"]
+      },
+      "CollaborateurModal.jsx": {
+        "role": "Formulaire collaborateur",
+        "fields": ["nom", "email", "couleur", "actif", "est_chef_mission", "is_admin", "chefs assignés"]
+      },
+      "ClientModal.jsx": {
+        "role": "Formulaire client",
+        "fields": ["nom", "cabinet", "actif", "chef_mission_id"]
+      },
+      "MergeClientModal.jsx": {
+        "role": "Fusion de clients",
+        "purpose": "Lier un client Pennylane à un client existant (met à jour pennylane_id)"
+      },
+      "AddChargeModal.jsx": {
+        "role": "Ajout de charge",
+        "fields": ["collaborateur", "client", "date", "heures", "type (budgété/réalisé)", "detail"]
+      },
+      "EditChargeModal.jsx": {
+        "role": "Modification de charge",
+        "features": ["Modification heures/detail", "Suppression", "Ajout heures réalisées"]
+      },
+      "ExportModal.jsx": {
+        "role": "Export Excel",
+        "features": ["Sélection date début/fin", "Export format xlsx"]
+      }
+    },
+    "src/utils/": {
+      "dateUtils.js": {
+        "exports": [
+          "formatDateToYMD(date) - Date -> 'YYYY-MM-DD'",
+          "parseDateString(str) - 'YYYY-MM-DD' -> Date locale"
+        ]
+      }
+    },
+    "src/constants/": {
+      "theme.js": {
+        "exports": [
+          "GRADIENT_THEMES - Liste des dégradés disponibles",
+          "ACCENT_COLORS - Couleurs d'accent (pink, blue, green, purple, orange)",
+          "UNSPLASH_CATEGORIES - Catégories d'images (nature, city, abstract, etc.)",
+          "UNSPLASH_ACCESS_KEY - Clé API Unsplash"
+        ]
+      }
+    }
+  },
+  "database_tables": {
+    "collaborateurs": {
+      "description": "Utilisateurs du système (collaborateurs du cabinet)",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "nom": "TEXT NOT NULL",
+        "email": "TEXT UNIQUE",
+        "actif": "BOOLEAN DEFAULT true",
+        "est_chef_mission": "BOOLEAN DEFAULT false",
+        "is_admin": "BOOLEAN DEFAULT false",
+        "couleur": "TEXT (code hex pour affichage calendrier)"
+      }
+    },
+    "collaborateur_chefs": {
+      "description": "Relation N-N entre collaborateurs et leurs chefs de mission",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "collaborateur_id": "INTEGER REFERENCES collaborateurs(id)",
+        "chef_id": "INTEGER REFERENCES collaborateurs(id)"
+      },
+      "note": "Un collaborateur peut avoir plusieurs chefs, un chef peut avoir plusieurs collaborateurs"
+    },
+    "clients": {
+      "description": "Clients du cabinet (entreprises)",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "nom": "TEXT NOT NULL",
+        "actif": "BOOLEAN DEFAULT true",
+        "cabinet": "TEXT ('zerah' ou 'audit_up')",
+        "chef_mission_id": "INTEGER REFERENCES collaborateurs(id)",
+        "pennylane_id": "TEXT (ID du client dans Pennylane, pour sync)"
+      }
+    },
+    "charges": {
+      "description": "Charges de travail planifiées et réalisées",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "collaborateur_id": "INTEGER REFERENCES collaborateurs(id)",
+        "client_id": "INTEGER REFERENCES clients(id)",
+        "date_charge": "DATE NOT NULL",
+        "heures": "DECIMAL (heures budgétées)",
+        "heures_realisees": "DECIMAL DEFAULT 0 (heures réellement passées)",
+        "type": "TEXT ('budgété' ou 'réalisé')",
+        "detail": "TEXT (description de la tâche: 'Bilan', 'TVA', 'Paie', etc.)"
+      }
+    },
+    "impots_taxes": {
+      "description": "Configuration des échéances fiscales par client et année",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "client_id": "INTEGER REFERENCES clients(id)",
+        "annee_fiscale": "INTEGER (ex: 2025)",
+        "tva_jour": "INTEGER (jour du mois pour TVA, ex: 19)",
+        "tva_periodicite": "TEXT ('mensuelle', 'trimestrielle', 'annuelle')",
+        "is_jour": "INTEGER (jour pour IS)",
+        "is_periodicite": "TEXT",
+        "cvae_jour": "INTEGER",
+        "cfe_jour": "INTEGER",
+        "das2_jour": "INTEGER",
+        "liasse_jour": "INTEGER",
+        "...": "autres champs pour chaque type d'impôt"
+      }
+    },
+    "suivi_echeances": {
+      "description": "Suivi de réalisation des échéances fiscales",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "client_id": "INTEGER REFERENCES clients(id)",
+        "type_echeance": "TEXT ('tva', 'is', 'cvae', etc.)",
+        "mois": "INTEGER (1-12)",
+        "annee": "INTEGER",
+        "fait": "BOOLEAN DEFAULT false",
+        "date_realisation": "TIMESTAMP"
+      }
+    }
+  },
+  "user_roles": {
+    "admin": {
+      "field": "collaborateurs.is_admin = true",
+      "description": "Administrateur - accès complet",
+      "can_access": ["calendar", "collaborateurs", "clients", "impots", "tva", "temps_reels"],
+      "special_permissions": [
+        "Voir tous les collaborateurs et clients",
+        "Modifier les droits admin/chef",
+        "Envoyer rappels email à tous"
+      ]
+    },
+    "chef_mission": {
+      "field": "collaborateurs.est_chef_mission = true",
+      "description": "Chef de mission - gère une équipe",
+      "can_access": ["calendar", "collaborateurs", "clients", "impots", "tva", "temps_reels"],
+      "special_permissions": [
+        "Voir son équipe (collaborateurs assignés)",
+        "Voir ses clients (chef_mission_id = son id)",
+        "Planifier les charges de son équipe"
+      ]
+    },
+    "collaborateur": {
+      "field": "est_chef_mission = false AND is_admin = false",
+      "description": "Collaborateur standard",
+      "can_access": ["calendar", "collaborateurs (lecture)", "clients (lecture)"],
+      "special_permissions": [
+        "Voir uniquement ses propres charges",
+        "Voir les clients de ses chefs"
+      ]
+    }
+  },
+  "helper_functions_in_app": {
+    "getChefsOf(collaborateurId)": "Retourne la liste des chefs d'un collaborateur",
+    "getEquipeOf(chefId)": "Retourne la liste des membres de l'équipe d'un chef",
+    "getAccessibleClients(collaborateur)": "Retourne les clients accessibles selon le rôle",
+    "loadAllData()": "Charge toutes les données depuis Supabase",
+    "loadUserCollaborateur(email)": "Charge le collaborateur lié à l'utilisateur connecté"
+  },
+  "key_features_detail": {
+    "calendar_views": {
+      "week": "Vue par défaut - colonnes = collaborateurs filtrés, lignes = jours de la semaine",
+      "month": "Grille calendrier mensuelle avec charges agrégées par jour",
+      "day": "Vue journée détaillée"
+    },
+    "alerts_system": {
+      "description": "Bulles colorées sur le calendrier indiquant les échéances fiscales",
+      "colors": {
+        "red": "Échéance non faite et date dépassée",
+        "orange": "Échéance à faire dans les 3 jours",
+        "green": "Échéance faite"
+      },
+      "types": ["TVA", "IS", "CVAE", "CFE", "DAS2", "Liasse fiscale"]
+    },
+    "pennylane_integration": {
+      "sync_clients": "GET /api/customers - récupère la liste des clients",
+      "mapping": "Liaison client local <-> pennylane_id pour import temps",
+      "temps_import": "Export Excel depuis Pennylane -> import dans charges"
+    },
+    "excel_import_temps_reels": {
+      "format": "Excel exporté depuis Pennylane (colonnes: Date, Collaborateur, Client, Heures, etc.)",
+      "mapping_collab": "Automatique par email",
+      "mapping_client": "Manuel ou automatique si pennylane_id existe",
+      "modes": {
+        "fusion": "Ajoute les heures aux charges existantes",
+        "remplacement": "Remplace les heures réalisées existantes"
+      }
+    },
+    "tva_auto_planning": {
+      "inputs": ["Période (date début/fin)", "Heures par client", "Collaborateur assigné"],
+      "algorithm": "Répartit les heures sur les jours ouvrés en respectant max 8h/jour",
+      "constraints": ["Jours fériés français exclus", "Week-ends exclus", "Capacité collaborateur validée"]
+    }
+  },
+  "cabinets": {
+    "zerah": {
+      "id": "zerah",
+      "description": "Cabinet Zerah (cabinet principal)"
+    },
+    "audit_up": {
+      "id": "audit_up",
+      "description": "Cabinet Audit Up"
+    }
+  },
+  "common_operations": {
+    "add_charge": "CalendarPage -> AddChargeModal -> supabase.from('charges').insert()",
+    "edit_charge": "CalendarPage -> EditChargeModal -> supabase.from('charges').update()",
+    "delete_charge": "EditChargeModal -> supabase.from('charges').delete()",
+    "sync_pennylane": "ClientsPage -> fetch Pennylane API -> compare & insert new clients",
+    "import_temps": "TempsReelsPage -> parse Excel -> map collaborateurs/clients -> update charges.heures_realisees",
+    "mark_echeance_done": "ImpotsTaxesPage ou CalendarPage -> supabase.from('suivi_echeances').upsert()"
+  },
+  "styling_conventions": {
+    "background": "bg-slate-800/90 backdrop-blur-sm (cartes)",
+    "borders": "border border-slate-700 rounded-lg",
+    "buttons_primary": "${accent.color} text-white ${accent.hover}",
+    "buttons_secondary": "bg-slate-700 hover:bg-slate-600 text-slate-300",
+    "inputs": "bg-slate-700 text-white rounded px-3 py-2 border border-slate-600",
+    "text_primary": "text-white",
+    "text_secondary": "text-slate-300 ou text-slate-400"
+  },
+  "known_issues_and_todos": [
+    "CalendarPage.jsx est encore très long (3750 lignes) - pourrait être découpé davantage",
+    "Pas de tests automatisés",
+    "Pas de gestion d'erreurs centralisée",
+    "Les jours fériés sont codés en dur (2025-2027)"
+  ]
+}
