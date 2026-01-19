@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Mail, Check, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Mail, Check, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { CollaborateurModal } from '../modals';
 

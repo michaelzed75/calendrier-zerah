@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useEffect } from 'react';
-import { Upload, Search, RefreshCw, Check, X, Trash2, AlertCircle, Pencil, Link2, BarChart3, ArrowUpDown, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, Search, RefreshCw, Check, X, Trash2, AlertCircle, Pencil, Link2, BarChart3, ArrowUpDown, Clock, ChevronDown, ChevronUp, FileText, Users, Building2, Download, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { formatDateToYMD } from '../../utils/dateUtils';

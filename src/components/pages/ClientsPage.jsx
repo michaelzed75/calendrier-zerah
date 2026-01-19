@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, Check, Download } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
 
