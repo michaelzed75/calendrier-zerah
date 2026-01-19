@@ -3,8 +3,6 @@ import { Plus, Pencil, Trash2, Mail, Check, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { CollaborateurModal } from '../modals';
 
-}
-
 function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);
