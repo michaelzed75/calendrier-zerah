@@ -1,570 +1,1407 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Users, Building2, Calendar, Menu, Check, Trash2, ChevronDown, ChevronUp, Palette, Image, RefreshCw, LogOut, Shield, AlertCircle, Receipt, FileText, Search, Clock, Upload, Link2, BarChart3, ArrowUpDown, VolumeX, Volume2, Mail } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, VolumeX, Volume2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { supabase } from './supabaseClient';
-import AuthPage from './components/pages/AuthPage';
-import CalendarPage from './components/pages/CalendarPage';
-import { ThemeModal, CollaborateurModal, ClientModal, MergeClientModal, AddChargeModal, EditChargeModal, ExportModal } from './components/modals';
-import { formatDateToYMD, parseDateString } from './utils/dateUtils';
-import { GRADIENT_THEMES, ACCENT_COLORS, UNSPLASH_CATEGORIES, UNSPLASH_ACCESS_KEY } from './constants/theme';
+import { supabase } from '../../supabaseClient';
+import { AddChargeModal, EditChargeModal, ExportModal } from '../modals';
+import { formatDateToYMD, parseDateString } from '../../utils/dateUtils';
 
 // ============================================
-// COMPOSANT PRINCIPAL - APP
+// PAGE CALENDRIER
 // ============================================
-export default function App() {
-  // État d'authentification
-  const [user, setUser] = useState(null);
-  const [userCollaborateur, setUserCollaborateur] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authPage, setAuthPage] = useState('login'); // 'login', 'register', 'forgot'
+function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur, impotsTaxes, suiviEcheances, setSuiviEcheances }) {
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
+  const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedCollaborateurs, setSelectedCollaborateurs] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [viewMode, setViewMode] = useState('month');
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [editingCharge, setEditingCharge] = useState(null);
+  const [expandedEquipes, setExpandedEquipes] = useState({});
+  const [prefilledDate, setPrefilledDate] = useState(null);
+  const [draggedCharge, setDraggedCharge] = useState(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
 
-  const [currentPage, setCurrentPage] = useState('calendar');
-  const [collaborateurs, setCollaborateurs] = useState([]);
-  const [collaborateurChefs, setCollaborateurChefs] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [charges, setCharges] = useState([]);
-  const [impotsTaxes, setImpotsTaxes] = useState([]);
-  const [suiviEcheances, setSuiviEcheances] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showThemeModal, setShowThemeModal] = useState(false);
-  const [backgroundTheme, setBackgroundTheme] = useState(() => {
-    const saved = localStorage.getItem('backgroundTheme');
-    return saved ? JSON.parse(saved) : { type: 'gradient', value: 'aurora' };
-  });
-  const [backgroundImage, setBackgroundImage] = useState(null);
-  const [imageCredits, setImageCredits] = useState(null);
-  const [accentColor, setAccentColor] = useState(() => {
-    const saved = localStorage.getItem('accentColor');
-    return saved || 'pink';
-  });
+  const activeCollaborateurs = collaborateurs.filter(c => c.actif);
+  const activeClients = clients.filter(c => c.actif);
+  const chefsMission = activeCollaborateurs.filter(c => c.est_chef_mission);
 
-  // Sauvegarder la couleur d'accent
+  // Calculer les collaborateurs visibles selon les droits de l'utilisateur
+  const getVisibleCollaborateurs = () => {
+    if (!userCollaborateur) return [];
+
+    // Admin voit tout le monde
+    if (userCollaborateur.is_admin) {
+      return activeCollaborateurs;
+    }
+
+    const visibleIds = new Set();
+
+    // L'utilisateur se voit toujours lui-même
+    visibleIds.add(userCollaborateur.id);
+
+    // Si c'est un chef de mission, il voit son équipe
+    if (userCollaborateur.est_chef_mission) {
+      const equipe = getEquipeOf(userCollaborateur.id);
+      equipe.forEach(membre => visibleIds.add(membre.id));
+    }
+
+    // Tout collaborateur voit ses chefs
+    const chefs = getChefsOf(userCollaborateur.id);
+    chefs.forEach(chef => visibleIds.add(chef.id));
+
+    // Et les membres de l'équipe de ses chefs (ses collègues)
+    chefs.forEach(chef => {
+      const equipeDuChef = getEquipeOf(chef.id);
+      equipeDuChef.forEach(membre => visibleIds.add(membre.id));
+    });
+
+    return activeCollaborateurs.filter(c => visibleIds.has(c.id));
+  };
+
+  const visibleCollaborateurs = getVisibleCollaborateurs();
+  const visibleChefsMission = visibleCollaborateurs.filter(c => c.est_chef_mission);
+
+  // Charger les préférences utilisateur
   useEffect(() => {
-    localStorage.setItem('accentColor', accentColor);
-  }, [accentColor]);
+    if (visibleCollaborateurs.length === 0) return;
 
-  // Charger l'image de fond si nécessaire
-  useEffect(() => {
-    if (backgroundTheme.type === 'image' && backgroundTheme.imageUrl) {
-      setBackgroundImage(backgroundTheme.imageUrl);
-      setImageCredits(backgroundTheme.credits);
+    const saved = localStorage.getItem('userPreferences');
+    if (saved) {
+      const prefs = JSON.parse(saved);
+      // Filtrer les collaborateurs sélectionnés pour ne garder que ceux visibles
+      const visibleIds = visibleCollaborateurs.map(c => c.id);
+      const filteredSelected = (prefs.selectedCollaborateurs || []).filter(id => visibleIds.includes(id));
+
+      setCurrentUser(userCollaborateur?.id || prefs.currentUser);
+      setViewMode(prefs.viewMode || 'month');
+      setSelectedCollaborateurs(filteredSelected.length > 0 ? filteredSelected : visibleIds);
+      setExpandedEquipes(prefs.expandedEquipes || {});
+      if (prefs.viewMode === 'day' && prefs.selectedDay) {
+        setSelectedDay(prefs.selectedDay);
+      } else if (prefs.viewMode === 'day') {
+        setSelectedDay(formatDateToYMD(new Date()));
+      }
     } else {
-      setBackgroundImage(null);
-      setImageCredits(null);
+      setCurrentUser(userCollaborateur?.id || visibleCollaborateurs[0]?.id || 1);
+      setSelectedCollaborateurs(visibleCollaborateurs.map(c => c.id));
+      // Ouvrir toutes les équipes visibles par défaut
+      const defaultExpanded = {};
+      visibleChefsMission.forEach(chef => { defaultExpanded[chef.id] = true; });
+      setExpandedEquipes(defaultExpanded);
     }
-  }, [backgroundTheme]);
+  }, [collaborateurs, userCollaborateur]);
 
-  // Sauvegarder le thème
+  // Sauvegarder les préférences
   useEffect(() => {
-    localStorage.setItem('backgroundTheme', JSON.stringify(backgroundTheme));
-  }, [backgroundTheme]);
-
-  // Vérifier l'authentification au démarrage
-  useEffect(() => {
-    // Récupérer la session actuelle
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserCollaborateur(session.user.email);
-      }
-      setAuthLoading(false);
-    });
-
-    // Écouter les changements d'auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserCollaborateur(session.user.email);
-      } else {
-        setUserCollaborateur(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Charger le collaborateur lié à l'utilisateur
-  const loadUserCollaborateur = async (email) => {
-    const { data, error } = await supabase
-      .from('collaborateurs')
-      .select('*')
-      .eq('email', email)
-      .single();
-
-    if (!error && data) {
-      setUserCollaborateur(data);
+    if (currentUser !== null) {
+      localStorage.setItem('userPreferences', JSON.stringify({
+        currentUser,
+        viewMode,
+        selectedCollaborateurs,
+        expandedEquipes,
+        selectedDay
+      }));
     }
+  }, [currentUser, viewMode, selectedCollaborateurs, expandedEquipes, selectedDay]);
+
+  // Filtrer les collaborateurs visibles et sélectionnés
+  useEffect(() => {
+    const filtered = visibleCollaborateurs.filter(c => selectedCollaborateurs.includes(c.id));
+    setFilteredCollaborateurs(filtered);
+  }, [selectedCollaborateurs, visibleCollaborateurs]);
+
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const emptyDays = Array.from({ length: firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1 }, (_, i) => null);
+  const allDays = [...emptyDays, ...monthDays];
+
+  const getWeekDays = useCallback(() => {
+    const today = new Date(currentDate);
+    today.setDate(today.getDate() + weekOffset * 7);
+    const first = today.getDate() - today.getDay() + 1;
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth(), first + i);
+      weekDays.push(date);
+    }
+    return weekDays;
+  }, [currentDate, weekOffset]);
+
+  const getWeekLabel = () => {
+    const days = getWeekDays();
+    if (days.length === 0) return '';
+    const start = days[0];
+    const end = days[6];
+    return `${start.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })} - ${end.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}`;
   };
 
-  // Déconnexion
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setUserCollaborateur(null);
-  };
+  const weekDays = viewMode === 'week' ? getWeekDays() : [];
 
-  // Chargement initial des données depuis Supabase
-  useEffect(() => {
-    if (user) {
-      loadAllData();
+  const getDefaultDate = useCallback(() => {
+    if (prefilledDate) {
+      return prefilledDate;
     }
-  }, [user]);
+    if (viewMode === 'day' && selectedDay) {
+      return selectedDay;
+    } else if (viewMode === 'week') {
+      const days = getWeekDays();
+      if (days.length > 0) {
+        return formatDateToYMD(days[0]);
+      }
+    }
+    const today = new Date();
+    return formatDateToYMD(today);
+  }, [viewMode, selectedDay, getWeekDays, prefilledDate]);
 
-  const loadAllData = async () => {
-    setLoading(true);
-    
+  const openAddModalWithDate = useCallback((day) => {
+    const dateStr = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    setPrefilledDate(dateStr);
+    setShowAddModal(true);
+  }, [currentDate]);
+
+  const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
+    const newCharge = {
+      collaborateur_id: collaborateurId,
+      client_id: clientId,
+      date_charge: date,
+      heures: parseFloat(heures),
+      type: type,
+      detail: detail,
+      heures_realisees: 0
+    };
+
     try {
-      // Charger collaborateurs
-      const { data: collabData, error: collabError } = await supabase
-        .from('collaborateurs')
-        .select('*')
-        .order('id');
-      if (!collabError && collabData) {
-        setCollaborateurs(collabData);
-      }
-
-      // Charger liaisons collaborateur-chefs
-      const { data: chefsData, error: chefsError } = await supabase
-        .from('collaborateur_chefs')
-        .select('*');
-      if (!chefsError && chefsData) {
-        setCollaborateurChefs(chefsData);
-      }
-
-      // Charger clients
-      const { data: clientsData, error: clientsError } = await supabase
-        .from('clients')
-        .select('*')
-        .order('id');
-      if (!clientsError && clientsData) {
-        setClients(clientsData);
-      }
-
-      // Charger charges
-      const { data: chargesData, error: chargesError } = await supabase
-        .from('charges')
-        .select('*');
-      if (!chargesError && chargesData) {
-        setCharges(chargesData);
-      }
-
-      // Charger impots_taxes
-      const { data: impotsTaxesData, error: impotsTaxesError } = await supabase
-        .from('impots_taxes')
-        .select('*');
-      if (!impotsTaxesError && impotsTaxesData) {
-        setImpotsTaxes(impotsTaxesData);
-      }
-
-      // Charger suivi_echeances
-      const { data: suiviData, error: suiviError } = await supabase
-        .from('suivi_echeances')
-        .select('*');
-      if (!suiviError && suiviData) {
-        setSuiviEcheances(suiviData);
+      const { data, error } = await supabase.from('charges').insert([newCharge]).select();
+      if (!error && data) {
+        setCharges(prev => [...prev, data[0]]);
       }
     } catch (err) {
-      console.error('Erreur chargement données:', err);
+      console.error('Erreur ajout charge:', err);
     }
-
-    setLoading(false);
+    setShowAddModal(false);
+    setPrefilledDate(null);
   };
 
-  // Obtenir les chefs d'un collaborateur
-  const getChefsOf = (collaborateurId) => {
-    const chefIds = collaborateurChefs
-      .filter(cc => cc.collaborateur_id === collaborateurId)
-      .map(cc => cc.chef_id);
-    return collaborateurs.filter(c => chefIds.includes(c.id));
+  const handleUpdateCharge = async (chargeId, collaborateurId, clientId, date, heures, type, detail) => {
+    const updatedCharge = {
+      collaborateur_id: collaborateurId,
+      client_id: clientId,
+      date_charge: date,
+      heures: parseFloat(heures),
+      type: type,
+      detail: detail
+    };
+
+    setCharges(prev => prev.map(c => 
+      c.id === chargeId ? { ...c, ...updatedCharge } : c
+    ));
+
+    try {
+      await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
+    } catch (err) {
+      console.error('Erreur mise à jour:', err);
+    }
+    
+    setEditingCharge(null);
   };
 
-  // Obtenir l'équipe d'un chef
-  const getEquipeOf = (chefId) => {
-    const membreIds = collaborateurChefs
-      .filter(cc => cc.chef_id === chefId)
-      .map(cc => cc.collaborateur_id);
-    return collaborateurs.filter(c => membreIds.includes(c.id));
-  };
+  const handleDeleteCharge = useCallback(async (chargeId) => {
+    setCharges(prev => prev.filter(c => c.id !== chargeId));
 
-  // Obtenir les clients accessibles pour un collaborateur (pour ajouter des charges)
-  const getAccessibleClients = (collaborateur) => {
-    if (!collaborateur) return clients.filter(c => c.actif);
-
-    // Admin voit tous les clients actifs
-    if (collaborateur.is_admin) {
-      return clients.filter(c => c.actif);
+    try {
+      await supabase.from('charges').delete().eq('id', chargeId);
+    } catch (err) {
+      console.error('Erreur suppression:', err);
     }
+  }, [setCharges]);
 
-    // Chef de mission voit ses clients + clients sans chef assigné
-    if (collaborateur.est_chef_mission) {
-      return clients.filter(c =>
-        c.actif && (!c.chef_mission_id || c.chef_mission_id === collaborateur.id)
-      );
+  // Déplacer une charge à une nouvelle date (drag and drop)
+  const handleMoveCharge = useCallback(async (chargeId, newDate) => {
+    // Mise à jour optimiste
+    setCharges(prev => prev.map(c =>
+      c.id === chargeId ? { ...c, date_charge: newDate } : c
+    ));
+
+    try {
+      const { error } = await supabase
+        .from('charges')
+        .update({ date_charge: newDate })
+        .eq('id', chargeId);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Erreur déplacement charge:', err);
+      // Recharger les données en cas d'erreur
     }
+  }, [setCharges]);
 
-    // Collaborateur voit les clients de ses chefs + clients sans chef assigné
-    const chefIds = getChefsOf(collaborateur.id).map(c => c.id);
-    return clients.filter(c =>
-      c.actif && (!c.chef_mission_id || chefIds.includes(c.chef_mission_id))
+  const getChargesForDay = useCallback((collaborateurId, day) => {
+    const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === targetDate);
+  }, [charges, currentDate]);
+
+  const getChargesForDateStr = useCallback((collaborateurId, dateStr) => {
+    return charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+  }, [charges]);
+
+  const getTotalHoursForDay = useCallback((collaborateurId, day) => {
+    return getChargesForDay(collaborateurId, day).reduce((sum, c) => sum + parseFloat(c.heures), 0);
+  }, [getChargesForDay]);
+
+  const getTotalHoursForDateStr = useCallback((collaborateurId, dateStr) => {
+    return getChargesForDateStr(collaborateurId, dateStr).reduce((sum, c) => sum + parseFloat(c.heures), 0);
+  }, [getChargesForDateStr]);
+
+  // Liste des collaborateurs en sourdine (stockée en localStorage)
+  const [budgetSourdine, setBudgetSourdine] = useState(() => {
+    const saved = localStorage.getItem('budgetSourdine');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('budgetSourdine', JSON.stringify(budgetSourdine));
+  }, [budgetSourdine]);
+
+  // Vérifier si un collaborateur a un budget saisi pour aujourd'hui
+  const hasBudgetForToday = useCallback((collaborateurId) => {
+    const today = formatDateToYMD(new Date());
+    const budgetsToday = charges.filter(c =>
+      c.collaborateur_id === collaborateurId &&
+      c.date_charge === today
     );
-  };
+    return budgetsToday.length > 0;
+  }, [charges]);
 
-  // Calculer le style de fond
-  const getBackgroundStyle = () => {
-    if (backgroundTheme.type === 'image' && backgroundImage) {
-      return {
-        backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed',
+  // Temps réels depuis Supabase
+  const [tempsReelsLocal, setTempsReelsLocal] = useState([]);
+
+  // Charger les temps réels depuis Supabase au démarrage et rafraîchir régulièrement
+  useEffect(() => {
+    const loadTempsReels = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('temps_reels')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (!error && data) {
+          setTempsReelsLocal(data);
+        }
+      } catch (err) {
+        console.error('Erreur chargement temps réels:', err);
+      }
+    };
+
+    // Charger au démarrage
+    loadTempsReels();
+
+    // Rafraîchir toutes les 30 secondes pour synchroniser avec les imports
+    const interval = setInterval(loadTempsReels, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Vérifier si un collaborateur a des temps réels saisis pour J-1 (après 10h)
+  const hasTempsReelsForYesterday = useCallback((collaborateurId) => {
+    const now = new Date();
+    // Seulement vérifier après 10h
+    if (now.getHours() < 10) return true; // Pas d'alerte avant 10h
+
+    // Calculer J-1 (hier)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatDateToYMD(yesterday);
+
+    // Vérifier si c'était un jour ouvré (lundi-vendredi)
+    const dayOfWeek = yesterday.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) return true; // Week-end, pas d'alerte
+
+    // Chercher les temps réels pour ce collaborateur hier
+    const tempsHier = tempsReelsLocal.filter(t =>
+      t.collaborateur_id === collaborateurId &&
+      t.date === yesterdayStr
+    );
+
+    const totalHeures = tempsHier.reduce((sum, t) => sum + (t.heures || 0), 0);
+    return totalHeures > 0;
+  }, [tempsReelsLocal]);
+
+  // Vérifier si un collaborateur est en sourdine
+  const isInSourdine = useCallback((collaborateurId) => {
+    return budgetSourdine.includes(collaborateurId);
+  }, [budgetSourdine]);
+
+  // Toggle sourdine pour un collaborateur
+  const toggleSourdine = useCallback((collaborateurId) => {
+    setBudgetSourdine(prev =>
+      prev.includes(collaborateurId)
+        ? prev.filter(id => id !== collaborateurId)
+        : [...prev, collaborateurId]
+    );
+  }, []);
+
+  // Compter les alertes (collaborateurs sans budget aujourd'hui ou sans temps J-1, hors sourdine)
+  const alertCount = visibleCollaborateurs.filter(c =>
+    !isInSourdine(c.id) && (!hasBudgetForToday(c.id) || !hasTempsReelsForYesterday(c.id))
+  ).length;
+
+  const getAggregatedByClient = useCallback((collaborateurId, dateStr) => {
+    const dayCharges = charges.filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr);
+    const aggregated = {};
+    dayCharges.forEach(charge => {
+      const clientName = clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu';
+      if (!aggregated[clientName]) {
+        aggregated[clientName] = 0;
+      }
+      aggregated[clientName] += parseFloat(charge.heures);
+    });
+    return Object.entries(aggregated).map(([client, heures]) => ({ client, heures }));
+  }, [charges, clients]);
+
+  const getTooltipForDay = useCallback((collaborateurId, day) => {
+    const dayCharges = getChargesForDay(collaborateurId, day);
+    if (dayCharges.length === 0) return '';
+    return dayCharges.map(charge => {
+      const clientName = clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu';
+      const detail = charge.detail ? ` - ${charge.detail}` : '';
+      return `${clientName}: ${charge.heures}h${detail}`;
+    }).join('\n');
+  }, [getChargesForDay, clients]);
+
+  const getWeekTotal = useCallback((collaborateurId) => {
+    return weekDays.reduce((sum, date) => {
+      const dateStr = formatDateToYMD(date);
+      const dayTotal = charges
+        .filter(c => c.collaborateur_id === collaborateurId && c.date_charge === dateStr)
+        .reduce((daySum, c) => daySum + parseFloat(c.heures), 0);
+      return sum + dayTotal;
+    }, 0);
+  }, [charges, weekDays]);
+
+  // Calculer les échéances fiscales pour une date donnée
+  const getEcheancesFiscales = useCallback((dateStr) => {
+    const echeances = [];
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayOfMonth = date.getDate();
+    const monthNum = date.getMonth() + 1; // 1-12
+    const dayOfWeek = date.getDay(); // 0=Dim, 1=Lun, ...
+
+    // Fonction helper: vérifie si une échéance théorique tombe sur cette date
+    // En tenant compte du report dimanche → lundi
+    const isEcheanceDay = (jourTheorique, moisCondition = true) => {
+      if (!moisCondition) return false;
+
+      // Créer la date théorique de l'échéance
+      const dateTheorique = new Date(year, monthNum - 1, jourTheorique);
+      const jourSemaineTheorique = dateTheorique.getDay();
+
+      // Si l'échéance théorique tombe un dimanche, elle est reportée au lundi
+      if (jourSemaineTheorique === 0) {
+        // L'échéance est reportée au lundi (jour + 1)
+        const dateLundi = new Date(dateTheorique);
+        dateLundi.setDate(dateLundi.getDate() + 1);
+        return dateLundi.getDate() === dayOfMonth && dateLundi.getMonth() + 1 === monthNum;
+      }
+
+      // Sinon, l'échéance reste au jour prévu
+      return dayOfMonth === jourTheorique;
+    };
+
+    // Clients du chef de mission connecté
+    const mesClients = clients.filter(c =>
+      c.actif &&
+      (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+    );
+
+    // Pour chaque client, vérifier les échéances
+    mesClients.forEach(client => {
+      const data = impotsTaxes.find(it => it.client_id === client.id && it.annee_fiscale === year);
+      if (!data) return;
+
+      // TVA
+      if (data.tva_jour && data.tva_periodicite) {
+        const tvaJour = parseInt(data.tva_jour);
+        let isTvaDay = false;
+
+        if (data.tva_periodicite === 'mensuel' && isEcheanceDay(tvaJour, true)) {
+          isTvaDay = true;
+        } else if (data.tva_periodicite === 'trimestriel' && isEcheanceDay(tvaJour, [1, 4, 7, 10].includes(monthNum))) {
+          isTvaDay = true;
+        }
+
+        if (isTvaDay) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'TVA', montant: null, dateEcheance: dateStr });
+        }
+
+        // CA12 (régime simplifié) - acomptes fixes en juillet et décembre (dates réglementaires)
+        if (data.tva_periodicite === 'ca12') {
+          // Acomptes CA12: 55% en juillet, 40% en décembre - dates fixes au 15 du mois
+          if (isEcheanceDay(15, [7, 12].includes(monthNum))) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'TVA Ac.', montant: null, dateEcheance: dateStr });
+          }
+          // Déclaration CA12 - 2ème jour ouvré après 1er mai si clôture décembre, sinon 3 mois après clôture
+          const moisClotureNomTVA = data.mois_cloture || 'Décembre';
+          const moisMapTVA = {
+            'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+            'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+          };
+          const moisClotureNumTVA = moisMapTVA[moisClotureNomTVA] || 12;
+
+          if (moisClotureNumTVA === 12) {
+            // Clôture décembre → CA12 le 3 mai (2ème jour ouvré après 1er mai)
+            if (isEcheanceDay(3, monthNum === 5)) {
+              echeances.push({ clientId: client.id, client: client.nom, type: 'CA12', montant: null, dateEcheance: dateStr });
+            }
+          } else {
+            // Autres clôtures → CA12 E dans les 3 mois après clôture (dernier jour du 3ème mois)
+            let moisCA12 = moisClotureNumTVA + 3;
+            if (moisCA12 > 12) moisCA12 -= 12;
+            const dernierJourCA12 = new Date(year, moisCA12, 0).getDate();
+            if (isEcheanceDay(dernierJourCA12, monthNum === moisCA12)) {
+              echeances.push({ clientId: client.id, client: client.nom, type: 'CA12 E', montant: null, dateEcheance: dateStr });
+            }
+          }
+        }
+      }
+
+      // IS Acomptes - dates fixes: 15/03, 15/06, 15/09, 15/12
+      if (data.soumis_is) {
+        if (isEcheanceDay(15, monthNum === 3) && data.is_acompte_03) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_03, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 6) && data.is_acompte_06) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_06, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 9) && data.is_acompte_09) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_09, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(15, monthNum === 12) && data.is_acompte_12) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'IS', montant: data.is_acompte_12, dateEcheance: dateStr });
+        }
+      }
+
+      // IS Solde - 15 du 4ème mois après clôture (ou 15/05 si clôture Décembre)
+      if (data.soumis_is) {
+        const moisClotureNom = data.mois_cloture || 'Décembre';
+        const moisMap = {
+          'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+          'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
+        };
+        const moisClotureNum = moisMap[moisClotureNom] || 12;
+
+        if (moisClotureNum === 12) {
+          // Clôture Décembre → solde 15/05
+          if (isEcheanceDay(15, monthNum === 5)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'IS Solde', montant: null, dateEcheance: dateStr });
+          }
+        } else {
+          // Autres clôtures → 15 du 4ème mois suivant
+          let moisSolde = moisClotureNum + 4;
+          if (moisSolde > 12) moisSolde -= 12;
+          if (isEcheanceDay(15, monthNum === moisSolde)) {
+            echeances.push({ clientId: client.id, client: client.nom, type: 'IS Solde', montant: null, dateEcheance: dateStr });
+          }
+        }
+      }
+
+      // Liasse fiscale - basée sur mois_cloture (+15 jours télétransmission expert-comptable)
+      // Clôture décembre → 5 mai + 15 jours = 20 mai
+      // Autres clôtures → 3 mois après + 15 jours
+      const moisClotureNomLiasse = data.mois_cloture || 'Décembre';
+      const moisMapLiasse = {
+        'Janvier': 1, 'Février': 2, 'Mars': 3, 'Avril': 4, 'Mai': 5, 'Juin': 6,
+        'Juillet': 7, 'Août': 8, 'Septembre': 9, 'Octobre': 10, 'Novembre': 11, 'Décembre': 12
       };
+      const moisClotureNumLiasse = moisMapLiasse[moisClotureNomLiasse] || 12;
+
+      if (moisClotureNumLiasse === 12) {
+        // Clôture décembre → liasse 20/05 (5 mai + 15 jours télétransmission)
+        if (isEcheanceDay(20, monthNum === 5)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
+        }
+      } else {
+        // Autres clôtures → 3 mois après la clôture + 15 jours
+        let moisLiasse = moisClotureNumLiasse + 3;
+        if (moisLiasse > 12) moisLiasse -= 12;
+        // Dernier jour du 3e mois + 15 jours = 15 du 4e mois
+        let moisLiasse15 = moisLiasse + 1;
+        if (moisLiasse15 > 12) moisLiasse15 -= 12;
+        if (isEcheanceDay(15, monthNum === moisLiasse15)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'Liasse', montant: null, dateEcheance: dateStr });
+        }
+      }
+
+      // CFE - 15/12 toujours, + 15/06 si montant N-1 > 3000€
+      if (data.cfe_montant_n1) {
+        if (isEcheanceDay(15, monthNum === 12)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CFE', montant: data.cfe_montant_n1, dateEcheance: dateStr });
+        }
+        if (data.cfe_montant_n1 > 3000 && isEcheanceDay(15, monthNum === 6)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CFE Ac.', montant: Math.round(data.cfe_montant_n1 / 2), dateEcheance: dateStr });
+        }
+      }
+
+      // CVAE - 15/06, 15/09, 03/05
+      if (data.cvae) {
+        if (isEcheanceDay(15, monthNum === 6) || isEcheanceDay(15, monthNum === 9)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CVAE', montant: null, dateEcheance: dateStr });
+        }
+        if (isEcheanceDay(3, monthNum === 5)) {
+          echeances.push({ clientId: client.id, client: client.nom, type: 'CVAE Sol.', montant: null, dateEcheance: dateStr });
+        }
+      }
+
+      // TVTS - 15/01
+      if (data.tvts && isEcheanceDay(15, monthNum === 1)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'TVTS', montant: null, dateEcheance: dateStr });
+      }
+
+      // DAS2 - 01/05
+      if (data.das2 && isEcheanceDay(1, monthNum === 5)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'DAS2', montant: null, dateEcheance: dateStr });
+      }
+
+      // Taxe sur les salaires - 10/01
+      if (data.taxe_salaires && isEcheanceDay(10, monthNum === 1)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'Taxe Salaires', montant: null, dateEcheance: dateStr });
+      }
+
+      // IFU - 15/02
+      if (data.ifu && isEcheanceDay(15, monthNum === 2)) {
+        echeances.push({ clientId: client.id, client: client.nom, type: 'IFU', montant: null, dateEcheance: dateStr });
+      }
+    });
+
+    return echeances;
+  }, [clients, impotsTaxes, userCollaborateur]);
+
+  // Vérifier si une échéance est faite
+  const isEcheanceFaite = useCallback((clientId, typeEcheance, dateEcheance) => {
+    return suiviEcheances.some(s =>
+      s.client_id === clientId &&
+      s.type_echeance === typeEcheance &&
+      s.date_echeance === dateEcheance
+    );
+  }, [suiviEcheances]);
+
+  // Toggle le suivi d'une échéance
+  const toggleSuiviEcheance = async (clientId, typeEcheance, dateEcheance, anneeFiscale) => {
+    const existing = suiviEcheances.find(s =>
+      s.client_id === clientId &&
+      s.type_echeance === typeEcheance &&
+      s.date_echeance === dateEcheance
+    );
+
+    try {
+      if (existing) {
+        // Supprimer le suivi
+        const { error } = await supabase
+          .from('suivi_echeances')
+          .delete()
+          .eq('id', existing.id);
+
+        if (error) throw error;
+        setSuiviEcheances(prev => prev.filter(s => s.id !== existing.id));
+      } else {
+        // Créer le suivi
+        const { data, error } = await supabase
+          .from('suivi_echeances')
+          .insert({
+            client_id: clientId,
+            type_echeance: typeEcheance,
+            date_echeance: dateEcheance,
+            fait_par_id: userCollaborateur?.id,
+            fait_le: new Date().toISOString(),
+            annee_fiscale: anneeFiscale
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        setSuiviEcheances(prev => [...prev, data]);
+      }
+    } catch (err) {
+      console.error('Erreur toggle suivi échéance:', err);
     }
-    return {};
   };
 
-  const getBackgroundClass = () => {
-    if (backgroundTheme.type === 'gradient') {
-      const theme = GRADIENT_THEMES.find(t => t.id === backgroundTheme.value);
-      return `bg-gradient-to-br ${theme?.gradient || 'from-slate-900 via-slate-800 to-slate-900'}`;
+  const handleNavigateWeek = (direction) => {
+    setWeekOffset(weekOffset + direction);
+  };
+
+  const openDayView = (day) => {
+    const dateStr = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+    setSelectedDay(dateStr);
+    setViewMode('day');
+  };
+
+  const openDayViewFromDate = (date) => {
+    const dateStr = formatDateToYMD(date);
+    setSelectedDay(dateStr);
+    setViewMode('day');
+  };
+
+  const navigateDay = (direction) => {
+    const current = parseDateString(selectedDay);
+    current.setDate(current.getDate() + direction);
+    setSelectedDay(formatDateToYMD(current));
+  };
+
+  const switchToView = (newView) => {
+    if (newView === 'day' && !selectedDay) {
+      const today = new Date();
+      if (today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear()) {
+        setSelectedDay(formatDateToYMD(today));
+      } else {
+        setSelectedDay(formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)));
+      }
     }
-    return '';
+    if (newView === 'week') {
+      // Calculer l'offset pour afficher la semaine contenant aujourd'hui
+      const today = new Date();
+      const baseDate = new Date(currentDate);
+      // Trouver le lundi de la semaine de baseDate
+      const baseDayOfWeek = baseDate.getDay();
+      const baseMonday = new Date(baseDate);
+      baseMonday.setDate(baseDate.getDate() - (baseDayOfWeek === 0 ? 6 : baseDayOfWeek - 1));
+      // Trouver le lundi de la semaine d'aujourd'hui
+      const todayDayOfWeek = today.getDay();
+      const todayMonday = new Date(today);
+      todayMonday.setDate(today.getDate() - (todayDayOfWeek === 0 ? 6 : todayDayOfWeek - 1));
+      // Calculer la différence en semaines
+      const diffTime = todayMonday.getTime() - baseMonday.getTime();
+      const diffWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+      setWeekOffset(diffWeeks);
+    }
+    setViewMode(newView);
   };
 
-  // Obtenir les classes pour la couleur d'accent
-  const getAccentClasses = () => {
-    const accent = ACCENT_COLORS.find(c => c.id === accentColor) || ACCENT_COLORS[0];
-    return accent;
+  // Toggle équipe dans le filtre
+  const toggleEquipe = (chefId) => {
+    setExpandedEquipes(prev => ({ ...prev, [chefId]: !prev[chefId] }));
   };
 
-  const accent = getAccentClasses();
+  // Sélectionner toute une équipe
+  const selectEquipe = (chefId, select) => {
+    const equipe = getEquipeOf(chefId);
+    const equipeIds = [chefId, ...equipe.map(m => m.id)];
+    
+    if (select) {
+      setSelectedCollaborateurs(prev => [...new Set([...prev, ...equipeIds])]);
+    } else {
+      setSelectedCollaborateurs(prev => prev.filter(id => !equipeIds.includes(id)));
+    }
+  };
 
-  // Écran de chargement auth
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-900 via-purple-800 to-pink-900 flex items-center justify-center">
-        <div className="text-white text-xl">Chargement...</div>
-      </div>
-    );
-  }
+  const exportToExcel = (startDateStr, endDateStr) => {
+    const data = [];
+    
+    filteredCollaborateurs.forEach(collab => {
+      const chargesForCollab = charges.filter(c => {
+        return c.collaborateur_id === collab.id &&
+               c.date_charge >= startDateStr &&
+               c.date_charge <= endDateStr;
+      });
 
-  // Si non connecté, afficher la page de connexion
-  if (!user) {
-    return (
-      <AuthPage
-        authPage={authPage}
-        setAuthPage={setAuthPage}
-        accent={accent}
-      />
-    );
-  }
+      chargesForCollab.forEach(charge => {
+        const displayDate = parseDateString(charge.date_charge);
+        data.push({
+          'Collaborateur': collab.nom,
+          'Client': clients.find(cl => cl.id === charge.client_id)?.nom || '',
+          'Date': displayDate.toLocaleDateString('fr-FR'),
+          'Budgété (h)': charge.heures,
+          'Réalisé (h)': charge.heures_realisees || 0,
+          'Écart (h)': (charge.heures - (charge.heures_realisees || 0)).toFixed(2),
+          'Type': charge.type,
+          'Détail': charge.detail || ''
+        });
+      });
+    });
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-900 via-purple-800 to-pink-900 flex items-center justify-center">
-        <div className="text-white text-xl">Chargement...</div>
-      </div>
-    );
-  }
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Charges');
+    
+    const fileName = `Charges_${startDateStr}_${endDateStr}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    setShowExportModal(false);
+  };
 
   return (
-    <div
-      className={`min-h-screen ${getBackgroundClass()}`}
-      style={getBackgroundStyle()}
-    >
-      {/* Overlay pour améliorer la lisibilité sur les images */}
-      {backgroundTheme.type === 'image' && (
-        <div className="fixed inset-0 bg-black/40 pointer-events-none" />
-      )}
-
-      {/* Navigation */}
-      <nav className="bg-slate-800/90 backdrop-blur-sm border-b border-slate-700 px-6 py-4 relative z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Audit Up</h1>
-          
-          {/* Menu desktop */}
-          <div className="hidden md:flex gap-2">
-            <button
-              onClick={() => setCurrentPage('calendar')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              <Calendar size={18} />
-              Calendrier
-            </button>
-            <button
-              onClick={() => setCurrentPage('collaborateurs')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              <Users size={18} />
-              Collaborateurs
-            </button>
-            <button
-              onClick={() => setCurrentPage('clients')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
-            >
-              <Building2 size={18} />
-              Clients
-            </button>
-            {(userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
-              <button
-                onClick={() => setCurrentPage('impots')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <FileText size={18} />
-                Impôts et Taxes
-              </button>
-            )}
-            {userCollaborateur?.est_chef_mission && (
-              <button
-                onClick={() => setCurrentPage('tva')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <Receipt size={18} />
-                Planification TVA
-              </button>
-            )}
-            {userCollaborateur?.est_chef_mission && (
-              <button
-                onClick={() => setCurrentPage('temps-reels')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <Clock size={18} />
-                Temps Réels
-              </button>
-            )}
-            <button
-              onClick={() => setShowThemeModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
-              title="Personnaliser le fond"
-            >
-              <Palette size={18} />
-            </button>
-            {/* Bouton Déconnexion */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
-              title="Déconnexion"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
-
-          {/* Menu mobile */}
-          <button 
-            className="md:hidden text-white p-2"
-            onClick={() => setShowMobileMenu(!showMobileMenu)}
-          >
-            <Menu size={24} />
-          </button>
+    <div className="p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white mb-2">Calendrier d'équipe</h2>
+          <p className="text-slate-400">Gestion des charges de travail par collaborateur</p>
         </div>
 
-        {/* Menu mobile déroulant */}
-        {showMobileMenu && (
-          <div className="md:hidden mt-4 space-y-2">
-            <button
-              onClick={() => { setCurrentPage('calendar'); setShowMobileMenu(false); }}
-              className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-              }`}
-            >
-              <Calendar size={18} />
-              Calendrier
-            </button>
-            <button
-              onClick={() => { setCurrentPage('collaborateurs'); setShowMobileMenu(false); }}
-              className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-              }`}
-            >
-              <Users size={18} />
-              Collaborateurs
-            </button>
-            <button
-              onClick={() => { setCurrentPage('clients'); setShowMobileMenu(false); }}
-              className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
-              }`}
-            >
-              <Building2 size={18} />
-              Clients
-            </button>
-            {(userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
+        <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            {viewMode === 'day' && selectedDay ? (
+              <>
+                <button onClick={() => navigateDay(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  {parseDateString(selectedDay).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </h2>
+                <button onClick={() => navigateDay(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            ) : viewMode === 'week' ? (
+              <>
+                <button onClick={() => handleNavigateWeek(-1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  Semaine du {getWeekLabel()}
+                </h2>
+                <button onClick={() => handleNavigateWeek(1)} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronLeft size={20} />
+                </button>
+                <h2 className="text-xl font-semibold text-white min-w-48 text-center">
+                  {currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                </h2>
+                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))} className="p-2 hover:bg-slate-700 rounded-lg transition text-white">
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-3 flex-wrap">
+            {filteredCollaborateurs.length > 0 && (
+              <select value={currentUser || ''} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                {filteredCollaborateurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+              </select>
+            )}
+
+            <div className="flex rounded-lg overflow-hidden border border-slate-600">
               <button
-                onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
-                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                onClick={() => switchToView('month')}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  viewMode === 'month' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
               >
-                <FileText size={18} />
-                Impôts et Taxes
+                Mois
               </button>
-            )}
-            {userCollaborateur?.est_chef_mission && (
               <button
-                onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
-                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                onClick={() => switchToView('week')}
+                className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
+                  viewMode === 'week' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
               >
-                <Receipt size={18} />
-                Planification TVA
+                Semaine
               </button>
-            )}
-            {userCollaborateur?.est_chef_mission && (
               <button
-                onClick={() => { setCurrentPage('temps-reels'); setShowMobileMenu(false); }}
-                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                onClick={() => switchToView('day')}
+                className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
+                  viewMode === 'day' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
               >
-                <Clock size={18} />
-                Temps Réels
+                Jour
               </button>
-            )}
-            <button
-              onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
-              className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-slate-300 transition"
-            >
-              <Palette size={18} />
-              Personnaliser
+            </div>
+
+            <button onClick={() => setShowFilterModal(!showFilterModal)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition relative">
+              <Filter size={18} />
+              Filtrer ({selectedCollaborateurs.length})
+              {alertCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                  {alertCount}
+                </span>
+              )}
             </button>
-            {/* Bouton Déconnexion mobile */}
-            <button
-              onClick={() => { handleLogout(); setShowMobileMenu(false); }}
-              className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-red-600/20 text-red-400 transition"
-            >
-              <LogOut size={18} />
-              Déconnexion
+
+            <button onClick={() => setShowExportModal(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+              <Download size={18} />
+              Export
             </button>
+
+            <button onClick={() => setShowAddModal(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+              <Plus size={18} />
+              Ajouter
+            </button>
+          </div>
+        </div>
+
+        {/* FILTRE PAR ÉQUIPE */}
+        {showFilterModal && (
+          <div className="bg-slate-800 rounded-lg p-6 mb-6 border border-slate-700">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-white">Filtrer par équipe</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedCollaborateurs(visibleCollaborateurs.map(c => c.id))}
+                  className="text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded transition"
+                >
+                  Tout sélectionner
+                </button>
+                <button
+                  onClick={() => setSelectedCollaborateurs([])}
+                  className="text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded transition"
+                >
+                  Tout désélectionner
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {visibleChefsMission.map(chef => {
+                const equipe = getEquipeOf(chef.id).filter(m => visibleCollaborateurs.some(v => v.id === m.id));
+                const visibleIds = visibleCollaborateurs.map(v => v.id);
+                const isExpanded = expandedEquipes[chef.id];
+                const teamIds = [chef.id, ...equipe.map(m => m.id)].filter(id => visibleIds.includes(id));
+                const allSelected = teamIds.every(id => selectedCollaborateurs.includes(id));
+                const someSelected = teamIds.some(id => selectedCollaborateurs.includes(id));
+
+                return (
+                  <div key={chef.id} className="bg-slate-700 rounded-lg overflow-hidden">
+                    {/* En-tête équipe */}
+                    <div className="flex items-center justify-between p-3 bg-slate-600">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => toggleEquipe(chef.id)} className="text-white">
+                          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                          onChange={(e) => selectEquipe(chef.id, e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-white font-semibold">Équipe {chef.nom}</span>
+                        <span className="text-slate-400 text-sm">({equipe.length + 1} personnes)</span>
+                      </div>
+                    </div>
+
+                    {/* Membres de l'équipe */}
+                    {isExpanded && (
+                      <div className="p-3 space-y-2">
+                        {/* Le chef lui-même */}
+                        <div className="flex items-center gap-2 pl-8">
+                          <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedCollaborateurs.includes(chef.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, chef.id]);
+                                else setSelectedCollaborateurs(prev => prev.filter(id => id !== chef.id));
+                              }}
+                              className="rounded"
+                            />
+                            <span>{chef.nom}</span>
+                            <span className="text-xs bg-purple-600/30 text-purple-300 px-1.5 py-0.5 rounded">Chef</span>
+                            {!isInSourdine(chef.id) && (
+                              <>
+                                {hasBudgetForToday(chef.id) ? (
+                                  <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                    ✓ Budget
+                                  </span>
+                                ) : (
+                                  <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                    ⚠ Budget
+                                  </span>
+                                )}
+                                {hasTempsReelsForYesterday(chef.id) ? (
+                                  <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                    ✓ Temps
+                                  </span>
+                                ) : (
+                                  <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                    ⚠ Temps
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            {isInSourdine(chef.id) && (
+                              <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                                <VolumeX size={12} className="inline" /> Sourdine
+                              </span>
+                            )}
+                          </label>
+                          {userCollaborateur?.is_admin && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSourdine(chef.id); }}
+                              className={`p-1.5 rounded transition ${isInSourdine(chef.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                              title={isInSourdine(chef.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                            >
+                              {isInSourdine(chef.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Les membres visibles */}
+                        {equipe.filter(m => m.actif).map(membre => (
+                          <div key={membre.id} className="flex items-center gap-2 pl-8">
+                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                              <input
+                                type="checkbox"
+                                checked={selectedCollaborateurs.includes(membre.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, membre.id]);
+                                  else setSelectedCollaborateurs(prev => prev.filter(id => id !== membre.id));
+                                }}
+                                className="rounded"
+                              />
+                              <span>{membre.nom}</span>
+                              {!isInSourdine(membre.id) && (
+                                <>
+                                  {hasBudgetForToday(membre.id) ? (
+                                    <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                      ✓ Budget
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                      ⚠ Budget
+                                    </span>
+                                  )}
+                                  {hasTempsReelsForYesterday(membre.id) ? (
+                                    <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                      ✓ Temps
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                      ⚠ Temps
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {isInSourdine(membre.id) && (
+                                <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                                  <VolumeX size={12} className="inline" /> Sourdine
+                                </span>
+                              )}
+                            </label>
+                            {userCollaborateur?.is_admin && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleSourdine(membre.id); }}
+                                className={`p-1.5 rounded transition ${isInSourdine(membre.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                                title={isInSourdine(membre.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                              >
+                                {isInSourdine(membre.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Collaborateurs sans chef (autonomes) - visibles uniquement */}
+              {(() => {
+                const collabsAvecChef = collaborateurChefs.map(cc => cc.collaborateur_id);
+                const autonomes = visibleCollaborateurs.filter(c => !c.est_chef_mission && !collabsAvecChef.includes(c.id));
+                
+                if (autonomes.length === 0) return null;
+                
+                return (
+                  <div className="bg-slate-700 rounded-lg p-3">
+                    <div className="text-slate-400 text-sm mb-2">Autres collaborateurs</div>
+                    {autonomes.map(collab => (
+                      <div key={collab.id} className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedCollaborateurs.includes(collab.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedCollaborateurs(prev => [...prev, collab.id]);
+                              else setSelectedCollaborateurs(prev => prev.filter(id => id !== collab.id));
+                            }}
+                            className="rounded"
+                          />
+                          <span>{collab.nom}</span>
+                          {!isInSourdine(collab.id) && (
+                            <>
+                              {hasBudgetForToday(collab.id) ? (
+                                <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Budget saisi aujourd'hui">
+                                  ✓ Budget
+                                </span>
+                              ) : (
+                                <span className="text-xs bg-orange-600/30 text-orange-300 px-1.5 py-0.5 rounded" title="Pas de budget saisi aujourd'hui">
+                                  ⚠ Budget
+                                </span>
+                              )}
+                              {hasTempsReelsForYesterday(collab.id) ? (
+                                <span className="text-xs bg-green-600/30 text-green-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 saisis">
+                                  ✓ Temps
+                                </span>
+                              ) : (
+                                <span className="text-xs bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded" title="Temps réels J-1 non saisis">
+                                  ⚠ Temps
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {isInSourdine(collab.id) && (
+                            <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                              <VolumeX size={12} className="inline" /> Sourdine
+                            </span>
+                          )}
+                        </label>
+                        {userCollaborateur?.is_admin && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSourdine(collab.id); }}
+                            className={`p-1.5 rounded transition ${isInSourdine(collab.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                            title={isInSourdine(collab.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
+                          >
+                            {isInSourdine(collab.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
-      </nav>
 
-      {/* Contenu des pages */}
-      {currentPage === 'calendar' && (
-        <CalendarPage
-          collaborateurs={collaborateurs}
-          collaborateurChefs={collaborateurChefs}
-          clients={clients}
-          charges={charges}
-          setCharges={setCharges}
-          getChefsOf={getChefsOf}
-          getEquipeOf={getEquipeOf}
-          getAccessibleClients={getAccessibleClients}
-          accent={accent}
-          userCollaborateur={userCollaborateur}
-          impotsTaxes={impotsTaxes}
-          suiviEcheances={suiviEcheances}
-          setSuiviEcheances={setSuiviEcheances}
-        />
-      )}
-      {currentPage === 'collaborateurs' && (
-        <CollaborateursPage
-          collaborateurs={collaborateurs}
-          setCollaborateurs={setCollaborateurs}
-          collaborateurChefs={collaborateurChefs}
-          setCollaborateurChefs={setCollaborateurChefs}
-          charges={charges}
-          getChefsOf={getChefsOf}
-          getEquipeOf={getEquipeOf}
-          accent={accent}
-          isAdmin={userCollaborateur?.is_admin}
-          userCollaborateur={userCollaborateur}
-        />
-      )}
-      {currentPage === 'clients' && (
-        <ClientsPage
-          clients={clients}
-          setClients={setClients}
-          charges={charges}
-          setCharges={setCharges}
-          collaborateurs={collaborateurs}
-          accent={accent}
-          userCollaborateur={userCollaborateur}
-        />
-      )}
-      {currentPage === 'tva' && userCollaborateur?.est_chef_mission && (
-        <RepartitionTVAPage
-          clients={clients}
-          collaborateurs={collaborateurs}
-          charges={charges}
-          setCharges={setCharges}
-          getEquipeOf={getEquipeOf}
-          accent={accent}
-          userCollaborateur={userCollaborateur}
-          impotsTaxes={impotsTaxes}
-        />
-      )}
-      {currentPage === 'impots' && (userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
-        <ImpotsTaxesPage
-          clients={clients}
-          collaborateurs={collaborateurs}
-          impotsTaxes={impotsTaxes}
-          setImpotsTaxes={setImpotsTaxes}
-          suiviEcheances={suiviEcheances}
-          accent={accent}
-          userCollaborateur={userCollaborateur}
-        />
-      )}
-      {currentPage === 'temps-reels' && userCollaborateur?.est_chef_mission && (
-        <TempsReelsPage
-          clients={clients}
-          collaborateurs={collaborateurs}
-          charges={charges}
-          setCharges={setCharges}
-          accent={accent}
-        />
-      )}
-      {/* Crédits photo Unsplash */}
-      {imageCredits && (
-        <div className="fixed bottom-2 right-2 z-20 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70">
-          Photo par{' '}
-          <a
-            href={imageCredits.userLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-white hover:underline"
-          >
-            {imageCredits.userName}
-          </a>
-          {' '}sur{' '}
-          <a
-            href="https://unsplash.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-white hover:underline"
-          >
-            Unsplash
-          </a>
+        {showAddModal && (
+          <AddChargeModal
+            clients={getAccessibleClients(userCollaborateur)}
+            collaborateurs={filteredCollaborateurs}
+            defaultDate={getDefaultDate()}
+            onAdd={handleAddCharge}
+            onClose={() => { setShowAddModal(false); setPrefilledDate(null); }}
+          />
+        )}
+
+        {editingCharge && (
+          <EditChargeModal
+            charge={editingCharge}
+            clients={getAccessibleClients(userCollaborateur)}
+            collaborateurs={filteredCollaborateurs}
+            onUpdate={handleUpdateCharge}
+            onClose={() => setEditingCharge(null)}
+          />
+        )}
+
+        {showExportModal && (
+          <ExportModal 
+            viewMode={viewMode} 
+            currentDate={currentDate} 
+            weekDays={weekDays} 
+            onExport={exportToExcel} 
+            onClose={() => setShowExportModal(false)} 
+          />
+        )}
+
+        {/* VUE MOIS */}
+        {viewMode === 'month' && (
+          <div className="grid grid-cols-7 gap-1 mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
+            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
+              <div key={day} className="text-center text-slate-400 text-sm font-semibold py-2">{day}</div>
+            ))}
+            {allDays.map((day, idx) => {
+              const dateStr = day ? formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day)) : null;
+              const echeances = dateStr ? getEcheancesFiscales(dateStr) : [];
+              return (
+                <div
+                  key={idx}
+                  className="bg-slate-700 min-h-32 rounded-lg border border-slate-600 flex flex-col"
+                >
+                  {day && (
+                    <>
+                      {/* Partie haute - Échéances fiscales (fond vert) */}
+                      {echeances.length > 0 && (
+                        <div className="bg-emerald-900/60 rounded-t-lg p-1 border-b border-emerald-700/50">
+                          <div className="space-y-0.5 max-h-16 overflow-y-auto">
+                            {echeances.slice(0, 3).map((ech, echIdx) => {
+                              const isFait = isEcheanceFaite(ech.clientId, ech.type, ech.dateEcheance);
+                              return (
+                                <div
+                                  key={echIdx}
+                                  className={`text-xs truncate px-1 flex items-center gap-1 ${isFait ? 'text-emerald-400/50 line-through' : 'text-emerald-200'}`}
+                                  title={`${ech.client} - ${ech.type}${ech.montant ? ` : ${ech.montant}€` : ''}`}
+                                >
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleSuiviEcheance(ech.clientId, ech.type, ech.dateEcheance, currentDate.getFullYear());
+                                    }}
+                                    className={`w-3 h-3 rounded border flex-shrink-0 flex items-center justify-center ${
+                                      isFait
+                                        ? 'bg-emerald-500 border-emerald-500'
+                                        : 'border-emerald-400 hover:bg-emerald-700/50'
+                                    }`}
+                                    title={isFait ? 'Marquer comme non fait' : 'Marquer comme fait'}
+                                  >
+                                    {isFait && <Check size={8} className="text-white" />}
+                                  </button>
+                                  <span className={`font-semibold ${isFait ? 'text-emerald-500/50' : 'text-emerald-300'}`}>{ech.type}</span>
+                                  {ech.montant && <span className="ml-1">{ech.montant}€</span>}
+                                  <span className="text-emerald-400/70 text-[10px]">{ech.client.substring(0, 8)}</span>
+                                </div>
+                              );
+                            })}
+                            {echeances.length > 3 && (
+                              <div className="text-[10px] text-emerald-400/70 px-1">+{echeances.length - 3} autres</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Partie basse - Charges */}
+                      <div className={`p-2 flex-1 ${echeances.length === 0 ? 'rounded-lg' : ''}`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span
+                            className="text-white font-bold text-lg cursor-pointer hover:text-green-400 transition"
+                            onClick={() => openAddModalWithDate(day)}
+                            title="Ajouter une charge"
+                          >
+                            {day}
+                          </span>
+                          <button
+                            onClick={() => openDayView(day)}
+                            className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
+                            title="Voir détails"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        </div>
+                        <div className="space-y-0.5">
+                          {filteredCollaborateurs.map(collab => {
+                            const total = getTotalHoursForDay(collab.id, day);
+                            if (total === 0) return null;
+                            return (
+                              <div
+                                key={collab.id}
+                                className="flex justify-between text-xs bg-slate-600 px-1 rounded cursor-pointer hover:bg-slate-500"
+                                onClick={() => openDayView(day)}
+                              >
+                                <span className="truncate text-slate-300">{collab.nom.split(' ')[0]}</span>
+                                <span className={total > 8 ? 'text-red-400' : 'text-green-300'}>{total}h</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* VUE SEMAINE */}
+        {viewMode === 'week' && (
+          <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 overflow-x-auto">
+            <div className="min-w-full">
+              <div className="flex gap-2 mb-4">
+                <div className="w-28 flex-shrink-0">
+                  <div className="font-bold text-white text-sm">Collab.</div>
+                </div>
+                {weekDays.map(date => (
+                  <div key={formatDateToYMD(date)} className="flex-1 min-w-36">
+                    <div 
+                      className="font-semibold text-white text-sm cursor-pointer hover:text-blue-300 transition"
+                      onClick={() => openDayViewFromDate(date)}
+                    >
+                      {date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                ))}
+                <div className="w-20 flex-shrink-0">
+                  <div className="font-bold text-green-300 text-sm text-center">Total</div>
+                </div>
+              </div>
+
+              {filteredCollaborateurs.map(collab => (
+                <div key={collab.id} className="flex gap-2 mb-3 bg-slate-700 p-3 rounded">
+                  <div className="w-28 flex-shrink-0">
+                    <div className="text-blue-300 font-semibold text-sm">{collab.nom}</div>
+                  </div>
+                  {weekDays.map(date => {
+                    const dateStr = formatDateToYMD(date);
+                    const dayCharges = getChargesForDateStr(collab.id, dateStr);
+                    const dayTotal = getTotalHoursForDateStr(collab.id, dateStr);
+                    const isDropTarget = draggedCharge && draggedCharge.collaborateur_id === collab.id && dragOverDate === dateStr;
+                    return (
+                      <div
+                        key={dateStr}
+                        className={`flex-1 min-w-36 rounded p-1 transition min-h-[60px] ${
+                          isDropTarget
+                            ? 'bg-green-600/30 border-2 border-dashed border-green-400'
+                            : 'hover:bg-slate-600'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id) {
+                            setDragOverDate(dateStr);
+                          }
+                        }}
+                        onDragLeave={() => setDragOverDate(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id && draggedCharge.date_charge !== dateStr) {
+                            handleMoveCharge(draggedCharge.id, dateStr);
+                          }
+                          setDraggedCharge(null);
+                          setDragOverDate(null);
+                        }}
+                      >
+                        <div
+                          className={`text-sm font-bold mb-1 cursor-pointer ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}
+                          onClick={() => openDayViewFromDate(date)}
+                        >
+                          {dayTotal > 0 ? `${dayTotal}h` : '-'}
+                        </div>
+                        {dayCharges.length > 0 && (
+                          <div className="space-y-0.5">
+                            {dayCharges.slice(0, 4).map((charge) => (
+                              <div
+                                key={charge.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggedCharge(charge);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedCharge(null);
+                                  setDragOverDate(null);
+                                }}
+                                className={`text-xs px-1 py-0.5 rounded truncate cursor-grab active:cursor-grabbing ${
+                                  draggedCharge?.id === charge.id
+                                    ? 'bg-blue-500/50 text-blue-200 opacity-50'
+                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                                }`}
+                                title={`${clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu'} - ${charge.heures}h - Glisser pour déplacer`}
+                              >
+                                {(clients.find(c => c.id === charge.client_id)?.nom || '?').substring(0, 8)}: {charge.heures}h
+                              </div>
+                            ))}
+                            {dayCharges.length > 4 && (
+                              <div className="text-xs text-slate-500">+{dayCharges.length - 4} autres</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="w-20 flex-shrink-0 flex items-center justify-center">
+                    <div className={`text-sm font-bold ${getWeekTotal(collab.id) > 40 ? 'text-red-400' : 'text-green-300'}`}>
+                      {getWeekTotal(collab.id)}h
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* VUE JOUR */}
+        {viewMode === 'day' && selectedDay && (
+          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+            <div className="space-y-6">
+              {filteredCollaborateurs.map(collab => {
+                const dayCharges = getChargesForDateStr(collab.id, selectedDay);
+                const totalHours = dayCharges.reduce((sum, c) => sum + parseFloat(c.heures), 0);
+                
+                return (
+                  <div key={collab.id} className="bg-slate-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-blue-300">{collab.nom}</h3>
+                      <span className={`text-lg font-bold ${totalHours > 8 ? 'text-red-400' : 'text-green-300'}`}>
+                        Total: {totalHours}h
+                      </span>
+                    </div>
+                    
+                    {dayCharges.length === 0 ? (
+                      <div className="text-slate-400 text-sm italic">Aucune charge planifiée</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-slate-400 border-b border-slate-600">
+                              <th className="text-left py-2 px-2 w-40">Client</th>
+                              <th className="text-center py-2 px-2 w-20">Budgété</th>
+                              <th className="text-center py-2 px-2 w-20">Réalisé</th>
+                              <th className="text-center py-2 px-2 w-24">Type</th>
+                              <th className="text-left py-2 px-2">Détail</th>
+                              <th className="text-center py-2 px-2 w-24">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dayCharges.map(charge => (
+                              <tr key={charge.id} className="border-b border-slate-600/50 hover:bg-slate-600/30 align-top">
+                                <td className="py-2 px-2 text-white">
+                                  {clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu'}
+                                </td>
+                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures}h</td>
+                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures_realisees || 0}h</td>
+                                <td className="py-2 px-2 text-center">
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    charge.type === 'budgété' ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'
+                                  }`}>
+                                    {charge.type}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-slate-400 whitespace-pre-wrap break-words">
+                                  {charge.detail || '-'}
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <div className="flex justify-center gap-1">
+                                    <button 
+                                      onClick={() => setEditingCharge(charge)} 
+                                      className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
+                                      title="Modifier"
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteCharge(charge.id)} 
+                                      className="text-red-400 hover:text-red-300 hover:bg-red-900/30 p-1 rounded transition"
+                                      title="Supprimer"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
+          <p className="text-slate-400 text-sm">
+            Charges : {charges.length} | Collaborateurs filtrés : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
+          </p>
+          <p className="text-slate-500 text-xs mt-2">calendrier-zerah v3.1</p>
         </div>
-      )}
-
-      {/* Modal de sélection de thème */}
-      {showThemeModal && (
-        <ThemeModal
-          onClose={() => setShowThemeModal(false)}
-          backgroundTheme={backgroundTheme}
-          setBackgroundTheme={setBackgroundTheme}
-          accentColor={accentColor}
-          setAccentColor={setAccentColor}
-        />
-      )}
+      </div>
     </div>
   );
 }
 
+// ============================================
+// PAGE COLLABORATEURS
+// ============================================
 function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurChefs, setCollaborateurChefs, charges, getChefsOf, getEquipeOf, accent, isAdmin, userCollaborateur }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCollab, setEditingCollab] = useState(null);
@@ -2910,1508 +3747,5 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
   );
 }
 
-// ============================================
-// PAGE TEMPS RÉELS - Import et Analyse des Écarts
-// ============================================
-function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }) {
-  const [activeTab, setActiveTab] = useState('mapping'); // 'mapping', 'import', 'ecarts', 'journal'
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  // Variables obsolètes supprimées (Option 3 : plus de sélection de cabinet)
-  // Le cabinet se déduit maintenant du client mappé
-
-  // Mappings depuis Supabase
-  const [mappingCollaborateurs, setMappingCollaborateurs] = useState({});
-  const [mappingClients, setMappingClients] = useState({});
-
-  // Données importées
-  const [importedData, setImportedData] = useState([]);
-  const [importStats, setImportStats] = useState(null);
-  const [tempsReels, setTempsReels] = useState([]);
-
-  // Journal des modifications
-  const [journalModifications, setJournalModifications] = useState([]);
-
-  // Filtres pour l'analyse des écarts
-  const [filtreCollaborateur, setFiltreCollaborateur] = useState('');
-  const [filtreClient, setFiltreClient] = useState('');
-  const [filtrePeriode, setFiltrePeriode] = useState('jour'); // 'jour', 'mois', 'trimestre', 'annee', 'custom'
-  // Par défaut : J-1 (hier)
-  const [dateDebut, setDateDebut] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1); // J-1
-    return formatDateToYMD(d);
-  });
-  const [dateFin, setDateFin] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1); // J-1
-    return formatDateToYMD(d);
-  });
-  const [searchEcarts, setSearchEcarts] = useState('');
-  const [sortEcarts, setSortEcarts] = useState({ column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
-
-  // Charger les données depuis Supabase au démarrage
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        // Charger les mappings
-        const { data: mappingsData, error: mappingsError } = await supabase
-          .from('mappings_pennylane')
-          .select('*');
-
-        if (mappingsError) throw mappingsError;
-
-        // Convertir en objets { nomPennylane: entityId }
-        const collabMappings = {};
-        const clientMappings = {};
-        mappingsData?.forEach(m => {
-          if (m.type === 'collaborateur') {
-            collabMappings[m.nom_pennylane] = m.entity_id;
-          } else if (m.type === 'client') {
-            clientMappings[m.nom_pennylane] = m.entity_id;
-          }
-        });
-        setMappingCollaborateurs(collabMappings);
-        setMappingClients(clientMappings);
-
-        // Charger les temps réels
-        const { data: tempsData, error: tempsError } = await supabase
-          .from('temps_reels')
-          .select('*')
-          .order('date', { ascending: false });
-
-        if (tempsError) throw tempsError;
-        setTempsReels(tempsData || []);
-
-        // Charger le journal
-        const { data: journalData, error: journalError } = await supabase
-          .from('journal_imports')
-          .select('*')
-          .order('date_import', { ascending: false })
-          .limit(100);
-
-        if (journalError) throw journalError;
-        setJournalModifications(journalData || []);
-
-        // Migration: si des données existent en localStorage, les migrer vers Supabase
-        const localTemps = localStorage.getItem('tempsReels');
-        const localMappingsCollab = localStorage.getItem('mappingCollaborateurs');
-        const localMappingsClient = localStorage.getItem('mappingClients');
-
-        if (localTemps || localMappingsCollab || localMappingsClient) {
-          console.log('Migration des données localStorage vers Supabase...');
-
-          // Migrer les mappings collaborateurs
-          if (localMappingsCollab && Object.keys(collabMappings).length === 0) {
-            const parsed = JSON.parse(localMappingsCollab);
-            for (const [nomPennylane, entityId] of Object.entries(parsed)) {
-              if (entityId) {
-                await supabase.from('mappings_pennylane').upsert({
-                  type: 'collaborateur',
-                  nom_pennylane: nomPennylane,
-                  entity_id: entityId
-                }, { onConflict: 'type,nom_pennylane' });
-              }
-            }
-            setMappingCollaborateurs(parsed);
-          }
-
-          // Migrer les mappings clients
-          if (localMappingsClient && Object.keys(clientMappings).length === 0) {
-            const parsed = JSON.parse(localMappingsClient);
-            for (const [nomPennylane, entityId] of Object.entries(parsed)) {
-              if (entityId) {
-                await supabase.from('mappings_pennylane').upsert({
-                  type: 'client',
-                  nom_pennylane: nomPennylane,
-                  entity_id: entityId
-                }, { onConflict: 'type,nom_pennylane' });
-              }
-            }
-            setMappingClients(parsed);
-          }
-
-          // Migrer les temps réels
-          if (localTemps && tempsData?.length === 0) {
-            const parsed = JSON.parse(localTemps);
-            for (const t of parsed) {
-              await supabase.from('temps_reels').upsert({
-                collaborateur_id: t.collaborateur_id,
-                client_id: t.client_id,
-                date: t.date,
-                heures: t.heures,
-                commentaire: t.commentaire,
-                activite: t.activite,
-                type_mission: t.typeMission,
-                millesime: t.millesime
-              }, { onConflict: 'collaborateur_id,client_id,date' });
-            }
-            // Recharger les temps après migration
-            const { data: newTempsData } = await supabase
-              .from('temps_reels')
-              .select('*')
-              .order('date', { ascending: false });
-            setTempsReels(newTempsData || []);
-          }
-
-          // Nettoyer le localStorage après migration réussie
-          localStorage.removeItem('tempsReels');
-          localStorage.removeItem('mappingCollaborateurs');
-          localStorage.removeItem('mappingClients');
-          localStorage.removeItem('journalModifications');
-          console.log('Migration terminée, localStorage nettoyé');
-        }
-
-      } catch (err) {
-        console.error('Erreur chargement données:', err);
-      }
-      setLoading(false);
-    };
-
-    loadData();
-  }, []);
-
-  // Sauvegarder un mapping collaborateur dans Supabase
-  const saveMappingCollaborateur = async (nomPennylane, entityId) => {
-    if (entityId) {
-      await supabase.from('mappings_pennylane').upsert({
-        type: 'collaborateur',
-        nom_pennylane: nomPennylane,
-        entity_id: entityId
-      }, { onConflict: 'type,nom_pennylane' });
-    } else {
-      await supabase.from('mappings_pennylane')
-        .delete()
-        .eq('type', 'collaborateur')
-        .eq('nom_pennylane', nomPennylane);
-    }
-    setMappingCollaborateurs(prev => ({
-      ...prev,
-      [nomPennylane]: entityId || undefined
-    }));
-  };
-
-  // Sauvegarder un mapping client dans Supabase
-  const saveMappingClient = async (nomPennylane, entityId) => {
-    if (entityId) {
-      await supabase.from('mappings_pennylane').upsert({
-        type: 'client',
-        nom_pennylane: nomPennylane,
-        entity_id: entityId
-      }, { onConflict: 'type,nom_pennylane' });
-    } else {
-      await supabase.from('mappings_pennylane')
-        .delete()
-        .eq('type', 'client')
-        .eq('nom_pennylane', nomPennylane);
-    }
-    setMappingClients(prev => ({
-      ...prev,
-      [nomPennylane]: entityId || undefined
-    }));
-  };
-
-  // Extraction des noms uniques depuis les données importées
-  const [uniquePennylaneCollabs, setUniquePennylaneCollabs] = useState([]);
-  const [uniquePennylaneClients, setUniquePennylaneClients] = useState([]);
-
-  // Fonction pour parser le fichier Excel
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const bstr = evt.target.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-      // Parser les données (première ligne = headers)
-      const headers = data[0];
-      const rows = data.slice(1).filter(row => row.length > 0);
-
-      // Trouver les indices des colonnes
-      const colIndices = {
-        collaborateur: headers.findIndex(h => h && h.toLowerCase().includes('collaborateur')),
-        client: headers.findIndex(h => h && h.toLowerCase().includes('client')),
-        millesime: headers.findIndex(h => h && h.toLowerCase().includes('mill')),
-        commentaire: headers.findIndex(h => h && h.toLowerCase().includes('commentaire')),
-        code: headers.findIndex(h => h && h.toLowerCase().includes('code')),
-        typeMission: headers.findIndex(h => h && h.toLowerCase().includes('type') && h.toLowerCase().includes('mission')),
-        activite: headers.findIndex(h => h && h.toLowerCase().includes('activit')),
-        date: headers.findIndex(h => h && h.toLowerCase().includes('date')),
-        duree: headers.findIndex(h => h && (h.toLowerCase().includes('dur') || h.toLowerCase().includes('factur')))
-      };
-
-      const parsed = rows.map(row => {
-        // Parser la date Excel
-        let dateStr = '';
-        const dateVal = row[colIndices.date];
-        if (dateVal) {
-          if (typeof dateVal === 'number') {
-            // Date Excel (nombre de jours depuis 1900)
-            const date = new Date((dateVal - 25569) * 86400 * 1000);
-            dateStr = formatDateToYMD(date);
-          } else if (typeof dateVal === 'string') {
-            // Format texte (ex: "6/1/2026")
-            const parts = dateVal.split('/');
-            if (parts.length === 3) {
-              const [month, day, year] = parts;
-              dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            }
-          }
-        }
-
-        // Parser la durée (en minutes -> heures)
-        let dureeMinutes = 0;
-        const dureeVal = row[colIndices.duree];
-        if (dureeVal) {
-          if (typeof dureeVal === 'string') {
-            dureeMinutes = parseInt(dureeVal.replace(/[^0-9]/g, '')) || 0;
-          } else {
-            dureeMinutes = parseInt(dureeVal) || 0;
-          }
-        }
-
-        return {
-          collaborateurPennylane: row[colIndices.collaborateur] || '',
-          clientPennylane: row[colIndices.client] || '',
-          millesime: row[colIndices.millesime] || '',
-          commentaire: row[colIndices.commentaire] || '',
-          code: row[colIndices.code] || '',
-          typeMission: row[colIndices.typeMission] || '',
-          activite: row[colIndices.activite] || '',
-          date: dateStr,
-          dureeMinutes: dureeMinutes,
-          dureeHeures: Math.round((dureeMinutes / 60) * 100) / 100
-        };
-      }).filter(row => row.collaborateurPennylane && row.clientPennylane && row.date);
-
-      setImportedData(parsed);
-
-      // Extraire les noms uniques
-      const uniqueCollabs = [...new Set(parsed.map(r => r.collaborateurPennylane))].sort();
-      const uniqueClients = [...new Set(parsed.map(r => r.clientPennylane))].sort();
-      setUniquePennylaneCollabs(uniqueCollabs);
-      setUniquePennylaneClients(uniqueClients);
-
-      // Statistiques d'import
-      setImportStats({
-        totalLignes: parsed.length,
-        collaborateurs: uniqueCollabs.length,
-        clients: uniqueClients.length,
-        totalHeures: Math.round(parsed.reduce((sum, r) => sum + r.dureeHeures, 0) * 100) / 100
-      });
-
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  // Auto-matching des collaborateurs (avec sauvegarde Supabase)
-  const autoMatchCollaborateurs = async () => {
-    const newMapping = { ...mappingCollaborateurs };
-    const toSave = [];
-
-    uniquePennylaneCollabs.forEach(pennylane => {
-      if (newMapping[pennylane]) return; // Déjà mappé
-
-      const pennylaneNorm = pennylane.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-      // Chercher une correspondance
-      const match = collaborateurs.find(c => {
-        const nomNorm = c.nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        // Match par prénom ou nom complet
-        return pennylaneNorm.includes(nomNorm) || nomNorm.includes(pennylaneNorm.split(' ')[0]);
-      });
-
-      if (match) {
-        newMapping[pennylane] = match.id;
-        toSave.push({ type: 'collaborateur', nom_pennylane: pennylane, entity_id: match.id });
-      }
-    });
-
-    // Sauvegarder dans Supabase
-    if (toSave.length > 0) {
-      await supabase.from('mappings_pennylane').upsert(toSave, { onConflict: 'type,nom_pennylane' });
-    }
-
-    setMappingCollaborateurs(newMapping);
-  };
-
-  // Auto-matching des clients (avec sauvegarde Supabase)
-  const autoMatchClients = async () => {
-    const newMapping = { ...mappingClients };
-    const toSave = [];
-
-    uniquePennylaneClients.forEach(pennylane => {
-      if (newMapping[pennylane]) return; // Déjà mappé
-
-      const pennylaneNorm = pennylane.toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]/g, ' ')
-        .trim();
-
-      // Chercher une correspondance
-      const match = clients.find(c => {
-        const nomNorm = c.nom.toLowerCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]/g, ' ')
-          .trim();
-
-        // Vérifier si les mots-clés principaux correspondent
-        const pennylaneWords = pennylaneNorm.split(/\s+/).filter(w => w.length > 2);
-        const clientWords = nomNorm.split(/\s+/).filter(w => w.length > 2);
-
-        // Au moins un mot significatif en commun
-        return pennylaneWords.some(pw => clientWords.some(cw => cw.includes(pw) || pw.includes(cw)));
-      });
-
-      if (match) {
-        newMapping[pennylane] = match.id;
-        toSave.push({ type: 'client', nom_pennylane: pennylane, entity_id: match.id });
-      }
-    });
-
-    // Sauvegarder dans Supabase
-    if (toSave.length > 0) {
-      await supabase.from('mappings_pennylane').upsert(toSave, { onConflict: 'type,nom_pennylane' });
-    }
-
-    setMappingClients(newMapping);
-  };
-
-  // Valider et enregistrer les temps réels (mode FUSION INTELLIGENTE) - SUPABASE
-  // Option A : Ajouter/Mettre à jour sans jamais supprimer automatiquement
-  // Option 3 : Le cabinet se déduit du client, pas de champ cabinet sur les temps
-  const handleValidateImport = async () => {
-    setSaving(true);
-    try {
-      // 1. Parser les nouvelles données (sans cabinet)
-      const newTempsReels = [];
-      let lignesIgnorees = 0;
-      const lignesIgnoreesDetails = [];
-
-      importedData.forEach(row => {
-        const collaborateurId = mappingCollaborateurs[row.collaborateurPennylane];
-        const clientId = mappingClients[row.clientPennylane];
-
-        if (!collaborateurId || !clientId) {
-          lignesIgnorees++;
-          lignesIgnoreesDetails.push({
-            collaborateur: row.collaborateurPennylane,
-            client: row.clientPennylane,
-            raison: !collaborateurId ? 'Collaborateur non mappé' : 'Client non mappé'
-          });
-          return;
-        }
-
-        newTempsReels.push({
-          collaborateur_id: collaborateurId,
-          client_id: clientId,
-          date: row.date,
-          heures: row.dureeHeures,
-          commentaire: row.commentaire,
-          activite: row.activite,
-          type_mission: row.typeMission,
-          millesime: row.millesime
-          // Plus de champ cabinet - il se déduit du client
-        });
-      });
-
-      // 2. Vérifier qu'il y a des données à importer
-      if (newTempsReels.length === 0) {
-        alert('Aucune donnée valide à importer.\n\nVérifiez que les mappings collaborateurs et clients sont configurés.');
-        setSaving(false);
-        return;
-      }
-
-      // 3. Agréger les nouvelles données par collaborateur/client/date
-      const aggregatedNew = {};
-      newTempsReels.forEach(t => {
-        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-        if (!aggregatedNew[key]) {
-          aggregatedNew[key] = { ...t };
-        } else {
-          // Additionner les heures pour la même combinaison
-          aggregatedNew[key].heures += t.heures;
-          // Concaténer les commentaires distincts
-          if (t.commentaire && !aggregatedNew[key].commentaire?.includes(t.commentaire)) {
-            aggregatedNew[key].commentaire = aggregatedNew[key].commentaire
-              ? `${aggregatedNew[key].commentaire} | ${t.commentaire}`
-              : t.commentaire;
-          }
-        }
-      });
-      const nouvellesDonneesAgregees = Object.values(aggregatedNew);
-
-      // 4. Déterminer la période pour le journal
-      const dates = nouvellesDonneesAgregees.map(t => t.date).filter(d => d);
-      const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
-      const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
-
-      // 5. Récupérer les données existantes pour ces combinaisons spécifiques
-      // On ne récupère QUE les combinaisons qui sont dans le fichier importé
-      const keysToCheck = nouvellesDonneesAgregees.map(t => ({
-        collaborateur_id: t.collaborateur_id,
-        client_id: t.client_id,
-        date: t.date
-      }));
-
-      // Requête pour récupérer les temps existants qui correspondent aux clés importées
-      const { data: existingTemps, error: fetchError } = await supabase
-        .from('temps_reels')
-        .select('*')
-        .gte('date', periodeDebut)
-        .lte('date', periodeFin);
-
-      if (fetchError) throw fetchError;
-
-      // Indexer les données existantes
-      const existingIndex = {};
-      (existingTemps || []).forEach(t => {
-        const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
-        existingIndex[key] = t;
-      });
-
-      // 6. FUSION INTELLIGENTE : Séparer ajouts et mises à jour
-      const modifications = {
-        ajouts: [],
-        modifications: [],
-        inchanges: []
-      };
-
-      const toInsert = [];
-      const toUpdate = [];
-
-      nouvellesDonneesAgregees.forEach(nouveau => {
-        const key = `${nouveau.collaborateur_id}-${nouveau.client_id}-${nouveau.date}`;
-        const existant = existingIndex[key];
-        const collab = collaborateurs.find(c => c.id === nouveau.collaborateur_id);
-        const client = clients.find(c => c.id === nouveau.client_id);
-
-        if (!existant) {
-          // AJOUT : La combinaison n'existe pas encore
-          toInsert.push(nouveau);
-          modifications.ajouts.push({
-            collaborateur: collab?.nom || 'Inconnu',
-            client: client?.nom || 'Inconnu',
-            date: nouveau.date,
-            heures: Math.round(nouveau.heures * 100) / 100
-          });
-        } else {
-          // Vérifier si les heures sont différentes
-          const heuresExistantes = parseFloat(existant.heures);
-          const heuresNouvelles = nouveau.heures;
-
-          if (Math.abs(heuresExistantes - heuresNouvelles) > 0.01) {
-            // MODIFICATION : Les heures sont différentes
-            toUpdate.push({
-              id: existant.id,
-              ...nouveau
-            });
-            modifications.modifications.push({
-              collaborateur: collab?.nom || 'Inconnu',
-              client: client?.nom || 'Inconnu',
-              date: nouveau.date,
-              anciennesHeures: heuresExistantes,
-              nouvellesHeures: Math.round(heuresNouvelles * 100) / 100,
-              ecart: Math.round((heuresNouvelles - heuresExistantes) * 100) / 100
-            });
-          } else {
-            // INCHANGE : Les heures sont identiques
-            modifications.inchanges.push({
-              collaborateur: collab?.nom || 'Inconnu',
-              client: client?.nom || 'Inconnu',
-              date: nouveau.date,
-              heures: heuresExistantes
-            });
-          }
-        }
-      });
-
-      // 7. Exécuter les insertions
-      if (toInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('temps_reels')
-          .insert(toInsert);
-
-        if (insertError) throw insertError;
-      }
-
-      // 8. Exécuter les mises à jour une par une (upsert)
-      for (const item of toUpdate) {
-        const { id, ...dataWithoutId } = item;
-        const { error: updateError } = await supabase
-          .from('temps_reels')
-          .update({
-            heures: dataWithoutId.heures,
-            commentaire: dataWithoutId.commentaire,
-            activite: dataWithoutId.activite,
-            type_mission: dataWithoutId.type_mission,
-            millesime: dataWithoutId.millesime
-          })
-          .eq('id', id);
-
-        if (updateError) throw updateError;
-      }
-
-      // 9. Enregistrer dans le journal
-      const hasChanges = modifications.ajouts.length > 0 || modifications.modifications.length > 0;
-
-      if (hasChanges) {
-        const { data: journalEntry, error: journalError } = await supabase
-          .from('journal_imports')
-          .insert({
-            periode_debut: periodeDebut,
-            periode_fin: periodeFin,
-            nb_ajouts: modifications.ajouts.length,
-            nb_modifications: modifications.modifications.length,
-            nb_suppressions: 0, // Plus jamais de suppression automatique !
-            details: {
-              ...modifications,
-              lignesIgnorees: lignesIgnoreesDetails.slice(0, 20) // Limiter pour ne pas surcharger
-            }
-          })
-          .select()
-          .single();
-
-        if (!journalError && journalEntry) {
-          setJournalModifications(prev => [journalEntry, ...prev]);
-        }
-      }
-
-      // 10. Recharger les temps réels depuis Supabase
-      const { data: newTempsData } = await supabase
-        .from('temps_reels')
-        .select('*')
-        .order('date', { ascending: false });
-
-      setTempsReels(newTempsData || []);
-
-      // 11. Afficher le résumé
-      const resume = [
-        `Import terminé (mode fusion) !`,
-        `Période concernée: ${periodeDebut} au ${periodeFin}`,
-        '',
-        `${modifications.ajouts.length} nouveau(x) temps ajouté(s)`,
-        `${modifications.modifications.length} temps mis à jour`,
-        `${modifications.inchanges.length} temps inchangé(s)`,
-        `${lignesIgnorees} ligne(s) ignorée(s) (mapping manquant)`,
-        '',
-        `Aucune donnée supprimée (mode fusion)`
-      ].join('\n');
-
-      alert(resume);
-
-      // Ne plus modifier les filtres après import - ils restent sur J-1
-      // Aller à l'onglet écarts
-      setActiveTab('ecarts');
-
-    } catch (err) {
-      console.error('Erreur import:', err);
-      alert('Erreur lors de l\'import: ' + err.message);
-    }
-    setSaving(false);
-  };
-
-  // Calcul des écarts
-  const calculateEcarts = () => {
-    // Filtrer les charges budgétées selon la période
-    const chargesFiltrees = charges.filter(c => {
-      if (c.date_charge < dateDebut || c.date_charge > dateFin) return false;
-      if (filtreCollaborateur && c.collaborateur_id !== parseInt(filtreCollaborateur)) return false;
-      if (filtreClient && c.client_id !== parseInt(filtreClient)) return false;
-      return true;
-    });
-
-    // Filtrer les temps réels selon la période
-    const tempsReelsFiltres = tempsReels.filter(t => {
-      if (t.date < dateDebut || t.date > dateFin) return false;
-      if (filtreCollaborateur && t.collaborateur_id !== parseInt(filtreCollaborateur)) return false;
-      if (filtreClient && t.client_id !== parseInt(filtreClient)) return false;
-      return true;
-    });
-
-    // Agréger par collaborateur et client
-    const ecarts = {};
-
-    // Ajouter les heures budgétées
-    chargesFiltrees.forEach(c => {
-      const key = `${c.collaborateur_id}-${c.client_id}`;
-      if (!ecarts[key]) {
-        ecarts[key] = {
-          collaborateur_id: c.collaborateur_id,
-          client_id: c.client_id,
-          heuresBudgetees: 0,
-          heuresReelles: 0
-        };
-      }
-      ecarts[key].heuresBudgetees += c.heures || 0;
-    });
-
-    // Ajouter les heures réelles
-    tempsReelsFiltres.forEach(t => {
-      const key = `${t.collaborateur_id}-${t.client_id}`;
-      if (!ecarts[key]) {
-        ecarts[key] = {
-          collaborateur_id: t.collaborateur_id,
-          client_id: t.client_id,
-          heuresBudgetees: 0,
-          heuresReelles: 0
-        };
-      }
-      ecarts[key].heuresReelles += t.heures || 0;
-    });
-
-    // Calculer les écarts et enrichir avec les noms
-    return Object.values(ecarts).map(e => {
-      const collab = collaborateurs.find(c => c.id === e.collaborateur_id);
-      const client = clients.find(c => c.id === e.client_id);
-      const ecart = e.heuresReelles - e.heuresBudgetees;
-      const ecartPourcent = e.heuresBudgetees > 0 ? Math.round((ecart / e.heuresBudgetees) * 100) : (e.heuresReelles > 0 ? 100 : 0);
-
-      return {
-        ...e,
-        collaborateurNom: collab?.nom || 'Inconnu',
-        clientNom: client?.nom || 'Inconnu',
-        ecart: Math.round(ecart * 100) / 100,
-        ecartPourcent
-      };
-    });
-  };
-
-  const ecartsRaw = calculateEcarts();
-
-  // Filtrer par recherche
-  const ecartsFiltres = ecartsRaw.filter(e => {
-    if (!searchEcarts) return true;
-    const search = searchEcarts.toLowerCase();
-    return e.collaborateurNom.toLowerCase().includes(search) ||
-           e.clientNom.toLowerCase().includes(search);
-  });
-
-  // Trier les écarts
-  const ecarts = [...ecartsFiltres].sort((a, b) => {
-    const dir = sortEcarts.direction === 'asc' ? 1 : -1;
-    switch (sortEcarts.column) {
-      case 'collaborateur':
-        return dir * a.collaborateurNom.localeCompare(b.collaborateurNom);
-      case 'client':
-        return dir * a.clientNom.localeCompare(b.clientNom);
-      case 'budgetees':
-        return dir * (a.heuresBudgetees - b.heuresBudgetees);
-      case 'reelles':
-        return dir * (a.heuresReelles - b.heuresReelles);
-      case 'ecart':
-        return dir * (Math.abs(a.ecart) - Math.abs(b.ecart));
-      case 'ecartPourcent':
-        return dir * (Math.abs(a.ecartPourcent) - Math.abs(b.ecartPourcent));
-      default:
-        return dir * (Math.abs(a.ecart) - Math.abs(b.ecart));
-    }
-  });
-
-  // Fonction pour changer le tri
-  const handleSort = (column) => {
-    setSortEcarts(prev => ({
-      column,
-      direction: prev.column === column && prev.direction === 'desc' ? 'asc' : 'desc'
-    }));
-  };
-
-  // Icône de tri
-  const SortIcon = ({ column }) => {
-    if (sortEcarts.column !== column) return <ChevronDown size={14} className="text-slate-500" />;
-    return sortEcarts.direction === 'desc'
-      ? <ChevronDown size={14} className="text-pink-400" />
-      : <ChevronUp size={14} className="text-pink-400" />;
-  };
-
-  // Totaux
-  const totaux = ecarts.reduce((acc, e) => ({
-    budgetees: acc.budgetees + e.heuresBudgetees,
-    reelles: acc.reelles + e.heuresReelles,
-    ecart: acc.ecart + e.ecart
-  }), { budgetees: 0, reelles: 0, ecart: 0 });
-
-  // Compter les mappings manquants
-  const mappingCollabsManquants = uniquePennylaneCollabs.filter(p => !mappingCollaborateurs[p]).length;
-  const mappingClientsManquants = uniquePennylaneClients.filter(p => !mappingClients[p]).length;
-
-  // Afficher un écran de chargement au démarrage
-  if (loading) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-12 shadow-xl border border-slate-700 text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-slate-300 text-lg">Chargement des données...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-6 shadow-xl border border-slate-700">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-              <Clock className="text-pink-400" />
-              Temps Réels & Analyse des Écarts
-              {saving && <span className="text-sm font-normal text-yellow-400 animate-pulse ml-2">(Sauvegarde...)</span>}
-            </h2>
-            <p className="text-slate-400 mt-1">Import des temps Pennylane et comparaison avec les temps budgétés</p>
-          </div>
-
-          {tempsReels.length > 0 && (
-            <div className="text-right">
-              <div className="text-sm text-slate-400">Temps réels importés</div>
-              <div className="text-2xl font-bold text-green-400">{tempsReels.length} entrées</div>
-            </div>
-          )}
-        </div>
-
-        {/* Onglets */}
-        <div className="flex gap-2 mb-6 border-b border-slate-600 pb-4">
-          <button
-            onClick={() => setActiveTab('mapping')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'mapping' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            <Link2 size={18} />
-            Correspondances
-            {(mappingCollabsManquants > 0 || mappingClientsManquants > 0) && importedData.length > 0 && (
-              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {mappingCollabsManquants + mappingClientsManquants}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('import')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'import' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            <Upload size={18} />
-            Import Excel
-          </button>
-          <button
-            onClick={() => setActiveTab('ecarts')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'ecarts' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            <BarChart3 size={18} />
-            Analyse des Écarts
-          </button>
-          <button
-            onClick={() => setActiveTab('journal')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'journal' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            <FileText size={18} />
-            Journal
-            {journalModifications.length > 0 && (
-              <span className="bg-slate-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {journalModifications.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Onglet Correspondances */}
-        {activeTab === 'mapping' && (
-          <div className="space-y-6">
-            {/* Section Collaborateurs */}
-            <div className="bg-slate-700/50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Users size={20} className="text-blue-400" />
-                  Collaborateurs
-                  {uniquePennylaneCollabs.length > 0 && (
-                    <span className="text-sm font-normal">
-                      (<span className="text-green-400">{uniquePennylaneCollabs.filter(p => mappingCollaborateurs[p]).length}</span>
-                      /{uniquePennylaneCollabs.length} mappés)
-                    </span>
-                  )}
-                </h3>
-                <button
-                  onClick={autoMatchCollaborateurs}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition"
-                  disabled={uniquePennylaneCollabs.length === 0}
-                >
-                  <RefreshCw size={16} />
-                  Auto-matching
-                </button>
-              </div>
-
-              {uniquePennylaneCollabs.length === 0 ? (
-                <p className="text-slate-400 text-center py-4">
-                  Importez d'abord un fichier Excel pour voir les collaborateurs à mapper
-                </p>
-              ) : (
-                <div className="grid gap-2 max-h-64 overflow-y-auto">
-                  {uniquePennylaneCollabs.map(pennylane => {
-                    const isMapped = !!mappingCollaborateurs[pennylane];
-                    return (
-                      <div
-                        key={pennylane}
-                        className={`flex items-center gap-3 rounded-lg p-2 border ${
-                          isMapped
-                            ? 'bg-green-900/30 border-green-600/50'
-                            : 'bg-slate-600/50 border-transparent'
-                        }`}
-                      >
-                        {isMapped ? (
-                          <Check size={16} className="text-green-400 flex-shrink-0" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full border-2 border-slate-500 flex-shrink-0" />
-                        )}
-                        <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
-                          {pennylane}
-                        </div>
-                        <ArrowUpDown size={16} className="text-slate-400" />
-                        <select
-                          value={mappingCollaborateurs[pennylane] || ''}
-                          onChange={(e) => saveMappingCollaborateur(pennylane, e.target.value ? parseInt(e.target.value) : null)}
-                          className={`w-48 px-3 py-1.5 rounded-lg text-sm ${
-                            isMapped
-                              ? 'bg-green-600/30 border-green-500 text-white'
-                              : 'bg-slate-700 border-slate-600 text-slate-300'
-                          } border`}
-                        >
-                          <option value="">-- Non mappé --</option>
-                          {collaborateurs.map(c => (
-                            <option key={c.id} value={c.id}>{c.nom}</option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Section Clients */}
-            <div className="bg-slate-700/50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Building2 size={20} className="text-purple-400" />
-                  Clients
-                  {uniquePennylaneClients.length > 0 && (
-                    <span className="text-sm font-normal">
-                      (<span className="text-green-400">{uniquePennylaneClients.filter(p => mappingClients[p]).length}</span>
-                      /{uniquePennylaneClients.length} mappés)
-                    </span>
-                  )}
-                </h3>
-                <button
-                  onClick={autoMatchClients}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition"
-                  disabled={uniquePennylaneClients.length === 0}
-                >
-                  <RefreshCw size={16} />
-                  Auto-matching
-                </button>
-              </div>
-
-              {uniquePennylaneClients.length === 0 ? (
-                <p className="text-slate-400 text-center py-4">
-                  Importez d'abord un fichier Excel pour voir les clients à mapper
-                </p>
-              ) : (
-                <div className="grid gap-2 max-h-96 overflow-y-auto">
-                  {uniquePennylaneClients.map(pennylane => {
-                    const isMapped = !!mappingClients[pennylane];
-                    return (
-                      <div
-                        key={pennylane}
-                        className={`flex items-center gap-3 rounded-lg p-2 border ${
-                          isMapped
-                            ? 'bg-green-900/30 border-green-600/50'
-                            : 'bg-slate-600/50 border-transparent'
-                        }`}
-                      >
-                        {isMapped ? (
-                          <Check size={16} className="text-green-400 flex-shrink-0" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full border-2 border-slate-500 flex-shrink-0" />
-                        )}
-                        <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
-                          {pennylane}
-                        </div>
-                        <ArrowUpDown size={16} className="text-slate-400" />
-                        <select
-                          value={mappingClients[pennylane] || ''}
-                          onChange={(e) => saveMappingClient(pennylane, e.target.value ? parseInt(e.target.value) : null)}
-                          className={`w-64 px-3 py-1.5 rounded-lg text-sm ${
-                            isMapped
-                              ? 'bg-green-600/30 border-green-500 text-white'
-                              : 'bg-slate-700 border-slate-600 text-slate-300'
-                          } border`}
-                        >
-                          <option value="">-- Non mappé --</option>
-                          {clients.filter(c => c.actif !== false).map(c => (
-                            <option key={c.id} value={c.id}>{c.nom}</option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Onglet Import */}
-        {activeTab === 'import' && (
-          <div className="space-y-6">
-            {/* Info mode fusion */}
-            <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 flex items-start gap-3">
-              <Check className="text-green-400 flex-shrink-0 mt-0.5" size={24} />
-              <div>
-                <p className="text-green-400 font-medium mb-1">Mode Fusion Intelligente</p>
-                <p className="text-slate-300 text-sm">
-                  Les temps importés seront ajoutés ou mis à jour. Les données existantes non présentes dans le fichier ne seront jamais supprimées.
-                  Le cabinet est automatiquement déterminé par le client.
-                </p>
-              </div>
-            </div>
-
-            {/* Zone d'upload */}
-            <div className="border-2 border-dashed rounded-xl p-8 text-center transition border-slate-600 hover:border-pink-500">
-              <Upload size={48} className="mx-auto text-slate-400 mb-4" />
-              <p className="text-white text-lg mb-2">Importez votre fichier Excel Pennylane</p>
-              <p className="text-slate-400 text-sm mb-4">
-                Format attendu: Collaborateur, Client, Date, Durée Facturée, etc.
-              </p>
-              <label className={`inline-flex items-center gap-2 px-6 py-3 ${accent.color} ${accent.hover} text-white rounded-lg cursor-pointer transition`}>
-                <Upload size={20} />
-                Choisir un fichier
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Statistiques d'import */}
-            {importStats && (
-              <div className="bg-slate-700/50 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Résumé de l'import</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-white">{importStats.totalLignes}</div>
-                    <div className="text-sm text-slate-400">Lignes</div>
-                  </div>
-                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-blue-400">{importStats.collaborateurs}</div>
-                    <div className="text-sm text-slate-400">Collaborateurs</div>
-                  </div>
-                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-purple-400">{importStats.clients}</div>
-                    <div className="text-sm text-slate-400">Clients</div>
-                  </div>
-                  <div className="bg-slate-600/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-green-400">{importStats.totalHeures}h</div>
-                    <div className="text-sm text-slate-400">Heures totales</div>
-                  </div>
-                </div>
-
-                {/* Alerte si mappings manquants */}
-                {(mappingCollabsManquants > 0 || mappingClientsManquants > 0) && (
-                  <div className="mt-4 bg-amber-500/20 border border-amber-500 rounded-lg p-3 flex items-center gap-3">
-                    <AlertCircle className="text-amber-400" size={24} />
-                    <div>
-                      <p className="text-amber-400 font-medium">Correspondances manquantes</p>
-                      <p className="text-slate-300 text-sm">
-                        {mappingCollabsManquants} collaborateur(s) et {mappingClientsManquants} client(s) non mappés.
-                        Allez dans l'onglet "Correspondances" pour les configurer.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bouton de validation */}
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleValidateImport}
-                    className={`flex items-center gap-2 px-6 py-3 ${accent.color} ${accent.hover} text-white rounded-lg transition`}
-                    disabled={importedData.length === 0}
-                  >
-                    <Check size={20} />
-                    Valider et enregistrer les temps réels
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Aperçu des données */}
-            {importedData.length > 0 && (
-              <div className="bg-slate-700/50 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Aperçu des données ({importedData.length} lignes)</h3>
-                <div className="overflow-x-auto max-h-96">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-600/50 sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-slate-300">Collaborateur</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Client</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Date</th>
-                        <th className="px-3 py-2 text-right text-slate-300">Heures</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Activité</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Statut</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importedData.slice(0, 50).map((row, idx) => {
-                        const collabMapped = mappingCollaborateurs[row.collaborateurPennylane];
-                        const clientMapped = mappingClients[row.clientPennylane];
-                        const isComplete = collabMapped && clientMapped;
-
-                        return (
-                          <tr key={idx} className={`border-t border-slate-600 ${isComplete ? '' : 'bg-red-500/10'}`}>
-                            <td className="px-3 py-2 text-white">{row.collaborateurPennylane}</td>
-                            <td className="px-3 py-2 text-white">{row.clientPennylane}</td>
-                            <td className="px-3 py-2 text-slate-300">{row.date}</td>
-                            <td className="px-3 py-2 text-right text-green-400">{row.dureeHeures}h</td>
-                            <td className="px-3 py-2 text-slate-400 truncate max-w-xs">{row.activite}</td>
-                            <td className="px-3 py-2 text-center">
-                              {isComplete ? (
-                                <Check size={16} className="text-green-400 mx-auto" />
-                              ) : (
-                                <X size={16} className="text-red-400 mx-auto" />
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {importedData.length > 50 && (
-                    <p className="text-center text-slate-400 py-2">
-                      ... et {importedData.length - 50} autres lignes
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Onglet Analyse des Écarts */}
-        {activeTab === 'ecarts' && (
-          <div className="space-y-6">
-            {/* Filtres */}
-            <div className="bg-slate-700/50 rounded-lg p-4">
-              <div className="flex flex-wrap items-end gap-4">
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Collaborateur</label>
-                  <select
-                    value={filtreCollaborateur}
-                    onChange={(e) => setFiltreCollaborateur(e.target.value)}
-                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
-                  >
-                    <option value="">Tous</option>
-                    {collaborateurs.map(c => (
-                      <option key={c.id} value={c.id}>{c.nom}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Client</label>
-                  <select
-                    value={filtreClient}
-                    onChange={(e) => setFiltreClient(e.target.value)}
-                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
-                  >
-                    <option value="">Tous</option>
-                    {clients.filter(c => c.actif !== false).map(c => (
-                      <option key={c.id} value={c.id}>{c.nom}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Du</label>
-                  <input
-                    type="date"
-                    value={dateDebut}
-                    onChange={(e) => setDateDebut(e.target.value)}
-                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Au</label>
-                  <input
-                    type="date"
-                    value={dateFin}
-                    onChange={(e) => setDateFin(e.target.value)}
-                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
-                  />
-                </div>
-
-                <div className="flex-1 min-w-[200px]">
-                  <label className="block text-sm text-slate-400 mb-1">Rechercher</label>
-                  <div className="relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      value={searchEcarts}
-                      onChange={(e) => setSearchEcarts(e.target.value)}
-                      placeholder="Collaborateur ou client..."
-                      className="w-full pl-10 pr-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white placeholder-slate-400"
-                    />
-                    {searchEcarts && (
-                      <button
-                        onClick={() => setSearchEcarts('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Résumé global */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-blue-400">{Math.round(totaux.budgetees * 10) / 10}h</div>
-                <div className="text-sm text-slate-300">Heures budgétées</div>
-              </div>
-              <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-green-400">{Math.round(totaux.reelles * 10) / 10}h</div>
-                <div className="text-sm text-slate-300">Heures réelles</div>
-              </div>
-              <div className={`${totaux.ecart > 0 ? 'bg-red-500/20 border-red-500' : 'bg-emerald-500/20 border-emerald-500'} border rounded-lg p-4 text-center`}>
-                <div className={`text-3xl font-bold ${totaux.ecart > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {totaux.ecart > 0 ? '+' : ''}{Math.round(totaux.ecart * 10) / 10}h
-                </div>
-                <div className="text-sm text-slate-300">Écart total</div>
-              </div>
-              <div className={`${totaux.ecart > 0 ? 'bg-red-500/20 border-red-500' : 'bg-emerald-500/20 border-emerald-500'} border rounded-lg p-4 text-center`}>
-                <div className={`text-3xl font-bold ${totaux.ecart > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {totaux.budgetees > 0 ? (totaux.ecart > 0 ? '+' : '') + Math.round((totaux.ecart / totaux.budgetees) * 100) : 0}%
-                </div>
-                <div className="text-sm text-slate-300">Variation</div>
-              </div>
-            </div>
-
-            {/* Tableau des écarts */}
-            {ecarts.length === 0 ? (
-              <div className="text-center py-12">
-                <BarChart3 size={48} className="mx-auto text-slate-500 mb-4" />
-                <p className="text-slate-400">Aucune donnée à afficher pour cette période</p>
-                <p className="text-slate-500 text-sm mt-2">Importez des temps réels ou ajustez les filtres</p>
-              </div>
-            ) : (
-              <div className="bg-slate-700/50 rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-600/50">
-                      <tr>
-                        <th
-                          onClick={() => handleSort('collaborateur')}
-                          className="px-4 py-3 text-left text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center gap-1">
-                            Collaborateur
-                            <SortIcon column="collaborateur" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort('client')}
-                          className="px-4 py-3 text-left text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center gap-1">
-                            Client
-                            <SortIcon column="client" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort('budgetees')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center justify-end gap-1">
-                            Budgété
-                            <SortIcon column="budgetees" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort('reelles')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center justify-end gap-1">
-                            Réel
-                            <SortIcon column="reelles" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort('ecart')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center justify-end gap-1">
-                            Écart
-                            <SortIcon column="ecart" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort('ecartPourcent')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
-                        >
-                          <div className="flex items-center justify-end gap-1">
-                            %
-                            <SortIcon column="ecartPourcent" />
-                          </div>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ecarts.map((e, idx) => (
-                        <tr key={idx} className="border-t border-slate-600 hover:bg-slate-600/30">
-                          <td className="px-4 py-3 text-white">{e.collaborateurNom}</td>
-                          <td className="px-4 py-3 text-white">{e.clientNom}</td>
-                          <td className="px-4 py-3 text-right text-blue-400">{Math.round(e.heuresBudgetees * 10) / 10}h</td>
-                          <td className="px-4 py-3 text-right text-green-400">{Math.round(e.heuresReelles * 10) / 10}h</td>
-                          <td className={`px-4 py-3 text-right font-medium ${e.ecart > 0 ? 'text-red-400' : e.ecart < 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                            {e.ecart > 0 ? '+' : ''}{e.ecart}h
-                          </td>
-                          <td className={`px-4 py-3 text-right ${e.ecartPourcent > 20 ? 'text-red-400' : e.ecartPourcent < -20 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                            {e.ecartPourcent > 0 ? '+' : ''}{e.ecartPourcent}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Export */}
-            {ecarts.length > 0 && (
-              <div className="flex justify-end">
-                <button
-                  onClick={() => {
-                    const wb = XLSX.utils.book_new();
-                    const wsData = [
-                      ['Collaborateur', 'Client', 'Heures Budgétées', 'Heures Réelles', 'Écart (h)', 'Écart (%)'],
-                      ...ecarts.map(e => [
-                        e.collaborateurNom,
-                        e.clientNom,
-                        Math.round(e.heuresBudgetees * 10) / 10,
-                        Math.round(e.heuresReelles * 10) / 10,
-                        e.ecart,
-                        e.ecartPourcent
-                      ]),
-                      [],
-                      ['TOTAL', '', Math.round(totaux.budgetees * 10) / 10, Math.round(totaux.reelles * 10) / 10, Math.round(totaux.ecart * 10) / 10, totaux.budgetees > 0 ? Math.round((totaux.ecart / totaux.budgetees) * 100) : 0]
-                    ];
-                    const ws = XLSX.utils.aoa_to_sheet(wsData);
-                    XLSX.utils.book_append_sheet(wb, ws, 'Écarts');
-                    XLSX.writeFile(wb, `ecarts_${dateDebut}_${dateFin}.xlsx`);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
-                >
-                  <Download size={18} />
-                  Exporter en Excel
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Onglet Journal des modifications */}
-        {activeTab === 'journal' && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-white">Historique des imports</h3>
-
-            {journalModifications.length === 0 ? (
-              <div className="text-center py-12">
-                <FileText size={48} className="mx-auto text-slate-500 mb-4" />
-                <p className="text-slate-400">Aucune modification enregistrée</p>
-                <p className="text-slate-500 text-sm mt-2">Les modifications apparaîtront ici après chaque import</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {journalModifications.map((entry, idx) => {
-                  // Support des deux formats: ancien (localStorage) et nouveau (Supabase)
-                  const dateImport = new Date(entry.date_import || entry.date);
-                  const details = entry.details || entry;
-                  const ajouts = details.ajouts || [];
-                  const modifications = details.modifications || [];
-                  const suppressions = details.suppressions || [];
-                  const periodeDebut = entry.periode_debut || entry.periodeDebut;
-                  const periodeFin = entry.periode_fin || entry.periodeFin;
-
-                  return (
-                    <div key={idx} className="bg-slate-700/50 rounded-lg overflow-hidden">
-                      {/* En-tête de l'entrée */}
-                      <div className="bg-slate-600/50 px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="text-white font-medium">
-                            {dateImport.toLocaleDateString('fr-FR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </div>
-                          <div className="text-slate-400 text-sm">
-                            Période: {periodeDebut} → {periodeFin}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {ajouts.length > 0 && (
-                            <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
-                              +{ajouts.length} ajout(s)
-                            </span>
-                          )}
-                          {modifications.length > 0 && (
-                            <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded">
-                              {modifications.length} modif(s)
-                            </span>
-                          )}
-                          {suppressions.length > 0 && (
-                            <span className="bg-red-500/20 text-red-400 text-xs px-2 py-1 rounded">
-                              -{suppressions.length} suppression(s)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Détails des modifications */}
-                      <div className="p-4 space-y-4">
-                        {/* Suppressions (en premier car plus critique) */}
-                        {suppressions.length > 0 && (
-                          <div>
-                            <h4 className="text-red-400 font-medium mb-2 flex items-center gap-2">
-                              <Trash2 size={16} />
-                              Entrées supprimées ({suppressions.length})
-                            </h4>
-                            <div className="bg-red-500/10 rounded-lg overflow-hidden">
-                              <table className="w-full text-sm">
-                                <thead className="bg-red-500/20">
-                                  <tr>
-                                    <th className="px-3 py-2 text-left text-red-300">Collaborateur</th>
-                                    <th className="px-3 py-2 text-left text-red-300">Client</th>
-                                    <th className="px-3 py-2 text-left text-red-300">Date</th>
-                                    <th className="px-3 py-2 text-right text-red-300">Heures perdues</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {suppressions.map((s, sIdx) => (
-                                    <tr key={sIdx} className="border-t border-red-500/20">
-                                      <td className="px-3 py-2 text-white">{s.collaborateur}</td>
-                                      <td className="px-3 py-2 text-white">{s.client}</td>
-                                      <td className="px-3 py-2 text-slate-300">{s.date}</td>
-                                      <td className="px-3 py-2 text-right text-red-400">-{s.heures}h</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Modifications */}
-                        {modifications.length > 0 && (
-                          <div>
-                            <h4 className="text-amber-400 font-medium mb-2 flex items-center gap-2">
-                              <Pencil size={16} />
-                              Heures modifiées ({modifications.length})
-                            </h4>
-                            <div className="bg-amber-500/10 rounded-lg overflow-hidden">
-                              <table className="w-full text-sm">
-                                <thead className="bg-amber-500/20">
-                                  <tr>
-                                    <th className="px-3 py-2 text-left text-amber-300">Collaborateur</th>
-                                    <th className="px-3 py-2 text-left text-amber-300">Client</th>
-                                    <th className="px-3 py-2 text-left text-amber-300">Date</th>
-                                    <th className="px-3 py-2 text-right text-amber-300">Avant</th>
-                                    <th className="px-3 py-2 text-right text-amber-300">Après</th>
-                                    <th className="px-3 py-2 text-right text-amber-300">Écart</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {modifications.map((m, mIdx) => (
-                                    <tr key={mIdx} className="border-t border-amber-500/20">
-                                      <td className="px-3 py-2 text-white">{m.collaborateur}</td>
-                                      <td className="px-3 py-2 text-white">{m.client}</td>
-                                      <td className="px-3 py-2 text-slate-300">{m.date}</td>
-                                      <td className="px-3 py-2 text-right text-slate-400">{m.anciennesHeures}h</td>
-                                      <td className="px-3 py-2 text-right text-white">{m.nouvellesHeures}h</td>
-                                      <td className={`px-3 py-2 text-right font-medium ${m.ecart > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                        {m.ecart > 0 ? '+' : ''}{m.ecart}h
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Ajouts (moins critique, replié par défaut si beaucoup) */}
-                        {ajouts.length > 0 && (
-                          <div>
-                            <h4 className="text-green-400 font-medium mb-2 flex items-center gap-2">
-                              <Plus size={16} />
-                              Nouvelles entrées ({ajouts.length})
-                            </h4>
-                            {ajouts.length <= 10 ? (
-                              <div className="bg-green-500/10 rounded-lg overflow-hidden">
-                                <table className="w-full text-sm">
-                                  <thead className="bg-green-500/20">
-                                    <tr>
-                                      <th className="px-3 py-2 text-left text-green-300">Collaborateur</th>
-                                      <th className="px-3 py-2 text-left text-green-300">Client</th>
-                                      <th className="px-3 py-2 text-left text-green-300">Date</th>
-                                      <th className="px-3 py-2 text-right text-green-300">Heures</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {ajouts.map((a, aIdx) => (
-                                      <tr key={aIdx} className="border-t border-green-500/20">
-                                        <td className="px-3 py-2 text-white">{a.collaborateur}</td>
-                                        <td className="px-3 py-2 text-white">{a.client}</td>
-                                        <td className="px-3 py-2 text-slate-300">{a.date}</td>
-                                        <td className="px-3 py-2 text-right text-green-400">+{a.heures}h</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <div className="bg-green-500/10 rounded-lg p-3 text-green-300 text-sm">
-                                {ajouts.length} nouvelles entrées ajoutées
-                                (total: {Math.round(ajouts.reduce((sum, a) => sum + a.heures, 0) * 10) / 10}h)
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
+export default CalendarPage;
