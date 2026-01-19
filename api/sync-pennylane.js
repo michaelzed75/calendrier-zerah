@@ -1,18 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://anrvvsfvejnmdouxjfxj.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFucnZ2c2Z2ZWpubWRvdXhqZnhqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjgzMjk1OSwiZXhwIjoyMDgyNDA4OTU5fQ.A9Syj-QA7sHEP2x4p-_AeITz0Ma0ZHCCYR93m0LBHg0'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const CABINETS = {
   'audit-up': {
     name: 'Audit Up',
-    token: process.env.PENNYLANE_AUDIT_UP_TOKEN || 'rCIXOo3ZlcdIWElrFEzNgcKxcyxjZlrIyH0L_yhh5Xw'
+    token: process.env.PENNYLANE_AUDIT_UP_TOKEN
   },
   'zerah': {
     name: 'Zerah Fiduciaire',
-    token: process.env.PENNYLANE_ZERAH_FIDUCIAIRE_TOKEN || '1lxZekvvVzLwj3KJZiIhjQ2mPD59IVidx4_AzIMIQUI'
+    token: process.env.PENNYLANE_ZERAH_FIDUCIAIRE_TOKEN
   }
 };
 

@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, User
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
-const SUPABASE_URL = 'https://anrvvsfvejnmdouxjfxj.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_BxHx7EG9PQ-TDT3BmHFfWg_BZz77c8k';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ============================================
@@ -25,7 +25,7 @@ const parseDateString = (dateStr) => {
 // ============================================
 // CONFIGURATION UNSPLASH
 // ============================================
-const UNSPLASH_ACCESS_KEY = 'X6rfvR5uCg1PCojlkBuk0xMhTBC2gQDVilj8HOoq95M';
+const UNSPLASH_ACCESS_KEY = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
 
 // Thèmes dégradés prédéfinis
 const GRADIENT_THEMES = [

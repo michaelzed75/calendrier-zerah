@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://anrvvsfvejnmdouxjfxj.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFucnZ2c2Z2ZWpubWRvdXhqZnhqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjgzMjk1OSwiZXhwIjoyMDgyNDA4OTU5fQ.A9Syj-QA7sHEP2x4p-_AeITz0Ma0ZHCCYR93m0LBHg0'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
