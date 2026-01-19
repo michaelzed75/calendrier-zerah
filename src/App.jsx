@@ -5,6 +5,12 @@ import * as XLSX from 'xlsx';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Debug: vérifier que les variables sont chargées
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Variables manquantes:', { SUPABASE_URL, SUPABASE_KEY });
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ============================================
