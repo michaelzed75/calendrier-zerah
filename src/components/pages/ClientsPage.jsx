@@ -361,12 +361,14 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Obtenir les cabinets uniques
   const cabinets = [...new Set(clients.filter(c => c.cabinet).map(c => c.cabinet))];
 
-  // Filtrer les clients
-  const filteredClients = clients.filter(client => {
-    const matchesCabinet = filterCabinet === 'tous' || client.cabinet === filterCabinet || (filterCabinet === 'autres' && !client.cabinet);
-    const matchesSearch = client.nom.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCabinet && matchesSearch;
-  });
+  // Filtrer et trier les clients (tri alphabétique par défaut)
+  const filteredClients = [...clients]
+    .filter(client => {
+      const matchesCabinet = filterCabinet === 'tous' || client.cabinet === filterCabinet || (filterCabinet === 'autres' && !client.cabinet);
+      const matchesSearch = client.nom.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesCabinet && matchesSearch;
+    })
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 
   // Export Excel
   const handleExportExcel = () => {

@@ -49,6 +49,8 @@ export default function TestsComptablesPage({
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(/** @type {'idle'|'success'|'error'} */ ('idle'));
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
 
   // Données
   const [testsDisponibles, setTestsDisponibles] = useState(/** @type {import('../../types').TestDefinition[]} */ ([]));
@@ -59,9 +61,19 @@ export default function TestsComptablesPage({
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
 
-  // Clients accessibles
-  const accessibleClients = getAccessibleClients(userCollaborateur);
+  // Clients accessibles (triés alphabétiquement)
+  const accessibleClients = [...getAccessibleClients(userCollaborateur)].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   const clientsAvecApi = accessibleClients.filter(c => c.pennylane_client_api_key);
+  const filteredClients = accessibleClients.filter(c =>
+    c.nom.toLowerCase().includes(clientSearch.toLowerCase())
+  );
+
+  // Handler pour sélection client
+  const handleClientSelect = (client) => {
+    setSelectedClientId(client.id);
+    setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
+    setShowClientDropdown(false);
+  };
 
   // Client sélectionné
   const selectedClient = clients.find(c => c.id === selectedClientId);
@@ -307,24 +319,37 @@ export default function TestsComptablesPage({
       {/* Sélecteurs */}
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-lg border border-slate-700 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Sélection client */}
-          <div>
+          {/* Sélection client avec recherche */}
+          <div className="relative">
             <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
-            <div className="relative">
-              <select
-                value={selectedClientId || ''}
-                onChange={(e) => setSelectedClientId(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 appearance-none"
-              >
-                <option value="">-- Sélectionner un client --</option>
-                {accessibleClients.map(client => (
-                  <option key={client.id} value={client.id}>
-                    {client.nom} {client.pennylane_client_api_key ? '✓' : '(pas d\'API)'}
-                  </option>
+            <input
+              type="text"
+              value={clientSearch}
+              onChange={(e) => {
+                setClientSearch(e.target.value);
+                setSelectedClientId(null);
+                setShowClientDropdown(true);
+              }}
+              onFocus={() => setShowClientDropdown(true)}
+              placeholder="Rechercher un client..."
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
+            />
+            {showClientDropdown && filteredClients.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded max-h-48 overflow-y-auto">
+                {filteredClients.map(client => (
+                  <div
+                    key={client.id}
+                    onClick={() => handleClientSelect(client)}
+                    className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white flex justify-between items-center"
+                  >
+                    <span>{client.nom}</span>
+                    <span className={client.pennylane_client_api_key ? 'text-green-400' : 'text-slate-500 text-sm'}>
+                      {client.pennylane_client_api_key ? '✓' : '(pas d\'API)'}
+                    </span>
+                  </div>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Sélection millésime */}

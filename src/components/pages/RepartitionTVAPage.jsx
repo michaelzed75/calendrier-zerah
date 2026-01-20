@@ -32,12 +32,14 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
     return data?.tva_jour && data?.tva_periodicite;
   };
 
-  // Clients TVA actifs appartenant au chef de mission connecte
-  const clientsTVA = clients.filter(c =>
-    c.actif &&
-    clientHasTVA(c.id) &&
-    (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
-  );
+  // Clients TVA actifs appartenant au chef de mission connecte (triés alphabétiquement)
+  const clientsTVA = [...clients]
+    .filter(c =>
+      c.actif &&
+      clientHasTVA(c.id) &&
+      (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+    )
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 
   // Collaborateurs de l'equipe du chef de mission (+ lui-meme)
   const equipeCollaborateurs = userCollaborateur ? [

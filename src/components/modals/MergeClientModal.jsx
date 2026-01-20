@@ -30,9 +30,9 @@ function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) 
     c.cabinet && c.actif && c.id !== sourceClient.id
   );
 
-  const filteredClients = pennylaneClients.filter(c =>
-    c.nom.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredClients = [...pennylaneClients]
+    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+    .filter(c => c.nom.toLowerCase().includes(searchTerm.toLowerCase()));
 
   // Compter les charges du client source
   const sourceChargesCount = charges.filter(c => c.client_id === sourceClient.id).length;

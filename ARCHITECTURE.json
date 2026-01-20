@@ -625,7 +625,10 @@
       "Ajout champ pennylane_client_api_key sur clients",
       "Analyse des écarts: ajout colonne Cabinet (ZG/AU) triable",
       "Analyse des écarts: ajout colonne Détail travail (commentaires agrégés depuis import Excel)",
-      "Export Excel des écarts enrichi avec Cabinet et Détail travail"
+      "Export Excel des écarts enrichi avec Cabinet et Détail travail",
+      "Tri alphabétique des listes de clients dans toute l'application",
+      "Recherche intégrée dans les dropdowns clients (EditChargeModal, TestsComptablesPage)",
+      "Amélioration UX: ClientsPage, MergeClientModal, RepartitionTVAPage, TempsReelsPage triés"
     ]
   }
 }

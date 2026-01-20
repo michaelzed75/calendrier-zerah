@@ -34,7 +34,8 @@
       "Bash(npm run test:run:*)",
       "Bash(npm test:*)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git merge:*)"
     ]
   }
 }

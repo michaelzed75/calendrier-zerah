@@ -982,7 +982,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                           } border`}
                         >
                           <option value="">-- Non mappé --</option>
-                          {clients.filter(c => c.actif !== false).map(c => (
+                          {[...clients].filter(c => c.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(c => (
                             <option key={c.id} value={c.id}>{c.nom}</option>
                           ))}
                         </select>
@@ -1160,7 +1160,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
                   >
                     <option value="">Tous</option>
-                    {clients.filter(c => c.actif !== false).map(c => (
+                    {[...clients].filter(c => c.actif !== false).sort((a, b) => a.nom.localeCompare(b.nom, 'fr')).map(c => (
                       <option key={c.id} value={c.id}>{c.nom}</option>
                     ))}
                   </select>

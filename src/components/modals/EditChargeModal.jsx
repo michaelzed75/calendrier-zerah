@@ -42,6 +42,9 @@ function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose })
     );
   }
 
+  // Trouver le client initial pour afficher son nom
+  const initialClient = clients.find(c => c.id === charge.client_id);
+
   const [formData, setFormData] = useState({
     collaborateurId: charge.collaborateur_id,
     clientId: charge.client_id,
@@ -50,6 +53,21 @@ function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose })
     type: charge.type || 'budgété',
     detail: charge.detail || ''
   });
+
+  const [clientSearch, setClientSearch] = useState(initialClient?.nom || '');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  // Clients triés et filtrés
+  const sortedClients = [...clients].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const filteredClients = sortedClients.filter(c =>
+    c.nom.toLowerCase().includes(clientSearch.toLowerCase())
+  );
+
+  const handleClientSelect = (client) => {
+    setFormData({ ...formData, clientId: client.id });
+    setClientSearch(client.nom);
+    setShowClientDropdown(false);
+  };
 
   const handleCollaborateurChange = (newCollabId) => {
     setFormData({
@@ -81,11 +99,33 @@ function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose })
             </select>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
-            <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600">
-              {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-            </select>
+            <input
+              type="text"
+              value={clientSearch}
+              onChange={(e) => {
+                setClientSearch(e.target.value);
+                setFormData({ ...formData, clientId: '' });
+                setShowClientDropdown(true);
+              }}
+              onFocus={() => setShowClientDropdown(true)}
+              placeholder="Rechercher un client..."
+              className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600"
+            />
+            {showClientDropdown && filteredClients.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded max-h-48 overflow-y-auto">
+                {filteredClients.map(c => (
+                  <div
+                    key={c.id}
+                    onClick={() => handleClientSelect(c)}
+                    className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white"
+                  >
+                    {c.nom}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
