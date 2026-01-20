@@ -196,8 +196,8 @@
         "access": "chef_mission uniquement"
       },
       "TempsReelsPage.jsx": {
-        "lines": 1510,
-        "role": "Import des temps réels Pennylane",
+        "lines": 1531,
+        "role": "Import des temps réels Pennylane et analyse des écarts",
         "typing": "@ts-check + JSDoc",
         "features": [
           "Import fichier Excel (format Pennylane)",
@@ -206,7 +206,11 @@
           "Mode fusion intelligente ou remplacement",
           "Distinction par cabinet (Zerah/Audit Up)",
           "Prévisualisation avant import",
-          "Gestion des clients non mappés"
+          "Gestion des clients non mappés",
+          "Analyse des écarts budgété vs réel avec colonnes triables",
+          "Colonne Cabinet (ZG/AU) dans l'analyse des écarts",
+          "Colonne Détail travail (commentaires agrégés depuis Excel)",
+          "Export Excel des écarts avec toutes les colonnes"
         ],
         "props": [
           "clients", "collaborateurs", "charges", "setCharges", "accent"
@@ -618,7 +622,10 @@
       "Ajout proxy API Pennylane (api/pennylane-proxy.js)",
       "Ajout page TestsComptablesPage.jsx",
       "Ajout validation clé API Pennylane avec test de connexion dans ClientsPage",
-      "Ajout champ pennylane_client_api_key sur clients"
+      "Ajout champ pennylane_client_api_key sur clients",
+      "Analyse des écarts: ajout colonne Cabinet (ZG/AU) triable",
+      "Analyse des écarts: ajout colonne Détail travail (commentaires agrégés depuis import Excel)",
+      "Export Excel des écarts enrichi avec Cabinet et Détail travail"
     ]
   }
 }

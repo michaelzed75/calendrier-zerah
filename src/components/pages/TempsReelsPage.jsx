@@ -659,13 +659,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           collaborateur_id: c.collaborateur_id,
           client_id: c.client_id,
           heuresBudgetees: 0,
-          heuresReelles: 0
+          heuresReelles: 0,
+          commentaires: new Set()
         };
       }
       ecarts[key].heuresBudgetees += c.heures || 0;
     });
 
-    // Ajouter les heures réelles
+    // Ajouter les heures réelles et les commentaires
     tempsReelsFiltres.forEach(t => {
       const key = `${t.collaborateur_id}-${t.client_id}`;
       if (!ecarts[key]) {
@@ -673,10 +674,15 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           collaborateur_id: t.collaborateur_id,
           client_id: t.client_id,
           heuresBudgetees: 0,
-          heuresReelles: 0
+          heuresReelles: 0,
+          commentaires: new Set()
         };
       }
       ecarts[key].heuresReelles += t.heures || 0;
+      // Ajouter le commentaire s'il existe et n'est pas vide
+      if (t.commentaire && t.commentaire.trim()) {
+        ecarts[key].commentaires.add(t.commentaire.trim());
+      }
     });
 
     // Calculer les écarts et enrichir avec les noms
@@ -686,12 +692,17 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       const ecart = e.heuresReelles - e.heuresBudgetees;
       const ecartPourcent = e.heuresBudgetees > 0 ? Math.round((ecart / e.heuresBudgetees) * 100) : (e.heuresReelles > 0 ? 100 : 0);
 
+      // Déterminer le cabinet du client (ZG = Zerah Fiduciaire, AU = Audit Up)
+      const cabinetCode = client?.cabinet === 'Zerah Fiduciaire' ? 'ZG' : client?.cabinet === 'Audit Up' ? 'AU' : '-';
+
       return {
         ...e,
         collaborateurNom: collab?.nom || 'Inconnu',
         clientNom: client?.nom || 'Inconnu',
+        cabinet: cabinetCode,
         ecart: Math.round(ecart * 100) / 100,
-        ecartPourcent
+        ecartPourcent,
+        detailTravail: Array.from(e.commentaires).join(' | ')
       };
     });
   };
@@ -710,6 +721,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   const ecarts = [...ecartsFiltres].sort((a, b) => {
     const dir = sortEcarts.direction === 'asc' ? 1 : -1;
     switch (sortEcarts.column) {
+      case 'cabinet':
+        return dir * a.cabinet.localeCompare(b.cabinet);
       case 'collaborateur':
         return dir * a.collaborateurNom.localeCompare(b.collaborateurNom);
       case 'client':
@@ -1235,6 +1248,16 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     <thead className="bg-slate-600/50">
                       <tr>
                         <th
+                          onClick={() => handleSort('cabinet')}
+                          className="px-2 py-3 text-center text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          title="Cabinet (ZG = Zerah, AU = Audit Up)"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            Cab.
+                            <SortIcon column="cabinet" />
+                          </div>
+                        </th>
+                        <th
                           onClick={() => handleSort('collaborateur')}
                           className="px-4 py-3 text-left text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
@@ -1288,11 +1311,17 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                             <SortIcon column="ecartPourcent" />
                           </div>
                         </th>
+                        <th className="px-4 py-3 text-left text-slate-300 font-medium">
+                          Détail travail
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {ecarts.map((e, idx) => (
                         <tr key={idx} className="border-t border-slate-600 hover:bg-slate-600/30">
+                          <td className={`px-2 py-3 text-center font-medium ${e.cabinet === 'ZG' ? 'text-purple-400' : e.cabinet === 'AU' ? 'text-cyan-400' : 'text-slate-500'}`}>
+                            {e.cabinet}
+                          </td>
                           <td className="px-4 py-3 text-white">{e.collaborateurNom}</td>
                           <td className="px-4 py-3 text-white">{e.clientNom}</td>
                           <td className="px-4 py-3 text-right text-blue-400">{Math.round(e.heuresBudgetees * 10) / 10}h</td>
@@ -1302,6 +1331,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                           </td>
                           <td className={`px-4 py-3 text-right ${e.ecartPourcent > 20 ? 'text-red-400' : e.ecartPourcent < -20 ? 'text-emerald-400' : 'text-slate-400'}`}>
                             {e.ecartPourcent > 0 ? '+' : ''}{e.ecartPourcent}%
+                          </td>
+                          <td className="px-4 py-3 text-slate-300 text-sm max-w-md truncate" title={e.detailTravail}>
+                            {e.detailTravail || '-'}
                           </td>
                         </tr>
                       ))}
@@ -1318,17 +1350,19 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                   onClick={() => {
                     const wb = XLSX.utils.book_new();
                     const wsData = [
-                      ['Collaborateur', 'Client', 'Heures Budgétées', 'Heures Réelles', 'Écart (h)', 'Écart (%)'],
+                      ['Cabinet', 'Collaborateur', 'Client', 'Heures Budgétées', 'Heures Réelles', 'Écart (h)', 'Écart (%)', 'Détail travail'],
                       ...ecarts.map(e => [
+                        e.cabinet,
                         e.collaborateurNom,
                         e.clientNom,
                         Math.round(e.heuresBudgetees * 10) / 10,
                         Math.round(e.heuresReelles * 10) / 10,
                         e.ecart,
-                        e.ecartPourcent
+                        e.ecartPourcent,
+                        e.detailTravail || ''
                       ]),
                       [],
-                      ['TOTAL', '', Math.round(totaux.budgetees * 10) / 10, Math.round(totaux.reelles * 10) / 10, Math.round(totaux.ecart * 10) / 10, totaux.budgetees > 0 ? Math.round((totaux.ecart / totaux.budgetees) * 100) : 0]
+                      ['TOTAL', '', '', Math.round(totaux.budgetees * 10) / 10, Math.round(totaux.reelles * 10) / 10, Math.round(totaux.ecart * 10) / 10, totaux.budgetees > 0 ? Math.round((totaux.ecart / totaux.budgetees) * 100) : 0, '']
                     ];
                     const ws = XLSX.utils.aoa_to_sheet(wsData);
                     XLSX.utils.book_append_sheet(wb, ws, 'Écarts');
