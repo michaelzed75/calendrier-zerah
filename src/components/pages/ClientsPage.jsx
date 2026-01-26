@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
 import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
@@ -373,14 +374,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Export Excel
   const handleExportExcel = () => {
     const dataToExport = filteredClients.map(client => ({
+      'ID': client.id,
       'Nom': client.nom,
-      'Code Pennylane': client.code_pennylane || '',
       'Cabinet': client.cabinet || '',
+      'Pennylane Customer ID': client.pennylane_customer_id || '',
+      'Code Pennylane': client.code_pennylane || '',
       'Chef de mission': getChefName(client.chef_mission_id) || 'Non assigné',
       'SIREN': client.siren || '',
-      'Adresse': client.adresse || '',
-      'Ville': client.ville || '',
-      'Code postal': client.code_postal || '',
       'Charges': getChargesCount(client.id),
       'Actif': client.actif ? 'Oui' : 'Non'
     }));
@@ -391,14 +391,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
     // Ajuster la largeur des colonnes
     ws['!cols'] = [
+      { wch: 8 },  // ID
       { wch: 30 }, // Nom
-      { wch: 15 }, // Code
       { wch: 15 }, // Cabinet
+      { wch: 18 }, // Pennylane Customer ID
+      { wch: 15 }, // Code Pennylane
       { wch: 20 }, // Chef
       { wch: 12 }, // SIREN
-      { wch: 30 }, // Adresse
-      { wch: 20 }, // Ville
-      { wch: 10 }, // CP
       { wch: 8 },  // Charges
       { wch: 6 }   // Actif
     ];

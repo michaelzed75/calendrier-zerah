@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock, ClipboardCheck } from 'lucide-react';
+import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock, ClipboardCheck, Euro } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import AuthPage from './components/pages/AuthPage';
 import CalendarPage from './components/pages/CalendarPage';
@@ -10,6 +10,7 @@ import CollaborateursPage from './components/pages/CollaborateursPage';
 import ClientsPage from './components/pages/ClientsPage';
 import RepartitionTVAPage from './components/pages/RepartitionTVAPage';
 import TestsComptablesPage from './components/pages/TestsComptablesPage';
+import HonorairesPage from './components/pages/HonorairesPage';
 import { ThemeModal } from './components/modals';
 import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
 
@@ -25,7 +26,7 @@ import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
  * @typedef {import('./types.js').ImageCredits} ImageCredits
  */
 
-/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'|'tests-comptables'} PageName */
+/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'|'tests-comptables'|'honoraires'} PageName */
 
 // ============================================
 // COMPOSANT PRINCIPAL - APP
@@ -430,6 +431,17 @@ export default function App() {
               <ClipboardCheck size={18} />
               Tests
             </button>
+            {userCollaborateur?.is_admin && (
+              <button
+                onClick={() => setCurrentPage('honoraires')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                <Euro size={18} />
+                Honoraires
+              </button>
+            )}
             <button
               onClick={() => setShowThemeModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
@@ -528,6 +540,17 @@ export default function App() {
               <ClipboardCheck size={18} />
               Tests Comptables
             </button>
+            {userCollaborateur?.is_admin && (
+              <button
+                onClick={() => { setCurrentPage('honoraires'); setShowMobileMenu(false); }}
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                <Euro size={18} />
+                Honoraires
+              </button>
+            )}
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
               className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-slate-300 transition"
@@ -629,6 +652,15 @@ export default function App() {
           userCollaborateur={userCollaborateur}
           getAccessibleClients={getAccessibleClients}
           accent={accent}
+        />
+      )}
+      {currentPage === 'honoraires' && userCollaborateur?.is_admin && (
+        <HonorairesPage
+          clients={clients}
+          setClients={setClients}
+          collaborateurs={collaborateurs}
+          accent={accent}
+          userCollaborateur={userCollaborateur}
         />
       )}
       {/* Crédits photo Unsplash */}
