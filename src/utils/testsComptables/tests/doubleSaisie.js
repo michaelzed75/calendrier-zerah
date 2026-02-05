@@ -84,14 +84,26 @@ export const doubleSaisie = {
    * @param {Object} [params.options] - Options du test
    * @param {number} [params.options.toleranceJours=31] - Période de comparaison (jours)
    * @param {string[]} [params.options.fournisseursReleve] - Liste des supplier_id marqués "au relevé"
+   * @param {number} [params.options.millesime] - Année fiscale pour le calendrier des relevés
    * @returns {Promise<{anomalies: import('../../../types').TestResultAnomalie[], donneesAnalysees: Object}>}
    */
   async execute({ supplierInvoices, options = {} }) {
     const toleranceJours = options.toleranceJours || 31;
     const fournisseursReleveSet = new Set(options.fournisseursReleve || []);
+    const millesime = options.millesime || new Date().getFullYear();
 
     /** @type {import('../../../types').TestResultAnomalie[]} */
     const anomalies = [];
+
+    // Générer la liste des 12 mois du millésime
+    const moisDuMillesime = [];
+    for (let m = 1; m <= 12; m++) {
+      moisDuMillesime.push(`${millesime}-${String(m).padStart(2, '0')}`);
+    }
+
+    // Mois actuel pour savoir jusqu'où vérifier
+    const now = new Date();
+    const moisActuel = getMoisAnnee(now.toISOString().split('T')[0]);
 
     // Préparer les factures
     const factures = supplierInvoices
@@ -128,14 +140,6 @@ export const doubleSaisie = {
     // Liste des fournisseurs avec leurs alertes
     const listeFournisseurs = [];
 
-    // Mois actuel pour vérifier les relevés manquants
-    const moisActuel = getMoisAnnee(new Date().toISOString().split('T')[0]);
-    const moisPrecedent = (() => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
-      return getMoisAnnee(d.toISOString().split('T')[0]);
-    })();
-
     for (const [supplierId, fournisseurData] of parFournisseur) {
       const facturesFournisseur = fournisseurData.factures;
       const isMarqueReleve = fournisseursReleveSet.has(String(supplierId));
@@ -155,16 +159,36 @@ export const doubleSaisie = {
       // Alertes pour ce fournisseur
       const alertes = [];
 
+      // Calendrier des mois (pour fournisseurs au relevé)
+      const calendrierMois = moisDuMillesime.map(mois => {
+        const facturesMois = parMois.get(mois) || [];
+        const estPasse = mois < moisActuel;
+        const estFutur = mois > moisActuel;
+        return {
+          mois,
+          nbFactures: facturesMois.length,
+          montantTotal: facturesMois.reduce((sum, f) => sum + f.montant, 0),
+          estPasse,
+          estFutur,
+          estMoisActuel: mois === moisActuel
+        };
+      });
+
       if (isMarqueReleve) {
         // FOURNISSEUR AU RELEVÉ : vérifier les règles spéciales
 
-        // 1. Vérifier chaque mois : si 2+ factures = doublon
-        for (const [mois, facturesMois] of parMois) {
+        // 1. Vérifier chaque mois passé : si 2+ factures = doublon, si 0 facture = manquant
+        for (const moisInfo of calendrierMois) {
+          if (moisInfo.estFutur) continue; // Ne pas vérifier le futur
+
+          const facturesMois = parMois.get(moisInfo.mois) || [];
+
           if (facturesMois.length >= 2) {
+            // Doublon : plusieurs factures sur le même mois
             alertes.push({
               type: 'doublon_releve',
-              mois,
-              message: `${facturesMois.length} factures en ${mois} (devrait être 1 seul relevé)`,
+              mois: moisInfo.mois,
+              message: `${facturesMois.length} factures en ${moisInfo.mois} (devrait être 1 seul relevé)`,
               factures: facturesMois.slice(0, 5).map(f => ({
                 id: f.id,
                 numero: f.numero,
@@ -173,20 +197,19 @@ export const doubleSaisie = {
                 pdfUrl: f.pdfUrl
               }))
             });
+          } else if (facturesMois.length === 0 && moisInfo.estPasse) {
+            // Relevé manquant pour un mois passé
+            alertes.push({
+              type: 'releve_manquant',
+              mois: moisInfo.mois,
+              message: `Pas de relevé reçu pour ${moisInfo.mois}`,
+              factures: []
+            });
           }
         }
-
-        // 2. Vérifier si relevé manquant le mois précédent
-        if (!parMois.has(moisPrecedent)) {
-          alertes.push({
-            type: 'releve_manquant',
-            mois: moisPrecedent,
-            message: `Pas de relevé reçu pour ${moisPrecedent}`,
-            factures: []
-          });
-        }
       } else {
-        // FOURNISSEUR NORMAL : détection doublons classiques (facture récente > ancienne)
+        // FOURNISSEUR NORMAL : détection doublons classiques
+        // Alerte si : montants égaux OU montant récent > ancien (possible cumul)
         for (let i = 0; i < facturesFournisseur.length; i++) {
           const ancienne = facturesFournisseur[i];
 
@@ -196,13 +219,17 @@ export const doubleSaisie = {
             const diffJours = Math.ceil((recente.dateObj.getTime() - ancienne.dateObj.getTime()) / (1000 * 60 * 60 * 24));
             if (diffJours > toleranceJours) continue;
 
+            // Doublon si : montants égaux, ou récente plus grande, ou fichier "relevé" détecté
+            const montantsEgaux = recente.montant === ancienne.montant;
             const recentePlusGrande = recente.montant > ancienne.montant;
             const releveDetecte = recente.isReleve;
 
-            if (recentePlusGrande || releveDetecte) {
+            if (montantsEgaux || recentePlusGrande || releveDetecte) {
               alertes.push({
                 type: 'doublon_classique',
-                message: `Doublon potentiel : ${ancienne.montant}€ → ${recente.montant}€`,
+                message: montantsEgaux
+                  ? `Doublon exact : ${ancienne.montant}€ (même montant)`
+                  : `Doublon potentiel : ${ancienne.montant}€ → ${recente.montant}€`,
                 factures: [
                   { id: ancienne.id, numero: ancienne.numero, date: ancienne.date, montant: ancienne.montant, pdfUrl: ancienne.pdfUrl, isReleve: ancienne.isReleve },
                   { id: recente.id, numero: recente.numero, date: recente.date, montant: recente.montant, pdfUrl: recente.pdfUrl, isReleve: recente.isReleve }
@@ -223,6 +250,7 @@ export const doubleSaisie = {
         isMarqueReleve,
         hasAlertes: alertes.length > 0,
         alertes,
+        calendrierMois: isMarqueReleve ? calendrierMois : null, // Calendrier pour fournisseurs au relevé
         // Pour compatibilité avec l'ancien format
         hasDoublons: alertes.length > 0,
         doublonsPotentiels: alertes.filter(a => a.factures && a.factures.length >= 2).map(a => ({

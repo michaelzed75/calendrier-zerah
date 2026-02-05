@@ -212,7 +212,8 @@ export default function TestsComptablesPage({
         collaborateurId: userCollaborateur.id,
         pennylaneApiKey: client.pennylane_client_api_key,
         options: {
-          fournisseursReleve: Array.from(fournisseursReleve)
+          fournisseursReleve: Array.from(fournisseursReleve),
+          millesime: selectedMillesime
         }
       });
 
@@ -658,17 +659,17 @@ export default function TestsComptablesPage({
                             <div className="space-y-1 text-sm">
                               {/* En-tête */}
                               <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
-                                <div className="w-20 text-center">Au relevé</div>
-                                <div className="flex-1">Fournisseur</div>
-                                <div className="w-72 text-center">Alertes</div>
+                                <div className="w-16 text-center">Relevé</div>
+                                <div className="w-48">Fournisseur</div>
+                                <div className="flex-1 text-center">Calendrier / Alertes</div>
                               </div>
 
                               {/* Liste */}
-                              <div className="max-h-[350px] overflow-y-auto space-y-1">
+                              <div className="max-h-[450px] overflow-y-auto space-y-1">
                                 {resultat.donnees.fournisseurs.map((fournisseur) => (
                                   <div key={fournisseur.supplierId} className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
                                     {/* Checkbox fournisseur au relevé */}
-                                    <div className="w-20 flex justify-center">
+                                    <div className="w-16 flex justify-center">
                                       <input
                                         type="checkbox"
                                         checked={fournisseursReleve.has(String(fournisseur.supplierId))}
@@ -678,65 +679,98 @@ export default function TestsComptablesPage({
                                     </div>
 
                                     {/* Nom fournisseur */}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className={`font-medium ${fournisseursReleve.has(String(fournisseur.supplierId)) ? 'text-blue-400' : 'text-white'}`}>
+                                    <div className="w-48 min-w-0">
+                                      <div className="flex flex-col">
+                                        <span className={`font-medium truncate ${fournisseursReleve.has(String(fournisseur.supplierId)) ? 'text-blue-400' : 'text-white'}`}>
                                           {fournisseur.nom}
                                         </span>
-                                        <span className="text-slate-500 text-xs">({fournisseur.nbFactures} fact.)</span>
-                                        {fournisseursReleve.has(String(fournisseur.supplierId)) && (
-                                          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">relevé</span>
-                                        )}
+                                        <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
                                       </div>
                                     </div>
 
-                                    {/* Alertes */}
-                                    <div className="w-72 flex justify-end">
-                                      {fournisseur.alertes && fournisseur.alertes.length > 0 ? (
-                                        <div className="flex flex-col gap-1 items-end">
-                                          {fournisseur.alertes.slice(0, 2).map((alerte, idx) => (
-                                            <div key={idx} className="flex items-center gap-2">
-                                              {alerte.type === 'releve_manquant' && (
-                                                <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded">
-                                                  ⚠️ Relevé manquant {alerte.mois}
-                                                </span>
-                                              )}
-                                              {alerte.type === 'doublon_releve' && (
-                                                <span className="px-2 py-1 bg-red-600 text-white text-xs rounded">
-                                                  🔴 {alerte.factures?.length || 0} factures en {alerte.mois}
-                                                </span>
-                                              )}
-                                              {alerte.type === 'doublon_classique' && alerte.factures && (
-                                                <div className="flex gap-1">
-                                                  <button
-                                                    onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
-                                                    className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-slate-300"
-                                                    title={`Facture du ${alerte.factures[0]?.date}`}
-                                                  >
-                                                    {alerte.factures[0]?.montant}€
-                                                  </button>
-                                                  <span className="text-slate-500">→</span>
-                                                  <button
-                                                    onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
-                                                    className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
-                                                    title={`Facture du ${alerte.factures[1]?.date}`}
-                                                  >
-                                                    {alerte.factures[1]?.montant}€
-                                                  </button>
-                                                </div>
-                                              )}
-                                            </div>
-                                          ))}
-                                          {fournisseur.alertes.length > 2 && (
-                                            <span className="text-slate-500 text-xs">+{fournisseur.alertes.length - 2} autres</span>
-                                          )}
+                                    {/* Calendrier ou Alertes */}
+                                    <div className="flex-1 flex justify-end">
+                                      {/* Fournisseur au relevé : afficher calendrier des 12 mois */}
+                                      {fournisseur.calendrierMois ? (
+                                        <div className="flex gap-0.5">
+                                          {fournisseur.calendrierMois.map((moisInfo) => {
+                                            const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
+                                            let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
+                                            let title = `${moisInfo.mois} - Futur`;
+
+                                            if (moisInfo.estMoisActuel) {
+                                              bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
+                                              title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
+                                            } else if (moisInfo.estPasse) {
+                                              if (moisInfo.nbFactures === 0) {
+                                                bgColor = 'bg-orange-500 text-white'; // Manquant = orange
+                                                title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
+                                              } else if (moisInfo.nbFactures === 1) {
+                                                bgColor = 'bg-green-500 text-white'; // OK = vert
+                                                title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
+                                              } else {
+                                                bgColor = 'bg-red-500 text-white'; // Doublon = rouge
+                                                title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures)`;
+                                              }
+                                            }
+
+                                            return (
+                                              <div
+                                                key={moisInfo.mois}
+                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor}`}
+                                                title={title}
+                                              >
+                                                {moisNom}
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       ) : (
-                                        <span className="text-green-500 text-xs">✓ OK</span>
+                                        /* Fournisseur normal : afficher alertes doublons */
+                                        fournisseur.alertes && fournisseur.alertes.length > 0 ? (
+                                          <div className="flex flex-col gap-1 items-end">
+                                            {fournisseur.alertes.slice(0, 2).map((alerte, idx) => (
+                                              <div key={idx} className="flex items-center gap-2">
+                                                {alerte.type === 'doublon_classique' && alerte.factures && (
+                                                  <div className="flex gap-1 items-center">
+                                                    <button
+                                                      onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
+                                                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-slate-300"
+                                                      title={`Facture du ${alerte.factures[0]?.date}`}
+                                                    >
+                                                      {alerte.factures[0]?.montant}€
+                                                    </button>
+                                                    <span className="text-slate-500">→</span>
+                                                    <button
+                                                      onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
+                                                      className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
+                                                      title={`Facture du ${alerte.factures[1]?.date}`}
+                                                    >
+                                                      {alerte.factures[1]?.montant}€
+                                                    </button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ))}
+                                            {fournisseur.alertes.length > 2 && (
+                                              <span className="text-slate-500 text-xs">+{fournisseur.alertes.length - 2} autres</span>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="text-green-500 text-xs">✓ OK</span>
+                                        )
                                       )}
                                     </div>
                                   </div>
                                 ))}
+                              </div>
+
+                              {/* Légende pour le calendrier */}
+                              <div className="flex gap-4 pt-3 mt-2 border-t border-slate-700 text-xs text-slate-400">
+                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500"></span> OK</span>
+                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Manquant</span>
+                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Doublon</span>
+                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-600"></span> Futur</span>
                               </div>
                             </div>
                           )}
