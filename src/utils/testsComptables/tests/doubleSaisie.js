@@ -210,6 +210,9 @@ export const doubleSaisie = {
       } else {
         // FOURNISSEUR NORMAL : détection doublons classiques
         // Alerte si : montants égaux OU montant récent > ancien (possible cumul)
+        // On détecte TOUS les doublons potentiels (pas de break)
+        const doublonsDetectes = new Set(); // Pour éviter les doublons d'alertes
+
         for (let i = 0; i < facturesFournisseur.length; i++) {
           const ancienne = facturesFournisseur[i];
 
@@ -225,20 +228,23 @@ export const doubleSaisie = {
             const releveDetecte = recente.isReleve;
 
             if (montantsEgaux || recentePlusGrande || releveDetecte) {
-              alertes.push({
-                type: 'doublon_classique',
-                message: montantsEgaux
-                  ? `Doublon exact : ${ancienne.montant}€ (même montant)`
-                  : `Doublon potentiel : ${ancienne.montant}€ → ${recente.montant}€`,
-                factures: [
-                  { id: ancienne.id, numero: ancienne.numero, date: ancienne.date, montant: ancienne.montant, pdfUrl: ancienne.pdfUrl, isReleve: ancienne.isReleve },
-                  { id: recente.id, numero: recente.numero, date: recente.date, montant: recente.montant, pdfUrl: recente.pdfUrl, isReleve: recente.isReleve }
-                ]
-              });
-              break; // Une seule alerte par fournisseur pour les doublons classiques
+              const key = `${ancienne.id}-${recente.id}`;
+              if (!doublonsDetectes.has(key)) {
+                doublonsDetectes.add(key);
+                alertes.push({
+                  type: 'doublon_classique',
+                  message: montantsEgaux
+                    ? `Doublon exact : ${ancienne.montant}€ (même montant, écart ${diffJours}j)`
+                    : `Doublon potentiel : ${ancienne.montant}€ → ${recente.montant}€ (écart ${diffJours}j)`,
+                  ecartJours: diffJours,
+                  factures: [
+                    { id: ancienne.id, numero: ancienne.numero, date: ancienne.date, montant: ancienne.montant, pdfUrl: ancienne.pdfUrl, isReleve: ancienne.isReleve, label: ancienne.label },
+                    { id: recente.id, numero: recente.numero, date: recente.date, montant: recente.montant, pdfUrl: recente.pdfUrl, isReleve: recente.isReleve, label: recente.label }
+                  ]
+                });
+              }
             }
           }
-          if (alertes.length > 0) break;
         }
       }
 

@@ -729,32 +729,32 @@ export default function TestsComptablesPage({
                                         /* Fournisseur normal : afficher alertes doublons */
                                         fournisseur.alertes && fournisseur.alertes.length > 0 ? (
                                           <div className="flex flex-col gap-1 items-end">
-                                            {fournisseur.alertes.slice(0, 2).map((alerte, idx) => (
+                                            {fournisseur.alertes.map((alerte, idx) => (
                                               <div key={idx} className="flex items-center gap-2">
                                                 {alerte.type === 'doublon_classique' && alerte.factures && (
-                                                  <div className="flex gap-1 items-center">
+                                                  <div className="flex gap-1 items-center bg-slate-700/50 rounded px-2 py-1">
                                                     <button
                                                       onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
-                                                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-slate-300"
-                                                      title={`Facture du ${alerte.factures[0]?.date}`}
+                                                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white"
+                                                      title={`📄 ${alerte.factures[0]?.numero || 'N/A'}\n📅 ${alerte.factures[0]?.date}\n💰 ${alerte.factures[0]?.montant}€\n\nCliquez pour ouvrir le PDF`}
                                                     >
-                                                      {alerte.factures[0]?.montant}€
+                                                      {alerte.factures[0]?.date?.substring(5)} : {alerte.factures[0]?.montant}€
                                                     </button>
-                                                    <span className="text-slate-500">→</span>
+                                                    <span className="text-yellow-500 font-bold">⚠</span>
                                                     <button
                                                       onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
                                                       className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
-                                                      title={`Facture du ${alerte.factures[1]?.date}`}
+                                                      title={`📄 ${alerte.factures[1]?.numero || 'N/A'}\n📅 ${alerte.factures[1]?.date}\n💰 ${alerte.factures[1]?.montant}€\n⏱ Écart: ${alerte.ecartJours || '?'}j\n\nCliquez pour ouvrir le PDF`}
                                                     >
-                                                      {alerte.factures[1]?.montant}€
+                                                      {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
                                                     </button>
+                                                    {alerte.ecartJours && (
+                                                      <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>
+                                                    )}
                                                   </div>
                                                 )}
                                               </div>
                                             ))}
-                                            {fournisseur.alertes.length > 2 && (
-                                              <span className="text-slate-500 text-xs">+{fournisseur.alertes.length - 2} autres</span>
-                                            )}
                                           </div>
                                         ) : (
                                           <span className="text-green-500 text-xs">✓ OK</span>
