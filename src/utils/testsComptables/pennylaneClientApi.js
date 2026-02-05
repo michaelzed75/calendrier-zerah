@@ -196,6 +196,15 @@ export async function getSuppliers(apiKey) {
 }
 
 /**
+ * Récupère tous les comptes du plan comptable (ledger_accounts)
+ * @param {string} apiKey - Clé API Pennylane du client
+ * @returns {Promise<Object[]>} Liste des comptes avec id, number, label
+ */
+export async function getLedgerAccounts(apiKey) {
+  return getAllPaginated(apiKey, '/ledger_accounts');
+}
+
+/**
  * Teste la connexion à l'API avec une clé donnée
  * Utilise l'endpoint /me de l'API Pennylane v2
  * @param {string} apiKey - Clé API à tester
