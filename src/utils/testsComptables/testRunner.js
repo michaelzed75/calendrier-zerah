@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../../supabaseClient.js';
-import { getFEC, getSupplierInvoices, getBankTransactions } from './pennylaneClientApi.js';
+import { getFEC, getSupplierInvoices, getBankTransactions, getSuppliers, getLedgerAccounts } from './pennylaneClientApi.js';
 import { getTest } from './tests/index.js';
 
 /**
@@ -24,6 +24,7 @@ import { getTest } from './tests/index.js';
  * @property {boolean} success - Si le test a réussi
  * @property {number} [executionId] - ID de l'exécution créée
  * @property {import('../../types').TestResultAnomalie[]} [anomalies] - Anomalies détectées
+ * @property {Object} [donneesAnalysees] - Données analysées par le test (pour export)
  * @property {string} [error] - Message d'erreur si échec
  * @property {number} [dureeMs] - Durée d'exécution en ms
  */
@@ -49,6 +50,12 @@ async function fetchRequiredData(requiredData, apiKey, millesime) {
         break;
       case 'bankTransactions':
         data.bankTransactions = await getBankTransactions(apiKey, millesime);
+        break;
+      case 'suppliers':
+        data.suppliers = await getSuppliers(apiKey);
+        break;
+      case 'ledgerAccounts':
+        data.ledgerAccounts = await getLedgerAccounts(apiKey);
         break;
       default:
         console.warn(`Type de données inconnu: ${dataType}`);
@@ -102,10 +109,15 @@ export async function runTest(params) {
     const data = await fetchRequiredData(testDefinition.requiredData, pennylaneApiKey, millesime);
 
     // Exécuter le test
-    const anomalies = await testDefinition.execute({
+    const testResult = await testDefinition.execute({
       ...data,
       options
     });
+
+    // Gérer le nouveau format de retour (objet avec anomalies + donneesAnalysees)
+    // ou l'ancien format (tableau d'anomalies directement)
+    const anomalies = Array.isArray(testResult) ? testResult : (testResult.anomalies || []);
+    const donneesAnalysees = Array.isArray(testResult) ? null : (testResult.donneesAnalysees || null);
 
     const dureeMs = Date.now() - startTime;
 
@@ -129,13 +141,14 @@ export async function runTest(params) {
       }
     }
 
-    // Mettre à jour l'exécution
+    // Mettre à jour l'exécution avec les données analysées
     await supabase
       .from('tests_comptables_executions')
       .update({
         statut: 'termine',
         duree_ms: dureeMs,
-        nombre_anomalies: anomalies.length
+        nombre_anomalies: anomalies.length,
+        donnees_analysees: donneesAnalysees
       })
       .eq('id', execution.id);
 
@@ -143,6 +156,7 @@ export async function runTest(params) {
       success: true,
       executionId: execution.id,
       anomalies,
+      donneesAnalysees,
       dureeMs
     };
 

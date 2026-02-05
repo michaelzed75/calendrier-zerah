@@ -23,7 +23,8 @@ import {
   getAllTests,
   testConnection,
   exportTestResults,
-  exportHistorique
+  exportHistorique,
+  exportDonneesAnalysees
 } from '../../utils/testsComptables/index.js';
 import { supabase } from '../../supabaseClient.js';
 
@@ -57,6 +58,8 @@ export default function TestsComptablesPage({
   const [historique, setHistorique] = useState(/** @type {import('../../types').TestComptableExecution[]} */ ([]));
   const [resultatsActuels, setResultatsActuels] = useState(/** @type {import('../../types').TestResultAnomalie[]} */ ([]));
   const [executionActuelle, setExecutionActuelle] = useState(/** @type {import('../../types').TestComptableExecution|null} */ (null));
+  const [donneesAnalysees, setDonneesAnalysees] = useState(/** @type {Object|null} */ (null));
+  const [fournisseursReleve, setFournisseursReleve] = useState(/** @type {Set<string>} */ (new Set()));
 
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
@@ -87,17 +90,91 @@ export default function TestsComptablesPage({
     }
   }, []);
 
-  // Charger l'historique quand le client change
+  // Charger l'historique et les fournisseurs au relevé quand le client change
   useEffect(() => {
     if (selectedClientId) {
-      loadHistorique();
+      loadHistoriqueEtDernierTest();
+      loadFournisseursReleve();
     } else {
       setHistorique([]);
+      setResultatsActuels([]);
+      setExecutionActuelle(null);
+      setDonneesAnalysees(null);
+      setFournisseursReleve(new Set());
     }
   }, [selectedClientId]);
 
   /**
+   * Charge les fournisseurs marqués "au relevé" pour ce client
+   */
+  async function loadFournisseursReleve() {
+    if (!selectedClientId) return;
+    const { data } = await supabase
+      .from('fournisseurs_releve')
+      .select('supplier_id')
+      .eq('client_id', selectedClientId);
+    if (data) {
+      setFournisseursReleve(new Set(data.map(d => d.supplier_id)));
+    }
+  }
+
+  /**
+   * Ajoute ou supprime un fournisseur de la liste "au relevé"
+   */
+  async function toggleFournisseurReleve(supplierId, supplierName, checked) {
+    if (!selectedClientId || !userCollaborateur) return;
+
+    if (checked) {
+      // Ajouter
+      await supabase.from('fournisseurs_releve').upsert({
+        client_id: selectedClientId,
+        supplier_id: String(supplierId),
+        supplier_name: supplierName,
+        created_by: userCollaborateur.id
+      }, { onConflict: 'client_id,supplier_id' });
+      setFournisseursReleve(prev => new Set([...prev, String(supplierId)]));
+    } else {
+      // Supprimer
+      await supabase.from('fournisseurs_releve')
+        .delete()
+        .eq('client_id', selectedClientId)
+        .eq('supplier_id', String(supplierId));
+      setFournisseursReleve(prev => {
+        const next = new Set(prev);
+        next.delete(String(supplierId));
+        return next;
+      });
+    }
+  }
+
+  /**
    * Charge l'historique des tests pour le client sélectionné
+   * et affiche automatiquement le dernier test exécuté
+   */
+  async function loadHistoriqueEtDernierTest() {
+    if (!selectedClientId) return;
+    const history = await getExecutionHistory(selectedClientId);
+    setHistorique(history);
+
+    // Charger automatiquement le dernier test terminé
+    if (history.length > 0) {
+      const dernierTest = history.find(h => h.statut === 'termine');
+      if (dernierTest) {
+        const results = await getExecutionResults(dernierTest.id);
+        setExecutionActuelle(dernierTest);
+        setResultatsActuels(results);
+        setSelectedTestCode(dernierTest.test_code);
+        setSelectedMillesime(dernierTest.millesime);
+        // Charger les données analysées si disponibles
+        if (dernierTest.donnees_analysees) {
+          setDonneesAnalysees(dernierTest.donnees_analysees);
+        }
+      }
+    }
+  }
+
+  /**
+   * Charge l'historique uniquement (sans charger le dernier test)
    */
   async function loadHistorique() {
     if (!selectedClientId) return;
@@ -125,6 +202,7 @@ export default function TestsComptablesPage({
     setMessage(null);
     setResultatsActuels([]);
     setExecutionActuelle(null);
+    setDonneesAnalysees(null);
 
     try {
       const result = await runTest({
@@ -132,11 +210,15 @@ export default function TestsComptablesPage({
         testCode: selectedTestCode,
         millesime: selectedMillesime,
         collaborateurId: userCollaborateur.id,
-        pennylaneApiKey: client.pennylane_client_api_key
+        pennylaneApiKey: client.pennylane_client_api_key,
+        options: {
+          fournisseursReleve: Array.from(fournisseursReleve)
+        }
       });
 
       if (result.success) {
         setResultatsActuels(result.anomalies || []);
+        setDonneesAnalysees(result.donneesAnalysees || null);
         if (result.executionId) {
           // Recharger l'exécution complète
           const { data } = await supabase
@@ -229,6 +311,23 @@ export default function TestsComptablesPage({
       resultats: resultatsActuels,
       client: selectedClient,
       test
+    });
+  }
+
+  /**
+   * Exporte les données analysées en Excel (même sans anomalies)
+   */
+  function handleExportDonneesAnalysees() {
+    if (!donneesAnalysees || !selectedClient) return;
+
+    const test = testsDisponibles.find(t => t.code === selectedTestCode);
+    if (!test) return;
+
+    exportDonneesAnalysees({
+      donneesAnalysees,
+      client: selectedClient,
+      test,
+      millesime: selectedMillesime
     });
   }
 
@@ -427,7 +526,7 @@ export default function TestsComptablesPage({
       </div>
 
       {/* Résultats */}
-      {(resultatsActuels.length > 0 || executionActuelle) && (
+      {(resultatsActuels.length > 0 || executionActuelle || donneesAnalysees) && (
         <div className="bg-slate-800/90 backdrop-blur-sm rounded-lg border border-slate-700 p-4 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -441,22 +540,84 @@ export default function TestsComptablesPage({
             </h2>
 
             <div className="flex items-center gap-2">
+              {donneesAnalysees && (
+                <button
+                  onClick={handleExportDonneesAnalysees}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-green-700 text-white rounded hover:bg-green-600 transition text-sm"
+                >
+                  <Download size={16} />
+                  Export données analysées
+                </button>
+              )}
               {resultatsActuels.length > 0 && (
                 <button
                   onClick={handleExportResults}
                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition text-sm"
                 >
                   <Download size={16} />
-                  Export Excel
+                  Export anomalies
                 </button>
               )}
             </div>
           </div>
 
+          {/* Résumé des données analysées */}
+          {donneesAnalysees && (
+            <div className="bg-slate-700/30 rounded-lg p-4 mb-4 border border-slate-600">
+              <h3 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                <Info size={16} />
+                Données analysées
+              </h3>
+              {donneesAnalysees.type === 'fournisseurs' && (
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-400">Fournisseurs analysés:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Comparaisons effectuées:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComparaisons}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Seuil similarité:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.seuilSimilarite}%</span>
+                  </div>
+                </div>
+              )}
+              {donneesAnalysees.type === 'double_saisie' && (
+                <div className="grid grid-cols-5 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-400">Factures:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFactures}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Fournisseurs:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Au relevé:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbMarquesReleve || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Alertes:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbAvecAlertes || donneesAnalysees.nbAvecDoublons || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Période:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.toleranceJours}j</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {resultatsActuels.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
               <CheckCircle size={48} className="mx-auto mb-3 text-green-500" />
               <p>Aucune anomalie détectée !</p>
+              {donneesAnalysees && (
+                <p className="text-sm mt-2">Cliquez sur "Export données analysées" pour voir la liste complète des éléments vérifiés.</p>
+              )}
             </div>
           ) : (
             <div className="space-y-3 max-h-[500px] overflow-y-auto">
@@ -477,6 +638,7 @@ export default function TestsComptablesPage({
                       {/* Détails spécifiques au type de test */}
                       {resultat.donnees && (
                         <div className="mt-3 pt-3 border-t border-slate-600">
+                          {/* Doublons fournisseurs */}
                           {resultat.donnees.compte1 && resultat.donnees.compte2 && (
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
@@ -488,6 +650,93 @@ export default function TestsComptablesPage({
                                 <span className="text-slate-400">Compte 2:</span>
                                 <span className="ml-2 text-white">{resultat.donnees.compte2.numero}</span>
                                 <span className="ml-2 text-slate-400">({resultat.donnees.compte2.libelle})</span>
+                              </div>
+                            </div>
+                          )}
+                          {/* Liste fournisseurs - Relevé fournisseurs */}
+                          {resultat.donnees.fournisseurs && (
+                            <div className="space-y-1 text-sm">
+                              {/* En-tête */}
+                              <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
+                                <div className="w-20 text-center">Au relevé</div>
+                                <div className="flex-1">Fournisseur</div>
+                                <div className="w-72 text-center">Alertes</div>
+                              </div>
+
+                              {/* Liste */}
+                              <div className="max-h-[350px] overflow-y-auto space-y-1">
+                                {resultat.donnees.fournisseurs.map((fournisseur) => (
+                                  <div key={fournisseur.supplierId} className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
+                                    {/* Checkbox fournisseur au relevé */}
+                                    <div className="w-20 flex justify-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={fournisseursReleve.has(String(fournisseur.supplierId))}
+                                        onChange={(e) => toggleFournisseurReleve(fournisseur.supplierId, fournisseur.nom, e.target.checked)}
+                                        className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-blue-500 cursor-pointer"
+                                      />
+                                    </div>
+
+                                    {/* Nom fournisseur */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`font-medium ${fournisseursReleve.has(String(fournisseur.supplierId)) ? 'text-blue-400' : 'text-white'}`}>
+                                          {fournisseur.nom}
+                                        </span>
+                                        <span className="text-slate-500 text-xs">({fournisseur.nbFactures} fact.)</span>
+                                        {fournisseursReleve.has(String(fournisseur.supplierId)) && (
+                                          <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">relevé</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Alertes */}
+                                    <div className="w-72 flex justify-end">
+                                      {fournisseur.alertes && fournisseur.alertes.length > 0 ? (
+                                        <div className="flex flex-col gap-1 items-end">
+                                          {fournisseur.alertes.slice(0, 2).map((alerte, idx) => (
+                                            <div key={idx} className="flex items-center gap-2">
+                                              {alerte.type === 'releve_manquant' && (
+                                                <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded">
+                                                  ⚠️ Relevé manquant {alerte.mois}
+                                                </span>
+                                              )}
+                                              {alerte.type === 'doublon_releve' && (
+                                                <span className="px-2 py-1 bg-red-600 text-white text-xs rounded">
+                                                  🔴 {alerte.factures?.length || 0} factures en {alerte.mois}
+                                                </span>
+                                              )}
+                                              {alerte.type === 'doublon_classique' && alerte.factures && (
+                                                <div className="flex gap-1">
+                                                  <button
+                                                    onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
+                                                    className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-slate-300"
+                                                    title={`Facture du ${alerte.factures[0]?.date}`}
+                                                  >
+                                                    {alerte.factures[0]?.montant}€
+                                                  </button>
+                                                  <span className="text-slate-500">→</span>
+                                                  <button
+                                                    onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
+                                                    className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
+                                                    title={`Facture du ${alerte.factures[1]?.date}`}
+                                                  >
+                                                    {alerte.factures[1]?.montant}€
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                          {fournisseur.alertes.length > 2 && (
+                                            <span className="text-slate-500 text-xs">+{fournisseur.alertes.length - 2} autres</span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-green-500 text-xs">✓ OK</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
