@@ -13,6 +13,7 @@ export {
   getBankTransactions,
   getChartOfAccounts,
   getSuppliers,
+  getLedgerAccounts,
   testConnection
 } from './pennylaneClientApi.js';
 
@@ -37,5 +38,6 @@ export {
 // Export Excel
 export {
   exportTestResults,
-  exportHistorique
+  exportHistorique,
+  exportDonneesAnalysees
 } from './exportResults.js';

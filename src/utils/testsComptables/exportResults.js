@@ -207,7 +207,84 @@ export function exportHistorique({ executions, client }) {
   XLSX.writeFile(wb, fileName);
 }
 
+/**
+ * Exporte les données analysées par un test (même sans anomalies)
+ * @param {Object} params - Paramètres d'export
+ * @param {Object} params.donneesAnalysees - Données analysées par le test
+ * @param {Object} params.client - Client concerné
+ * @param {string} params.client.nom - Nom du client
+ * @param {Object} params.test - Test exécuté
+ * @param {string} params.test.nom - Nom du test
+ * @param {string} params.test.code - Code du test
+ * @param {number} params.millesime - Année fiscale
+ */
+export function exportDonneesAnalysees({ donneesAnalysees, client, test, millesime }) {
+  if (!donneesAnalysees) {
+    console.warn('Pas de données analysées à exporter');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // Feuille de résumé
+  const resume = [
+    { 'Information': 'Client', 'Valeur': client.nom },
+    { 'Information': 'Test', 'Valeur': test.nom },
+    { 'Information': 'Millésime', 'Valeur': millesime },
+    { 'Information': 'Date export', 'Valeur': formatDate(new Date()) }
+  ];
+
+  // Ajouter les statistiques spécifiques au type de données
+  if (donneesAnalysees.type === 'fournisseurs') {
+    resume.push(
+      { 'Information': 'Nb fournisseurs analysés', 'Valeur': donneesAnalysees.nbFournisseurs || 0 },
+      { 'Information': 'Nb comparaisons effectuées', 'Valeur': donneesAnalysees.nbComparaisons || 0 },
+      { 'Information': 'Seuil de similarité (%)', 'Valeur': donneesAnalysees.seuilSimilarite || 60 }
+    );
+  }
+
+  const wsResume = XLSX.utils.json_to_sheet(resume);
+  wsResume['!cols'] = [{ wch: 25 }, { wch: 40 }];
+  XLSX.utils.book_append_sheet(wb, wsResume, 'Résumé');
+
+  // Feuille des données selon le type
+  if (donneesAnalysees.type === 'fournisseurs' && donneesAnalysees.fournisseurs) {
+    const fournisseursData = donneesAnalysees.fournisseurs.map((f, index) => ({
+      '#': index + 1,
+      'Compte': f.compte,
+      'Libellé': f.libelle,
+      'Compte auxiliaire': f.compteAuxiliaire || '',
+      'Libellé auxiliaire': f.libelleAuxiliaire || '',
+      'Nb écritures': f.nbEcritures,
+      'Total débit': f.totalDebit ? f.totalDebit.toFixed(2) : '0.00',
+      'Total crédit': f.totalCredit ? f.totalCredit.toFixed(2) : '0.00'
+    }));
+
+    const wsFournisseurs = XLSX.utils.json_to_sheet(fournisseursData);
+    wsFournisseurs['!cols'] = [
+      { wch: 5 },   // #
+      { wch: 15 },  // Compte
+      { wch: 40 },  // Libellé
+      { wch: 15 },  // Compte auxiliaire
+      { wch: 40 },  // Libellé auxiliaire
+      { wch: 12 },  // Nb écritures
+      { wch: 15 },  // Total débit
+      { wch: 15 }   // Total crédit
+    ];
+    XLSX.utils.book_append_sheet(wb, wsFournisseurs, 'Fournisseurs');
+  }
+
+  // Générer le nom du fichier
+  const dateStr = new Date().toISOString().split('T')[0];
+  const clientNom = client.nom.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+  const fileName = `Donnees_Analysees_${test.code}_${clientNom}_${millesime}_${dateStr}.xlsx`;
+
+  // Télécharger le fichier
+  XLSX.writeFile(wb, fileName);
+}
+
 export default {
   exportTestResults,
-  exportHistorique
+  exportHistorique,
+  exportDonneesAnalysees
 };
