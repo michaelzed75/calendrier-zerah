@@ -59,7 +59,6 @@ export default function TestsComptablesPage({
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showIgnored, setShowIgnored] = useState(false);
-  const [selectedMoisReleve, setSelectedMoisReleve] = useState(/** @type {{supplierId: string, mois: string}|null} */ (null));
 
   // Données
   const [testsDisponibles, setTestsDisponibles] = useState(/** @type {import('../../types').TestDefinition[]} */ ([]));
@@ -708,7 +707,7 @@ export default function TestsComptablesPage({
                                   const hasDoublonsClassiques = !isReleve && fournisseur.alertes && fournisseur.alertes.some(a => a.type === 'doublon_classique');
 
                                   return (
-                                  <div key={fournisseur.supplierId}>
+                                  <div key={fournisseur.supplierId} data-fournisseur-wrapper>
                                   <div className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
                                     {/* Checkbox fournisseur au relevé */}
                                     <div className="w-14 flex justify-center">
@@ -762,7 +761,7 @@ export default function TestsComptablesPage({
                                             } else if (moisInfo.estPasse) {
                                               if (moisInfo.nbFactures === 0) {
                                                 bgColor = 'bg-orange-500 text-white'; // Manquant = orange
-                                                title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
+                                                title = `${moisInfo.mois} - RELEVÉ MANQUANT - Cliquez pour détails`;
                                                 isClickable = true;
                                               } else if (moisInfo.nbFactures === 1) {
                                                 bgColor = 'bg-green-500 text-white'; // OK = vert
@@ -775,19 +774,63 @@ export default function TestsComptablesPage({
                                               }
                                             }
 
-                                            const isSelected = selectedMoisReleve && selectedMoisReleve.supplierId === String(fournisseur.supplierId) && selectedMoisReleve.mois === moisInfo.mois;
-
                                             return (
                                               <div
                                                 key={moisInfo.mois}
-                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/50' : ''} ${isSelected ? 'ring-2 ring-white' : ''}`}
+                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/50' : ''}`}
                                                 title={title}
-                                                onClick={isClickable ? () => {
-                                                  if (isSelected) {
-                                                    setSelectedMoisReleve(null);
+                                                onClick={isClickable ? (e) => {
+                                                  e.stopPropagation();
+                                                  // Toggle panneau via DOM pur (pas de setState = pas de re-render)
+                                                  const panelId = `detail-${fournisseur.supplierId}-${moisInfo.mois}`;
+                                                  const existing = document.getElementById(panelId);
+                                                  // Fermer tous les panneaux ouverts
+                                                  document.querySelectorAll('[data-mois-detail]').forEach(el => el.remove());
+                                                  // Si on cliquait sur le même mois, juste fermer
+                                                  if (existing) return;
+                                                  // Créer le panneau de détails
+                                                  const panel = document.createElement('div');
+                                                  panel.id = panelId;
+                                                  panel.setAttribute('data-mois-detail', 'true');
+                                                  panel.className = 'ml-24 mr-2 mb-2 p-3 rounded-lg border';
+                                                  panel.style.cssText = 'background:rgba(51,65,85,0.6);border-color:rgb(71,85,105);';
+                                                  let statusHtml = '';
+                                                  if (moisInfo.nbFactures === 0) statusHtml = '<span style="color:rgb(251,146,60)">Aucune facture (relevé manquant)</span>';
+                                                  else if (moisInfo.nbFactures === 1) statusHtml = '<span style="color:rgb(74,222,128)">1 facture — OK</span>';
+                                                  else statusHtml = '<span style="color:rgb(248,113,113)">' + moisInfo.nbFactures + ' factures — DOUBLON</span>';
+                                                  let facturesHtml = '';
+                                                  if (moisInfo.factures && moisInfo.factures.length > 0) {
+                                                    facturesHtml = moisInfo.factures.map((f, i) =>
+                                                      '<div style="display:flex;align-items:center;gap:12px;margin-top:4px">' +
+                                                        '<button data-pdf-url="' + (f.pdfUrl || '') + '" style="padding:4px 12px;background:rgb(71,85,105);border:none;border-radius:4px;color:white;font-size:12px;cursor:pointer">' +
+                                                          '📄 ' + (f.numero || 'N/A') +
+                                                        '</button>' +
+                                                        '<span style="color:rgb(148,163,184);font-size:13px">' + (f.date || '') + '</span>' +
+                                                        '<span style="color:white;font-weight:500;font-size:13px">' + (f.montant || '') + '€</span>' +
+                                                      '</div>'
+                                                    ).join('');
+                                                    if (moisInfo.montantTotal != null) {
+                                                      facturesHtml += '<div style="padding-top:4px;margin-top:4px;border-top:1px solid rgb(71,85,105);font-size:12px;color:rgb(148,163,184)">Total : <span style="color:white">' + moisInfo.montantTotal.toFixed(2) + '€</span></div>';
+                                                    }
                                                   } else {
-                                                    setSelectedMoisReleve({ supplierId: String(fournisseur.supplierId), mois: moisInfo.mois });
+                                                    facturesHtml = '<p style="font-size:13px;color:rgb(100,116,139);font-style:italic">Aucune facture pour ce mois</p>';
                                                   }
+                                                  panel.innerHTML =
+                                                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+                                                      '<span style="font-size:13px;font-weight:500;color:rgb(203,213,225)">' + fournisseur.nom + ' — ' + moisInfo.mois + ' ' + statusHtml + '</span>' +
+                                                      '<button data-close-panel style="color:rgb(148,163,184);background:none;border:none;cursor:pointer;font-size:16px">✕</button>' +
+                                                    '</div>' +
+                                                    facturesHtml;
+                                                  // Event listeners
+                                                  panel.addEventListener('click', (ev) => {
+                                                    const btn = ev.target.closest('[data-pdf-url]');
+                                                    if (btn) { ev.stopPropagation(); window.open(btn.getAttribute('data-pdf-url'), '_blank'); return; }
+                                                    const closeBtn = ev.target.closest('[data-close-panel]');
+                                                    if (closeBtn) { panel.remove(); return; }
+                                                  });
+                                                  // Insérer après le div wrapper du fournisseur
+                                                  const wrapper = e.target.closest('[data-fournisseur-wrapper]');
+                                                  if (wrapper) wrapper.appendChild(panel);
                                                 } : undefined}
                                               >
                                                 {moisNom}
@@ -832,54 +875,6 @@ export default function TestsComptablesPage({
                                       )}
                                     </div>
                                   </div>
-
-                                  {/* Panneau de détails du mois cliqué */}
-                                  {selectedMoisReleve && selectedMoisReleve.supplierId === String(fournisseur.supplierId) && fournisseur.calendrierMois && (() => {
-                                    const moisData = fournisseur.calendrierMois.find(m => m.mois === selectedMoisReleve.mois);
-                                    if (!moisData) return null;
-                                    return (
-                                      <div className="ml-24 mr-2 mb-2 p-3 bg-slate-700/60 rounded-lg border border-slate-600">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <span className="text-sm font-medium text-slate-300">
-                                            {fournisseur.nom} — {selectedMoisReleve.mois}
-                                            {moisData.nbFactures === 0 && <span className="ml-2 text-orange-400">Aucune facture (relevé manquant)</span>}
-                                            {moisData.nbFactures === 1 && <span className="ml-2 text-green-400">1 facture — OK</span>}
-                                            {moisData.nbFactures > 1 && <span className="ml-2 text-red-400">{moisData.nbFactures} factures — DOUBLON</span>}
-                                          </span>
-                                          <button
-                                            onClick={() => setSelectedMoisReleve(null)}
-                                            className="text-slate-400 hover:text-white"
-                                          >
-                                            <X size={16} />
-                                          </button>
-                                        </div>
-                                        {moisData.factures && moisData.factures.length > 0 ? (
-                                          <div className="space-y-1">
-                                            {moisData.factures.map((facture, fi) => (
-                                              <div key={fi} className="flex items-center gap-3 text-sm">
-                                                <button
-                                                  onClick={(e) => { e.stopPropagation(); window.open(facture.pdfUrl, '_blank'); }}
-                                                  className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 rounded text-white text-xs transition"
-                                                  title={`Ouvrir le PDF de la facture ${facture.numero || ''}`}
-                                                >
-                                                  📄 {facture.numero || 'N/A'}
-                                                </button>
-                                                <span className="text-slate-400">{facture.date}</span>
-                                                <span className="text-white font-medium">{facture.montant}€</span>
-                                              </div>
-                                            ))}
-                                            {moisData.montantTotal != null && (
-                                              <div className="pt-1 mt-1 border-t border-slate-600 text-xs text-slate-400">
-                                                Total : <span className="text-white">{moisData.montantTotal.toFixed(2)}€</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <p className="text-sm text-slate-500 italic">Aucune facture pour ce mois</p>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
                                   </div>
                                   );
                                 })}
