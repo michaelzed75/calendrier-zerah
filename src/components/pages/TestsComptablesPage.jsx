@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ClipboardCheck,
   Play,
@@ -92,17 +92,15 @@ export default function TestsComptablesPage({
   // Client sélectionné
   const selectedClient = clients.find(c => c.id === selectedClientId);
 
-  // Restaurer le nom du client dans le champ de recherche au chargement (une seule fois)
-  const clientSearchInitialized = useRef(false);
+  // Restaurer le nom du client dans le champ de recherche au chargement
   useEffect(() => {
-    if (!clientSearchInitialized.current && selectedClientId && clients.length > 0) {
+    if (selectedClientId && clients.length > 0 && clientSearch === '') {
       const client = clients.find(c => c.id === selectedClientId);
       if (client) {
         setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
-        clientSearchInitialized.current = true;
       }
     }
-  }, [clients]);
+  }, [clients.length, selectedClientId]);
 
   // Charger les tests disponibles
   useEffect(() => {
