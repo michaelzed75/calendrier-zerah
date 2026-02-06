@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import {
   ClipboardCheck,
   Play,
@@ -31,6 +31,200 @@ import {
   exportDonneesAnalysees
 } from '../../utils/testsComptables/index.js';
 import { supabase } from '../../supabaseClient.js';
+
+const MOIS_NOMS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+/** Ligne calendrier pour un fournisseur au relevé */
+function CalendrierMois({ fournisseur, sid, selectedMoisReleve, setSelectedMoisReleve }) {
+  const selectedMois = selectedMoisReleve === null ? null
+    : selectedMoisReleve.startsWith(`${sid}-`) ? selectedMoisReleve.slice(sid.length + 1) : null;
+
+  return (
+    <>
+      <div className="flex gap-0.5">
+        {fournisseur.calendrierMois.map((moisInfo) => {
+          const moisIdx = parseInt(moisInfo.mois.split('-')[1]) - 1;
+          const isClickable = !moisInfo.estFutur && (moisInfo.nbFactures >= 2 || (moisInfo.nbFactures === 0 && moisInfo.estPasse));
+          const isSelected = selectedMois === moisInfo.mois;
+          let bgColor = 'bg-slate-600/50 text-slate-500';
+          let title = `${moisInfo.mois} - Futur`;
+
+          if (moisInfo.estMoisActuel) {
+            bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
+            title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
+          } else if (moisInfo.estPasse) {
+            if (moisInfo.nbFactures === 0) {
+              bgColor = 'bg-orange-500 text-white';
+              title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
+            } else if (moisInfo.nbFactures === 1) {
+              bgColor = 'bg-green-500 text-white';
+              title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
+            } else {
+              bgColor = 'bg-red-500 text-white';
+              title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} fact.) - Cliquez`;
+            }
+          }
+
+          return (
+            <div
+              key={moisInfo.mois}
+              onClick={isClickable ? () => setSelectedMoisReleve(isSelected ? null : `${sid}-${moisInfo.mois}`) : undefined}
+              className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/30' : ''} ${isSelected ? 'ring-2 ring-white' : ''}`}
+              title={title}
+            >
+              {MOIS_NOMS[moisIdx]}
+            </div>
+          );
+        })}
+      </div>
+      {selectedMois && (() => {
+        const alerte = fournisseur.alertes?.find(a => a.mois === selectedMois);
+        const moisInfo = fournisseur.calendrierMois.find(m => m.mois === selectedMois);
+        return (
+          <div className="w-full bg-slate-700/50 rounded p-2 border border-slate-600 text-xs">
+            {alerte && alerte.type === 'doublon_releve' && alerte.factures?.length > 0 ? (
+              <div className="space-y-1">
+                <div className="text-red-400 font-medium mb-1">⚠ {alerte.factures.length} factures en {selectedMois} (doublon)</div>
+                {alerte.factures.map((f, fi) => (
+                  <div key={fi} className="flex items-center gap-2 pl-2">
+                    <a href={f.pdfUrl} target="_blank" rel="noopener noreferrer"
+                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-white transition inline-block">
+                      {f.numero || 'N/A'}
+                    </a>
+                    <span className="text-slate-400">{f.date}</span>
+                    <span className="text-white font-medium">{f.montant}€</span>
+                  </div>
+                ))}
+              </div>
+            ) : moisInfo && moisInfo.nbFactures === 0 ? (
+              <div className="text-orange-400">Aucun relevé reçu pour {selectedMois}</div>
+            ) : (
+              <div className="text-slate-400">Mois {selectedMois} - {moisInfo?.nbFactures || 0} facture(s)</div>
+            )}
+          </div>
+        );
+      })()}
+    </>
+  );
+}
+
+/** Liste complète des fournisseurs avec calendrier, alertes, ignore */
+const FournisseursList = memo(function FournisseursList({
+  fournisseurs, fournisseursReleve, fournisseursIgnores,
+  selectedMoisReleve, setSelectedMoisReleve,
+  showIgnored, setShowIgnored, toggleFournisseurFlag
+}) {
+  const fournisseursActifs = fournisseurs.filter(f => !f.isIgnore && !fournisseursIgnores.has(String(f.supplierId)));
+  const fournisseursIgnoresList = fournisseurs.filter(f => f.isIgnore || fournisseursIgnores.has(String(f.supplierId)));
+
+  return (
+    <div className="space-y-1 text-sm">
+      {/* En-tête */}
+      <div className="flex items-center gap-2 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
+        <div className="w-14 text-center">Relevé</div>
+        <div className="w-10 text-center">Masq.</div>
+        <div className="w-48">Fournisseur</div>
+        <div className="flex-1 text-center">Calendrier / Alertes</div>
+      </div>
+
+      {/* Liste des fournisseurs actifs */}
+      <div className="max-h-[450px] overflow-y-auto space-y-1">
+        {fournisseursActifs.map((fournisseur) => {
+          const sid = String(fournisseur.supplierId);
+          const isReleve = fournisseursReleve.has(sid);
+          const hasDoublonsClassiques = !isReleve && fournisseur.alertes?.some(a => a.type === 'doublon_classique');
+
+          return (
+            <div key={sid} className={`flex items-center gap-2 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
+              <div className="w-14 flex justify-center">
+                <input type="checkbox" checked={isReleve}
+                  onChange={(e) => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'releve', e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-blue-500 cursor-pointer" />
+              </div>
+              <div className="w-10 flex justify-center">
+                <button onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', true)}
+                  className="p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-600 rounded transition"
+                  title="Masquer ce fournisseur"><EyeOff size={14} /></button>
+              </div>
+              <div className="w-48 min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className={`font-medium truncate ${isReleve ? 'text-blue-400' : 'text-white'}`}>{fournisseur.nom}</span>
+                  {hasDoublonsClassiques && <Lightbulb size={14} className="text-yellow-400 flex-shrink-0" title="Doublons détectés - envisagez de marquer au relevé" />}
+                </div>
+                <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
+              </div>
+              <div className="flex-1 flex flex-col items-end gap-1">
+                {fournisseur.calendrierMois ? (
+                  <CalendrierMois fournisseur={fournisseur} sid={sid} selectedMoisReleve={selectedMoisReleve} setSelectedMoisReleve={setSelectedMoisReleve} />
+                ) : fournisseur.alertes?.length > 0 ? (
+                  <div className="flex flex-col gap-1 items-end">
+                    {fournisseur.alertes.map((alerte, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        {alerte.type === 'doublon_classique' && alerte.factures && (
+                          <div className="flex gap-1 items-center bg-slate-700/50 rounded px-2 py-1">
+                            <a href={alerte.factures[0]?.pdfUrl} target="_blank" rel="noopener noreferrer"
+                              className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white inline-block"
+                              title={`${alerte.factures[0]?.numero || 'N/A'}\n${alerte.factures[0]?.date}\n${alerte.factures[0]?.montant}€`}>
+                              {alerte.factures[0]?.date?.substring(5)} : {alerte.factures[0]?.montant}€
+                            </a>
+                            <span className="text-yellow-500 font-bold">⚠</span>
+                            <a href={alerte.factures[1]?.pdfUrl} target="_blank" rel="noopener noreferrer"
+                              className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs inline-block"
+                              title={`${alerte.factures[1]?.numero || 'N/A'}\n${alerte.factures[1]?.date}\n${alerte.factures[1]?.montant}€\nEcart: ${alerte.ecartJours || '?'}j`}>
+                              {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
+                            </a>
+                            {alerte.ecartJours !== undefined && <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-green-500 text-xs">OK</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Légende */}
+      <div className="flex gap-4 pt-3 mt-2 border-t border-slate-700 text-xs text-slate-400">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500"></span> OK</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Manquant</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Doublon</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-600"></span> Futur</span>
+        <span className="flex items-center gap-1"><Lightbulb size={12} className="text-yellow-400" /> Suggestion relevé</span>
+      </div>
+
+      {/* Fournisseurs ignorés */}
+      {fournisseursIgnoresList.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-slate-700">
+          <button onClick={() => setShowIgnored(!showIgnored)}
+            className="flex items-center gap-2 text-slate-400 hover:text-slate-300 transition text-xs">
+            {showIgnored ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            <EyeOff size={14} />
+            <span>Fournisseurs masqués ({fournisseursIgnoresList.length})</span>
+          </button>
+          {showIgnored && (
+            <div className="mt-2 space-y-1">
+              {fournisseursIgnoresList.map((fournisseur) => (
+                <div key={fournisseur.supplierId} className="flex items-center gap-3 p-2 rounded bg-slate-700/20 text-slate-500">
+                  <EyeOff size={14} className="flex-shrink-0" />
+                  <span className="flex-1 truncate">{fournisseur.nom}</span>
+                  <span className="text-xs">{fournisseur.nbFactures} fact.</span>
+                  <button onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', false)}
+                    className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded text-xs transition"
+                    title="Restaurer ce fournisseur"><Eye size={12} /> Restaurer</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 /**
  * @param {import('../../types').TestsComptablesPageProps} props
@@ -131,19 +325,10 @@ export default function TestsComptablesPage({
    */
   async function loadFournisseursReleve() {
     if (!selectedClientId) return;
-    // Tenter avec la colonne type, sinon fallback sans
-    let { data, error } = await supabase
+    const { data } = await supabase
       .from('fournisseurs_releve')
       .select('supplier_id, type')
       .eq('client_id', selectedClientId);
-    if (error || !data) {
-      // Fallback si la colonne type n'existe pas encore
-      const fallback = await supabase
-        .from('fournisseurs_releve')
-        .select('supplier_id')
-        .eq('client_id', selectedClientId);
-      data = fallback.data;
-    }
     if (data) {
       setFournisseursReleve(new Set(data.filter(d => (d.type || 'releve') !== 'ignore').map(d => d.supplier_id)));
       setFournisseursIgnores(new Set(data.filter(d => d.type === 'ignore').map(d => d.supplier_id)));
@@ -163,22 +348,13 @@ export default function TestsComptablesPage({
 
     if (checked) {
       // Upsert avec le type approprié
-      const { error } = await supabase.from('fournisseurs_releve').upsert({
+      await supabase.from('fournisseurs_releve').upsert({
         client_id: selectedClientId,
         supplier_id: sid,
         supplier_name: supplierName,
         created_by: userCollaborateur.id,
         type: flagType
       }, { onConflict: 'client_id,supplier_id' });
-      // Fallback si la colonne type n'existe pas encore
-      if (error) {
-        await supabase.from('fournisseurs_releve').upsert({
-          client_id: selectedClientId,
-          supplier_id: sid,
-          supplier_name: supplierName,
-          created_by: userCollaborateur.id
-        }, { onConflict: 'client_id,supplier_id' });
-      }
 
       if (flagType === 'releve') {
         setFournisseursReleve(prev => new Set([...prev, sid]));
@@ -718,229 +894,18 @@ export default function TestsComptablesPage({
                             </div>
                           )}
                           {/* Liste fournisseurs - Relevé fournisseurs */}
-                          {resultat.donnees.fournisseurs && (() => {
-                            const fournisseursActifs = resultat.donnees.fournisseurs.filter(f => !f.isIgnore && !fournisseursIgnores.has(String(f.supplierId)));
-                            const fournisseursIgnoresList = resultat.donnees.fournisseurs.filter(f => f.isIgnore || fournisseursIgnores.has(String(f.supplierId)));
-                            return (
-                            <div className="space-y-1 text-sm">
-                              {/* En-tête */}
-                              <div className="flex items-center gap-2 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
-                                <div className="w-14 text-center">Relevé</div>
-                                <div className="w-10 text-center">Masq.</div>
-                                <div className="w-48">Fournisseur</div>
-                                <div className="flex-1 text-center">Calendrier / Alertes</div>
-                              </div>
-
-                              {/* Liste des fournisseurs actifs */}
-                              <div className="max-h-[450px] overflow-y-auto space-y-1">
-                                {fournisseursActifs.map((fournisseur) => {
-                                  const sid = String(fournisseur.supplierId);
-                                  const isReleve = fournisseursReleve.has(sid);
-                                  const hasDoublonsClassiques = !isReleve && fournisseur.alertes && fournisseur.alertes.filter(a => a.type === 'doublon_classique').length >= 1;
-
-                                  return (
-                                  <div key={fournisseur.supplierId} className={`flex items-center gap-2 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
-                                    {/* Checkbox fournisseur au relevé */}
-                                    <div className="w-14 flex justify-center">
-                                      <input
-                                        type="checkbox"
-                                        checked={isReleve}
-                                        onChange={(e) => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'releve', e.target.checked)}
-                                        className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-blue-500 cursor-pointer"
-                                      />
-                                    </div>
-
-                                    {/* Bouton ignorer */}
-                                    <div className="w-10 flex justify-center">
-                                      <button
-                                        onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', true)}
-                                        className="p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-600 rounded transition"
-                                        title="Masquer ce fournisseur de l'analyse"
-                                      >
-                                        <EyeOff size={14} />
-                                      </button>
-                                    </div>
-
-                                    {/* Nom fournisseur + badge suggestion */}
-                                    <div className="w-48 min-w-0">
-                                      <div className="flex items-center gap-1">
-                                        <span className={`font-medium truncate ${isReleve ? 'text-blue-400' : 'text-white'}`}>
-                                          {fournisseur.nom}
-                                        </span>
-                                        {hasDoublonsClassiques && (
-                                          <Lightbulb size={14} className="text-yellow-400 flex-shrink-0" title="Doublons détectés - envisagez de marquer ce fournisseur au relevé" />
-                                        )}
-                                      </div>
-                                      <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
-                                    </div>
-
-                                    {/* Calendrier ou Alertes */}
-                                    <div className="flex-1 flex flex-col items-end gap-1">
-                                      {/* Fournisseur au relevé : afficher calendrier des 12 mois cliquable */}
-                                      {fournisseur.calendrierMois ? (() => {
-                                        const moisKey = `${sid}-`;
-                                        const selectedMois = selectedMoisReleve?.startsWith(moisKey) ? selectedMoisReleve.replace(moisKey, '') : null;
-                                        const alerteForSelectedMois = selectedMois && fournisseur.alertes
-                                          ? fournisseur.alertes.find(a => a.mois === selectedMois)
-                                          : null;
-                                        // Trouver les factures du mois sélectionné dans le calendrier
-                                        const selectedMoisInfo = selectedMois
-                                          ? fournisseur.calendrierMois.find(m => m.mois === selectedMois)
-                                          : null;
-
-                                        return (
-                                        <>
-                                          <div className="flex gap-0.5">
-                                            {fournisseur.calendrierMois.map((moisInfo) => {
-                                              const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
-                                              const isClickable = !moisInfo.estFutur && (moisInfo.nbFactures >= 2 || (moisInfo.nbFactures === 0 && moisInfo.estPasse));
-                                              const isSelected = selectedMois === moisInfo.mois;
-                                              let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
-                                              let title = `${moisInfo.mois} - Futur`;
-
-                                              if (moisInfo.estMoisActuel) {
-                                                bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
-                                                title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
-                                              } else if (moisInfo.estPasse) {
-                                                if (moisInfo.nbFactures === 0) {
-                                                  bgColor = 'bg-orange-500 text-white'; // Manquant = orange
-                                                  title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
-                                                } else if (moisInfo.nbFactures === 1) {
-                                                  bgColor = 'bg-green-500 text-white'; // OK = vert
-                                                  title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
-                                                } else {
-                                                  bgColor = 'bg-red-500 text-white'; // Doublon = rouge
-                                                  title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures) - Cliquez pour détails`;
-                                                }
-                                              }
-
-                                              return (
-                                                <div
-                                                  key={moisInfo.mois}
-                                                  onClick={isClickable ? () => setSelectedMoisReleve(isSelected ? null : `${sid}-${moisInfo.mois}`) : undefined}
-                                                  className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/30' : ''} ${isSelected ? 'ring-2 ring-white' : ''}`}
-                                                  title={title}
-                                                >
-                                                  {moisNom}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                          {/* Détail du mois sélectionné */}
-                                          {selectedMois && (
-                                            <div className="w-full bg-slate-700/50 rounded p-2 border border-slate-600 text-xs">
-                                              {alerteForSelectedMois && alerteForSelectedMois.type === 'doublon_releve' && alerteForSelectedMois.factures?.length > 0 ? (
-                                                <div className="space-y-1">
-                                                  <div className="text-red-400 font-medium mb-1">⚠ {alerteForSelectedMois.factures.length} factures en {selectedMois} (doublon)</div>
-                                                  {alerteForSelectedMois.factures.map((f, fi) => (
-                                                    <div key={fi} className="flex items-center gap-2 pl-2">
-                                                      <button
-                                                        onClick={(e) => { e.stopPropagation(); window.open(f.pdfUrl, '_blank'); }}
-                                                        className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-white transition"
-                                                        title={`Ouvrir le PDF\n${f.numero || 'N/A'}`}
-                                                      >
-                                                        {f.numero || 'N/A'}
-                                                      </button>
-                                                      <span className="text-slate-400">{f.date}</span>
-                                                      <span className="text-white font-medium">{f.montant}€</span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              ) : selectedMoisInfo && selectedMoisInfo.nbFactures === 0 ? (
-                                                <div className="text-orange-400">Aucun relevé reçu pour {selectedMois}</div>
-                                              ) : (
-                                                <div className="text-slate-400">Mois {selectedMois} - {selectedMoisInfo?.nbFactures || 0} facture(s)</div>
-                                              )}
-                                            </div>
-                                          )}
-                                        </>
-                                        );
-                                      })() : (
-                                        /* Fournisseur normal : afficher alertes doublons */
-                                        fournisseur.alertes && fournisseur.alertes.length > 0 ? (
-                                          <div className="flex flex-col gap-1 items-end">
-                                            {fournisseur.alertes.map((alerte, idx) => (
-                                              <div key={idx} className="flex items-center gap-2">
-                                                {alerte.type === 'doublon_classique' && alerte.factures && (
-                                                  <div className="flex gap-1 items-center bg-slate-700/50 rounded px-2 py-1">
-                                                    <button
-                                                      onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
-                                                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white"
-                                                      title={`${alerte.factures[0]?.numero || 'N/A'}\n${alerte.factures[0]?.date}\n${alerte.factures[0]?.montant}EUR\n\nCliquez pour ouvrir le PDF`}
-                                                    >
-                                                      {alerte.factures[0]?.date?.substring(5)} : {alerte.factures[0]?.montant}€
-                                                    </button>
-                                                    <span className="text-yellow-500 font-bold">⚠</span>
-                                                    <button
-                                                      onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
-                                                      className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
-                                                      title={`${alerte.factures[1]?.numero || 'N/A'}\n${alerte.factures[1]?.date}\n${alerte.factures[1]?.montant}EUR\nEcart: ${alerte.ecartJours || '?'}j\n\nCliquez pour ouvrir le PDF`}
-                                                    >
-                                                      {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
-                                                    </button>
-                                                    {alerte.ecartJours !== undefined && (
-                                                      <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <span className="text-green-500 text-xs">OK</span>
-                                        )
-                                      )}
-                                    </div>
-                                  </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Légende pour le calendrier */}
-                              <div className="flex gap-4 pt-3 mt-2 border-t border-slate-700 text-xs text-slate-400">
-                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500"></span> OK</span>
-                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Manquant</span>
-                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Doublon</span>
-                                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-600"></span> Futur</span>
-                                <span className="flex items-center gap-1"><Lightbulb size={12} className="text-yellow-400" /> Suggestion relevé</span>
-                              </div>
-
-                              {/* Section fournisseurs ignorés */}
-                              {fournisseursIgnoresList.length > 0 && (
-                                <div className="mt-4 pt-3 border-t border-slate-700">
-                                  <button
-                                    onClick={() => setShowIgnored(!showIgnored)}
-                                    className="flex items-center gap-2 text-slate-400 hover:text-slate-300 transition text-xs"
-                                  >
-                                    {showIgnored ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                    <EyeOff size={14} />
-                                    <span>Fournisseurs masqués ({fournisseursIgnoresList.length})</span>
-                                  </button>
-
-                                  {showIgnored && (
-                                    <div className="mt-2 space-y-1">
-                                      {fournisseursIgnoresList.map((fournisseur) => (
-                                        <div key={fournisseur.supplierId} className="flex items-center gap-3 p-2 rounded bg-slate-700/20 text-slate-500">
-                                          <EyeOff size={14} className="flex-shrink-0" />
-                                          <span className="flex-1 truncate">{fournisseur.nom}</span>
-                                          <span className="text-xs">{fournisseur.nbFactures} fact.</span>
-                                          <button
-                                            onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', false)}
-                                            className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded text-xs transition"
-                                            title="Restaurer ce fournisseur dans l'analyse"
-                                          >
-                                            <Eye size={12} />
-                                            Restaurer
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            );
-                          })()}
+                          {resultat.donnees.fournisseurs && (
+                            <FournisseursList
+                              fournisseurs={resultat.donnees.fournisseurs}
+                              fournisseursReleve={fournisseursReleve}
+                              fournisseursIgnores={fournisseursIgnores}
+                              selectedMoisReleve={selectedMoisReleve}
+                              setSelectedMoisReleve={setSelectedMoisReleve}
+                              showIgnored={showIgnored}
+                              setShowIgnored={setShowIgnored}
+                              toggleFournisseurFlag={toggleFournisseurFlag}
+                            />
+                          )}
                           {resultat.donnees.ecritureFacture && resultat.donnees.ecritureBanque && (
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
