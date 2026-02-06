@@ -59,6 +59,7 @@ export default function TestsComptablesPage({
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showIgnored, setShowIgnored] = useState(false);
+  const [selectedMoisReleve, setSelectedMoisReleve] = useState(/** @type {{supplierId: string, mois: string}|null} */ (null));
 
   // Données
   const [testsDisponibles, setTestsDisponibles] = useState(/** @type {import('../../types').TestDefinition[]} */ ([]));
@@ -707,7 +708,8 @@ export default function TestsComptablesPage({
                                   const hasDoublonsClassiques = !isReleve && fournisseur.alertes && fournisseur.alertes.some(a => a.type === 'doublon_classique');
 
                                   return (
-                                  <div key={fournisseur.supplierId} className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
+                                  <div key={fournisseur.supplierId}>
+                                  <div className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
                                     {/* Checkbox fournisseur au relevé */}
                                     <div className="w-14 flex justify-center">
                                       <input
@@ -751,28 +753,42 @@ export default function TestsComptablesPage({
                                             const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
                                             let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
                                             let title = `${moisInfo.mois} - Futur`;
+                                            let isClickable = false;
 
                                             if (moisInfo.estMoisActuel) {
                                               bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
                                               title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
+                                              if (moisInfo.nbFactures > 0) isClickable = true;
                                             } else if (moisInfo.estPasse) {
                                               if (moisInfo.nbFactures === 0) {
                                                 bgColor = 'bg-orange-500 text-white'; // Manquant = orange
                                                 title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
+                                                isClickable = true;
                                               } else if (moisInfo.nbFactures === 1) {
                                                 bgColor = 'bg-green-500 text-white'; // OK = vert
-                                                title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
+                                                title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€) - Cliquez pour détails`;
+                                                isClickable = true;
                                               } else {
                                                 bgColor = 'bg-red-500 text-white'; // Doublon = rouge
-                                                title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures)`;
+                                                title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures) - Cliquez pour détails`;
+                                                isClickable = true;
                                               }
                                             }
+
+                                            const isSelected = selectedMoisReleve && selectedMoisReleve.supplierId === String(fournisseur.supplierId) && selectedMoisReleve.mois === moisInfo.mois;
 
                                             return (
                                               <div
                                                 key={moisInfo.mois}
-                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor}`}
+                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/50' : ''} ${isSelected ? 'ring-2 ring-white' : ''}`}
                                                 title={title}
+                                                onClick={isClickable ? () => {
+                                                  if (isSelected) {
+                                                    setSelectedMoisReleve(null);
+                                                  } else {
+                                                    setSelectedMoisReleve({ supplierId: String(fournisseur.supplierId), mois: moisInfo.mois });
+                                                  }
+                                                } : undefined}
                                               >
                                                 {moisNom}
                                               </div>
@@ -815,6 +831,55 @@ export default function TestsComptablesPage({
                                         )
                                       )}
                                     </div>
+                                  </div>
+
+                                  {/* Panneau de détails du mois cliqué */}
+                                  {selectedMoisReleve && selectedMoisReleve.supplierId === String(fournisseur.supplierId) && fournisseur.calendrierMois && (() => {
+                                    const moisData = fournisseur.calendrierMois.find(m => m.mois === selectedMoisReleve.mois);
+                                    if (!moisData) return null;
+                                    return (
+                                      <div className="ml-24 mr-2 mb-2 p-3 bg-slate-700/60 rounded-lg border border-slate-600">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-sm font-medium text-slate-300">
+                                            {fournisseur.nom} — {selectedMoisReleve.mois}
+                                            {moisData.nbFactures === 0 && <span className="ml-2 text-orange-400">Aucune facture (relevé manquant)</span>}
+                                            {moisData.nbFactures === 1 && <span className="ml-2 text-green-400">1 facture — OK</span>}
+                                            {moisData.nbFactures > 1 && <span className="ml-2 text-red-400">{moisData.nbFactures} factures — DOUBLON</span>}
+                                          </span>
+                                          <button
+                                            onClick={() => setSelectedMoisReleve(null)}
+                                            className="text-slate-400 hover:text-white"
+                                          >
+                                            <X size={16} />
+                                          </button>
+                                        </div>
+                                        {moisData.factures && moisData.factures.length > 0 ? (
+                                          <div className="space-y-1">
+                                            {moisData.factures.map((facture, fi) => (
+                                              <div key={fi} className="flex items-center gap-3 text-sm">
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); window.open(facture.pdfUrl, '_blank'); }}
+                                                  className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 rounded text-white text-xs transition"
+                                                  title={`Ouvrir le PDF de la facture ${facture.numero || ''}`}
+                                                >
+                                                  📄 {facture.numero || 'N/A'}
+                                                </button>
+                                                <span className="text-slate-400">{facture.date}</span>
+                                                <span className="text-white font-medium">{facture.montant}€</span>
+                                              </div>
+                                            ))}
+                                            {moisData.montantTotal != null && (
+                                              <div className="pt-1 mt-1 border-t border-slate-600 text-xs text-slate-400">
+                                                Total : <span className="text-white">{moisData.montantTotal.toFixed(2)}€</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p className="text-sm text-slate-500 italic">Aucune facture pour ce mois</p>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                   </div>
                                   );
                                 })}
