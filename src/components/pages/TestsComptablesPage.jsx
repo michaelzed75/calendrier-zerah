@@ -117,12 +117,21 @@ export default function TestsComptablesPage({
    */
   async function loadFournisseursReleve() {
     if (!selectedClientId) return;
-    const { data } = await supabase
+    // Tenter avec la colonne type, sinon fallback sans
+    let { data, error } = await supabase
       .from('fournisseurs_releve')
       .select('supplier_id, type')
       .eq('client_id', selectedClientId);
+    if (error || !data) {
+      // Fallback si la colonne type n'existe pas encore
+      const fallback = await supabase
+        .from('fournisseurs_releve')
+        .select('supplier_id')
+        .eq('client_id', selectedClientId);
+      data = fallback.data;
+    }
     if (data) {
-      setFournisseursReleve(new Set(data.filter(d => d.type !== 'ignore').map(d => d.supplier_id)));
+      setFournisseursReleve(new Set(data.filter(d => (d.type || 'releve') !== 'ignore').map(d => d.supplier_id)));
       setFournisseursIgnores(new Set(data.filter(d => d.type === 'ignore').map(d => d.supplier_id)));
     }
   }
@@ -140,13 +149,22 @@ export default function TestsComptablesPage({
 
     if (checked) {
       // Upsert avec le type approprié
-      await supabase.from('fournisseurs_releve').upsert({
+      const { error } = await supabase.from('fournisseurs_releve').upsert({
         client_id: selectedClientId,
         supplier_id: sid,
         supplier_name: supplierName,
         created_by: userCollaborateur.id,
         type: flagType
       }, { onConflict: 'client_id,supplier_id' });
+      // Fallback si la colonne type n'existe pas encore
+      if (error) {
+        await supabase.from('fournisseurs_releve').upsert({
+          client_id: selectedClientId,
+          supplier_id: sid,
+          supplier_name: supplierName,
+          created_by: userCollaborateur.id
+        }, { onConflict: 'client_id,supplier_id' });
+      }
 
       if (flagType === 'releve') {
         setFournisseursReleve(prev => new Set([...prev, sid]));
