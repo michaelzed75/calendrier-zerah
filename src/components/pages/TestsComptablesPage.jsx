@@ -43,7 +43,10 @@ export default function TestsComptablesPage({
   accent
 }) {
   // États principaux
-  const [selectedClientId, setSelectedClientId] = useState(/** @type {number|null} */ (null));
+  const [selectedClientId, setSelectedClientId] = useState(/** @type {number|null} */ (() => {
+    const saved = localStorage.getItem('testsComptables_selectedClientId');
+    return saved ? Number(saved) : null;
+  }));
   const [selectedMillesime, setSelectedMillesime] = useState(new Date().getFullYear());
   const [selectedTestCode, setSelectedTestCode] = useState('');
 
@@ -81,12 +84,23 @@ export default function TestsComptablesPage({
   // Handler pour sélection client
   const handleClientSelect = (client) => {
     setSelectedClientId(client.id);
+    localStorage.setItem('testsComptables_selectedClientId', String(client.id));
     setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
     setShowClientDropdown(false);
   };
 
   // Client sélectionné
   const selectedClient = clients.find(c => c.id === selectedClientId);
+
+  // Restaurer le nom du client dans le champ de recherche au chargement
+  useEffect(() => {
+    if (selectedClientId && clients.length > 0 && !clientSearch) {
+      const client = clients.find(c => c.id === selectedClientId);
+      if (client) {
+        setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
+      }
+    }
+  }, [clients, selectedClientId]);
 
   // Charger les tests disponibles
   useEffect(() => {
@@ -472,6 +486,7 @@ export default function TestsComptablesPage({
               onChange={(e) => {
                 setClientSearch(e.target.value);
                 setSelectedClientId(null);
+                localStorage.removeItem('testsComptables_selectedClientId');
                 setShowClientDropdown(true);
               }}
               onFocus={() => setShowClientDropdown(true)}
