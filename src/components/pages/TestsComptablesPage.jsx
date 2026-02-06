@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import {
   ClipboardCheck,
   Play,
@@ -33,6 +33,37 @@ import {
 import { supabase } from '../../supabaseClient.js';
 
 const MOIS_NOMS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+/** Détail d'un mois sélectionné dans le calendrier */
+function MoisDetail({ fournisseur, selectedMois }) {
+  const alerte = fournisseur.alertes?.find(a => a.mois === selectedMois);
+  const moisInfo = fournisseur.calendrierMois.find(m => m.mois === selectedMois);
+
+  return (
+    <div className="w-full bg-slate-700/50 rounded p-2 border border-slate-600 text-xs">
+      {alerte && alerte.type === 'doublon_releve' && alerte.factures?.length > 0 ? (
+        <div className="space-y-1">
+          <div className="text-red-400 font-medium mb-1">⚠ {alerte.factures.length} factures en {selectedMois} (doublon)</div>
+          {alerte.factures.map((f, fi) => (
+            <div key={fi} className="flex items-center gap-2 pl-2">
+              <button onClick={() => window.open(f.pdfUrl, '_blank')}
+                className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-white transition"
+                title={`Ouvrir le PDF\n${f.numero || 'N/A'}`}>
+                {f.numero || 'N/A'}
+              </button>
+              <span className="text-slate-400">{f.date}</span>
+              <span className="text-white font-medium">{f.montant}€</span>
+            </div>
+          ))}
+        </div>
+      ) : moisInfo && moisInfo.nbFactures === 0 ? (
+        <div className="text-orange-400">Aucun relevé reçu pour {selectedMois}</div>
+      ) : (
+        <div className="text-slate-400">Mois {selectedMois} - {moisInfo?.nbFactures || 0} facture(s)</div>
+      )}
+    </div>
+  );
+}
 
 /** Ligne calendrier pour un fournisseur au relevé */
 function CalendrierMois({ fournisseur, sid, selectedMoisReleve, setSelectedMoisReleve }) {
@@ -77,43 +108,17 @@ function CalendrierMois({ fournisseur, sid, selectedMoisReleve, setSelectedMoisR
           );
         })}
       </div>
-      {selectedMois && (() => {
-        const alerte = fournisseur.alertes?.find(a => a.mois === selectedMois);
-        const moisInfo = fournisseur.calendrierMois.find(m => m.mois === selectedMois);
-        return (
-          <div className="w-full bg-slate-700/50 rounded p-2 border border-slate-600 text-xs">
-            {alerte && alerte.type === 'doublon_releve' && alerte.factures?.length > 0 ? (
-              <div className="space-y-1">
-                <div className="text-red-400 font-medium mb-1">⚠ {alerte.factures.length} factures en {selectedMois} (doublon)</div>
-                {alerte.factures.map((f, fi) => (
-                  <div key={fi} className="flex items-center gap-2 pl-2">
-                    <a href={f.pdfUrl} target="_blank" rel="noopener noreferrer"
-                      className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-white transition inline-block">
-                      {f.numero || 'N/A'}
-                    </a>
-                    <span className="text-slate-400">{f.date}</span>
-                    <span className="text-white font-medium">{f.montant}€</span>
-                  </div>
-                ))}
-              </div>
-            ) : moisInfo && moisInfo.nbFactures === 0 ? (
-              <div className="text-orange-400">Aucun relevé reçu pour {selectedMois}</div>
-            ) : (
-              <div className="text-slate-400">Mois {selectedMois} - {moisInfo?.nbFactures || 0} facture(s)</div>
-            )}
-          </div>
-        );
-      })()}
+      {selectedMois && <MoisDetail fournisseur={fournisseur} selectedMois={selectedMois} />}
     </>
   );
 }
 
 /** Liste complète des fournisseurs avec calendrier, alertes, ignore */
 const FournisseursList = memo(function FournisseursList({
-  fournisseurs, fournisseursReleve, fournisseursIgnores,
-  selectedMoisReleve, setSelectedMoisReleve,
-  showIgnored, setShowIgnored, toggleFournisseurFlag
+  fournisseurs, fournisseursReleve, fournisseursIgnores, toggleFournisseurFlag
 }) {
+  const [selectedMoisReleve, setSelectedMoisReleve] = useState(null);
+  const [showIgnored, setShowIgnored] = useState(false);
   const fournisseursActifs = fournisseurs.filter(f => !f.isIgnore && !fournisseursIgnores.has(String(f.supplierId)));
   const fournisseursIgnoresList = fournisseurs.filter(f => f.isIgnore || fournisseursIgnores.has(String(f.supplierId)));
 
@@ -162,17 +167,19 @@ const FournisseursList = memo(function FournisseursList({
                       <div key={idx} className="flex items-center gap-2">
                         {alerte.type === 'doublon_classique' && alerte.factures && (
                           <div className="flex gap-1 items-center bg-slate-700/50 rounded px-2 py-1">
-                            <a href={alerte.factures[0]?.pdfUrl} target="_blank" rel="noopener noreferrer"
-                              className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white inline-block"
+                            <button
+                              onClick={() => window.open(alerte.factures[0]?.pdfUrl, '_blank')}
+                              className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white"
                               title={`${alerte.factures[0]?.numero || 'N/A'}\n${alerte.factures[0]?.date}\n${alerte.factures[0]?.montant}€`}>
                               {alerte.factures[0]?.date?.substring(5)} : {alerte.factures[0]?.montant}€
-                            </a>
+                            </button>
                             <span className="text-yellow-500 font-bold">⚠</span>
-                            <a href={alerte.factures[1]?.pdfUrl} target="_blank" rel="noopener noreferrer"
-                              className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs inline-block"
+                            <button
+                              onClick={() => window.open(alerte.factures[1]?.pdfUrl, '_blank')}
+                              className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
                               title={`${alerte.factures[1]?.numero || 'N/A'}\n${alerte.factures[1]?.date}\n${alerte.factures[1]?.montant}€\nEcart: ${alerte.ecartJours || '?'}j`}>
                               {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
-                            </a>
+                            </button>
                             {alerte.ecartJours !== undefined && <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>}
                           </div>
                         )}
@@ -262,8 +269,6 @@ export default function TestsComptablesPage({
   const [donneesAnalysees, setDonneesAnalysees] = useState(/** @type {Object|null} */ (null));
   const [fournisseursReleve, setFournisseursReleve] = useState(/** @type {Set<string>} */ (new Set()));
   const [fournisseursIgnores, setFournisseursIgnores] = useState(/** @type {Set<string>} */ (new Set()));
-  const [showIgnored, setShowIgnored] = useState(false);
-  const [selectedMoisReleve, setSelectedMoisReleve] = useState(/** @type {string|null} */ (null)); // "supplierId-YYYY-MM"
 
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
@@ -899,10 +904,6 @@ export default function TestsComptablesPage({
                               fournisseurs={resultat.donnees.fournisseurs}
                               fournisseursReleve={fournisseursReleve}
                               fournisseursIgnores={fournisseursIgnores}
-                              selectedMoisReleve={selectedMoisReleve}
-                              setSelectedMoisReleve={setSelectedMoisReleve}
-                              showIgnored={showIgnored}
-                              setShowIgnored={setShowIgnored}
                               toggleFournisseurFlag={toggleFournisseurFlag}
                             />
                           )}
