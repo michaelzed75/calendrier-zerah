@@ -5,6 +5,7 @@
  * - Liste tous les fournisseurs avec possibilité de les marquer "au relevé"
  * - Pour fournisseurs "au relevé" : alerte si 2+ factures sur un mois (doublon)
  * - Pour fournisseurs "au relevé" : alerte si pas de facture ce mois (relevé manquant)
+ * - Pour fournisseurs "ignorés" : exclus de l'analyse, listés à part
  * - Pour autres fournisseurs : détection doublons classiques
  * Utilise l'API /supplier_invoices de Pennylane
  */
@@ -84,12 +85,14 @@ export const doubleSaisie = {
    * @param {Object} [params.options] - Options du test
    * @param {number} [params.options.toleranceJours=31] - Période de comparaison (jours)
    * @param {string[]} [params.options.fournisseursReleve] - Liste des supplier_id marqués "au relevé"
+   * @param {string[]} [params.options.fournisseursIgnores] - Liste des supplier_id marqués "ignorés"
    * @param {number} [params.options.millesime] - Année fiscale pour le calendrier des relevés
    * @returns {Promise<{anomalies: import('../../../types').TestResultAnomalie[], donneesAnalysees: Object}>}
    */
   async execute({ supplierInvoices, options = {} }) {
     const toleranceJours = options.toleranceJours || 31;
     const fournisseursReleveSet = new Set(options.fournisseursReleve || []);
+    const fournisseursIgnoresSet = new Set(options.fournisseursIgnores || []);
     const millesime = options.millesime || new Date().getFullYear();
 
     /** @type {import('../../../types').TestResultAnomalie[]} */
@@ -143,6 +146,24 @@ export const doubleSaisie = {
     for (const [supplierId, fournisseurData] of parFournisseur) {
       const facturesFournisseur = fournisseurData.factures;
       const isMarqueReleve = fournisseursReleveSet.has(String(supplierId));
+      const isIgnore = fournisseursIgnoresSet.has(String(supplierId));
+
+      // Fournisseur ignoré : pas d'analyse, ajout direct à la liste
+      if (isIgnore) {
+        listeFournisseurs.push({
+          supplierId,
+          nom: fournisseurData.nom,
+          nbFactures: facturesFournisseur.length,
+          isMarqueReleve: false,
+          isIgnore: true,
+          hasAlertes: false,
+          alertes: [],
+          calendrierMois: null,
+          hasDoublons: false,
+          doublonsPotentiels: []
+        });
+        continue;
+      }
 
       // Trier par date croissante
       facturesFournisseur.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
@@ -254,6 +275,7 @@ export const doubleSaisie = {
         nom: fournisseurData.nom,
         nbFactures: facturesFournisseur.length,
         isMarqueReleve,
+        isIgnore: false,
         hasAlertes: alertes.length > 0,
         alertes,
         calendrierMois: isMarqueReleve ? calendrierMois : null, // Calendrier pour fournisseurs au relevé
@@ -271,14 +293,20 @@ export const doubleSaisie = {
     // Note: on ne peut pas le faire ici car on n'a pas la liste complète des fournisseurs marqués
     // Ce sera géré côté frontend
 
-    // Trier : fournisseurs avec alertes en premier, puis marqués relevé, puis par nom
+    // Trier : ignorés en dernier, puis alertes en premier, puis marqués relevé, puis par nom
     listeFournisseurs.sort((a, b) => {
+      if (a.isIgnore && !b.isIgnore) return 1;
+      if (!a.isIgnore && b.isIgnore) return -1;
       if (a.hasAlertes && !b.hasAlertes) return -1;
       if (!a.hasAlertes && b.hasAlertes) return 1;
       if (a.isMarqueReleve && !b.isMarqueReleve) return -1;
       if (!a.isMarqueReleve && b.isMarqueReleve) return 1;
       return a.nom.localeCompare(b.nom, 'fr');
     });
+
+    // Séparer les fournisseurs actifs (non ignorés) pour les compteurs
+    const fournisseursActifs = listeFournisseurs.filter(f => !f.isIgnore);
+    const fournisseursIgnoresList = listeFournisseurs.filter(f => f.isIgnore);
 
     // Créer l'anomalie "liste"
     anomalies.push({
@@ -287,7 +315,7 @@ export const doubleSaisie = {
       donnees: {
         fournisseurs: listeFournisseurs
       },
-      commentaire: `${listeFournisseurs.length} fournisseurs, ${listeFournisseurs.filter(f => f.hasAlertes).length} avec alertes`
+      commentaire: `${fournisseursActifs.length} fournisseurs analysés, ${fournisseursActifs.filter(f => f.hasAlertes).length} avec alertes${fournisseursIgnoresList.length > 0 ? `, ${fournisseursIgnoresList.length} ignoré(s)` : ''}`
     });
 
     return {
@@ -296,8 +324,9 @@ export const doubleSaisie = {
         type: 'double_saisie',
         nbFactures: factures.length,
         nbFournisseurs: parFournisseur.size,
-        nbAvecAlertes: listeFournisseurs.filter(f => f.hasAlertes).length,
-        nbMarquesReleve: listeFournisseurs.filter(f => f.isMarqueReleve).length,
+        nbAvecAlertes: fournisseursActifs.filter(f => f.hasAlertes).length,
+        nbMarquesReleve: fournisseursActifs.filter(f => f.isMarqueReleve).length,
+        nbIgnores: fournisseursIgnoresList.length,
         toleranceJours
       }
     };

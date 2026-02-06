@@ -14,7 +14,11 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  Settings
+  Settings,
+  EyeOff,
+  Eye,
+  Lightbulb,
+  Undo2
 } from 'lucide-react';
 import {
   runTest,
@@ -60,6 +64,9 @@ export default function TestsComptablesPage({
   const [executionActuelle, setExecutionActuelle] = useState(/** @type {import('../../types').TestComptableExecution|null} */ (null));
   const [donneesAnalysees, setDonneesAnalysees] = useState(/** @type {Object|null} */ (null));
   const [fournisseursReleve, setFournisseursReleve] = useState(/** @type {Set<string>} */ (new Set()));
+  const [fournisseursIgnores, setFournisseursIgnores] = useState(/** @type {Set<string>} */ (new Set()));
+  const [showIgnored, setShowIgnored] = useState(false);
+  const [selectedMoisReleve, setSelectedMoisReleve] = useState(/** @type {string|null} */ (null)); // "supplierId-YYYY-MM"
 
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
@@ -101,49 +108,67 @@ export default function TestsComptablesPage({
       setExecutionActuelle(null);
       setDonneesAnalysees(null);
       setFournisseursReleve(new Set());
+      setFournisseursIgnores(new Set());
     }
   }, [selectedClientId]);
 
   /**
-   * Charge les fournisseurs marqués "au relevé" pour ce client
+   * Charge les fournisseurs marqués "au relevé" et "ignorés" pour ce client
    */
   async function loadFournisseursReleve() {
     if (!selectedClientId) return;
     const { data } = await supabase
       .from('fournisseurs_releve')
-      .select('supplier_id')
+      .select('supplier_id, type')
       .eq('client_id', selectedClientId);
     if (data) {
-      setFournisseursReleve(new Set(data.map(d => d.supplier_id)));
+      setFournisseursReleve(new Set(data.filter(d => d.type !== 'ignore').map(d => d.supplier_id)));
+      setFournisseursIgnores(new Set(data.filter(d => d.type === 'ignore').map(d => d.supplier_id)));
     }
   }
 
   /**
-   * Ajoute ou supprime un fournisseur de la liste "au relevé"
+   * Ajoute ou supprime un flag fournisseur ('releve' ou 'ignore')
+   * @param {string|number} supplierId
+   * @param {string} supplierName
+   * @param {'releve'|'ignore'} flagType
+   * @param {boolean} checked
    */
-  async function toggleFournisseurReleve(supplierId, supplierName, checked) {
+  async function toggleFournisseurFlag(supplierId, supplierName, flagType, checked) {
     if (!selectedClientId || !userCollaborateur) return;
+    const sid = String(supplierId);
 
     if (checked) {
-      // Ajouter
+      // Upsert avec le type approprié
       await supabase.from('fournisseurs_releve').upsert({
         client_id: selectedClientId,
-        supplier_id: String(supplierId),
+        supplier_id: sid,
         supplier_name: supplierName,
-        created_by: userCollaborateur.id
+        created_by: userCollaborateur.id,
+        type: flagType
       }, { onConflict: 'client_id,supplier_id' });
-      setFournisseursReleve(prev => new Set([...prev, String(supplierId)]));
+
+      if (flagType === 'releve') {
+        setFournisseursReleve(prev => new Set([...prev, sid]));
+        // Retirer des ignorés si présent
+        setFournisseursIgnores(prev => { const next = new Set(prev); next.delete(sid); return next; });
+      } else {
+        setFournisseursIgnores(prev => new Set([...prev, sid]));
+        // Retirer des relevés si présent
+        setFournisseursReleve(prev => { const next = new Set(prev); next.delete(sid); return next; });
+      }
     } else {
-      // Supprimer
+      // Supprimer le flag
       await supabase.from('fournisseurs_releve')
         .delete()
         .eq('client_id', selectedClientId)
-        .eq('supplier_id', String(supplierId));
-      setFournisseursReleve(prev => {
-        const next = new Set(prev);
-        next.delete(String(supplierId));
-        return next;
-      });
+        .eq('supplier_id', sid);
+
+      if (flagType === 'releve') {
+        setFournisseursReleve(prev => { const next = new Set(prev); next.delete(sid); return next; });
+      } else {
+        setFournisseursIgnores(prev => { const next = new Set(prev); next.delete(sid); return next; });
+      }
     }
   }
 
@@ -213,6 +238,7 @@ export default function TestsComptablesPage({
         pennylaneApiKey: client.pennylane_client_api_key,
         options: {
           fournisseursReleve: Array.from(fournisseursReleve),
+          fournisseursIgnores: Array.from(fournisseursIgnores),
           millesime: selectedMillesime
         }
       });
@@ -586,7 +612,7 @@ export default function TestsComptablesPage({
                 </div>
               )}
               {donneesAnalysees.type === 'double_saisie' && (
-                <div className="grid grid-cols-5 gap-4 text-sm">
+                <div className="grid grid-cols-6 gap-4 text-sm">
                   <div>
                     <span className="text-slate-400">Factures:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFactures}</span>
@@ -602,6 +628,10 @@ export default function TestsComptablesPage({
                   <div>
                     <span className="text-slate-400">Alertes:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbAvecAlertes || donneesAnalysees.nbAvecDoublons || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Ignorés:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbIgnores || 0}</span>
                   </div>
                   <div>
                     <span className="text-slate-400">Période:</span>
@@ -655,77 +685,144 @@ export default function TestsComptablesPage({
                             </div>
                           )}
                           {/* Liste fournisseurs - Relevé fournisseurs */}
-                          {resultat.donnees.fournisseurs && (
+                          {resultat.donnees.fournisseurs && (() => {
+                            const fournisseursActifs = resultat.donnees.fournisseurs.filter(f => !f.isIgnore && !fournisseursIgnores.has(String(f.supplierId)));
+                            const fournisseursIgnoresList = resultat.donnees.fournisseurs.filter(f => f.isIgnore || fournisseursIgnores.has(String(f.supplierId)));
+                            return (
                             <div className="space-y-1 text-sm">
                               {/* En-tête */}
-                              <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
-                                <div className="w-16 text-center">Relevé</div>
+                              <div className="flex items-center gap-2 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
+                                <div className="w-14 text-center">Relevé</div>
+                                <div className="w-10 text-center">Masq.</div>
                                 <div className="w-48">Fournisseur</div>
                                 <div className="flex-1 text-center">Calendrier / Alertes</div>
                               </div>
 
-                              {/* Liste */}
+                              {/* Liste des fournisseurs actifs */}
                               <div className="max-h-[450px] overflow-y-auto space-y-1">
-                                {resultat.donnees.fournisseurs.map((fournisseur) => (
-                                  <div key={fournisseur.supplierId} className={`flex items-center gap-3 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
+                                {fournisseursActifs.map((fournisseur) => {
+                                  const sid = String(fournisseur.supplierId);
+                                  const isReleve = fournisseursReleve.has(sid);
+                                  const hasDoublonsClassiques = !isReleve && fournisseur.alertes && fournisseur.alertes.filter(a => a.type === 'doublon_classique').length >= 1;
+
+                                  return (
+                                  <div key={fournisseur.supplierId} className={`flex items-center gap-2 p-2 rounded hover:bg-slate-600/30 ${fournisseur.hasAlertes ? 'bg-red-500/10 border border-red-500/30' : ''}`}>
                                     {/* Checkbox fournisseur au relevé */}
-                                    <div className="w-16 flex justify-center">
+                                    <div className="w-14 flex justify-center">
                                       <input
                                         type="checkbox"
-                                        checked={fournisseursReleve.has(String(fournisseur.supplierId))}
-                                        onChange={(e) => toggleFournisseurReleve(fournisseur.supplierId, fournisseur.nom, e.target.checked)}
+                                        checked={isReleve}
+                                        onChange={(e) => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'releve', e.target.checked)}
                                         className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-blue-500 cursor-pointer"
                                       />
                                     </div>
 
-                                    {/* Nom fournisseur */}
+                                    {/* Bouton ignorer */}
+                                    <div className="w-10 flex justify-center">
+                                      <button
+                                        onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', true)}
+                                        className="p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-600 rounded transition"
+                                        title="Masquer ce fournisseur de l'analyse"
+                                      >
+                                        <EyeOff size={14} />
+                                      </button>
+                                    </div>
+
+                                    {/* Nom fournisseur + badge suggestion */}
                                     <div className="w-48 min-w-0">
-                                      <div className="flex flex-col">
-                                        <span className={`font-medium truncate ${fournisseursReleve.has(String(fournisseur.supplierId)) ? 'text-blue-400' : 'text-white'}`}>
+                                      <div className="flex items-center gap-1">
+                                        <span className={`font-medium truncate ${isReleve ? 'text-blue-400' : 'text-white'}`}>
                                           {fournisseur.nom}
                                         </span>
-                                        <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
+                                        {hasDoublonsClassiques && (
+                                          <Lightbulb size={14} className="text-yellow-400 flex-shrink-0" title="Doublons détectés - envisagez de marquer ce fournisseur au relevé" />
+                                        )}
                                       </div>
+                                      <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
                                     </div>
 
                                     {/* Calendrier ou Alertes */}
-                                    <div className="flex-1 flex justify-end">
-                                      {/* Fournisseur au relevé : afficher calendrier des 12 mois */}
-                                      {fournisseur.calendrierMois ? (
-                                        <div className="flex gap-0.5">
-                                          {fournisseur.calendrierMois.map((moisInfo) => {
-                                            const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
-                                            let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
-                                            let title = `${moisInfo.mois} - Futur`;
+                                    <div className="flex-1 flex flex-col items-end gap-1">
+                                      {/* Fournisseur au relevé : afficher calendrier des 12 mois cliquable */}
+                                      {fournisseur.calendrierMois ? (() => {
+                                        const moisKey = `${sid}-`;
+                                        const selectedMois = selectedMoisReleve?.startsWith(moisKey) ? selectedMoisReleve.replace(moisKey, '') : null;
+                                        const alerteForSelectedMois = selectedMois && fournisseur.alertes
+                                          ? fournisseur.alertes.find(a => a.mois === selectedMois)
+                                          : null;
+                                        // Trouver les factures du mois sélectionné dans le calendrier
+                                        const selectedMoisInfo = selectedMois
+                                          ? fournisseur.calendrierMois.find(m => m.mois === selectedMois)
+                                          : null;
 
-                                            if (moisInfo.estMoisActuel) {
-                                              bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
-                                              title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
-                                            } else if (moisInfo.estPasse) {
-                                              if (moisInfo.nbFactures === 0) {
-                                                bgColor = 'bg-orange-500 text-white'; // Manquant = orange
-                                                title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
-                                              } else if (moisInfo.nbFactures === 1) {
-                                                bgColor = 'bg-green-500 text-white'; // OK = vert
-                                                title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
-                                              } else {
-                                                bgColor = 'bg-red-500 text-white'; // Doublon = rouge
-                                                title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures)`;
+                                        return (
+                                        <>
+                                          <div className="flex gap-0.5">
+                                            {fournisseur.calendrierMois.map((moisInfo) => {
+                                              const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
+                                              const isClickable = !moisInfo.estFutur && (moisInfo.nbFactures >= 2 || (moisInfo.nbFactures === 0 && moisInfo.estPasse));
+                                              const isSelected = selectedMois === moisInfo.mois;
+                                              let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
+                                              let title = `${moisInfo.mois} - Futur`;
+
+                                              if (moisInfo.estMoisActuel) {
+                                                bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
+                                                title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
+                                              } else if (moisInfo.estPasse) {
+                                                if (moisInfo.nbFactures === 0) {
+                                                  bgColor = 'bg-orange-500 text-white'; // Manquant = orange
+                                                  title = `${moisInfo.mois} - RELEVÉ MANQUANT`;
+                                                } else if (moisInfo.nbFactures === 1) {
+                                                  bgColor = 'bg-green-500 text-white'; // OK = vert
+                                                  title = `${moisInfo.mois} - OK (${moisInfo.montantTotal.toFixed(2)}€)`;
+                                                } else {
+                                                  bgColor = 'bg-red-500 text-white'; // Doublon = rouge
+                                                  title = `${moisInfo.mois} - DOUBLON (${moisInfo.nbFactures} factures) - Cliquez pour détails`;
+                                                }
                                               }
-                                            }
 
-                                            return (
-                                              <div
-                                                key={moisInfo.mois}
-                                                className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor}`}
-                                                title={title}
-                                              >
-                                                {moisNom}
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
+                                              return (
+                                                <div
+                                                  key={moisInfo.mois}
+                                                  onClick={isClickable ? () => setSelectedMoisReleve(isSelected ? null : `${sid}-${moisInfo.mois}`) : undefined}
+                                                  className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded ${bgColor} ${isClickable ? 'cursor-pointer hover:ring-2 hover:ring-white/30' : ''} ${isSelected ? 'ring-2 ring-white' : ''}`}
+                                                  title={title}
+                                                >
+                                                  {moisNom}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                          {/* Détail du mois sélectionné */}
+                                          {selectedMois && (
+                                            <div className="w-full bg-slate-700/50 rounded p-2 border border-slate-600 text-xs">
+                                              {alerteForSelectedMois && alerteForSelectedMois.type === 'doublon_releve' && alerteForSelectedMois.factures?.length > 0 ? (
+                                                <div className="space-y-1">
+                                                  <div className="text-red-400 font-medium mb-1">⚠ {alerteForSelectedMois.factures.length} factures en {selectedMois} (doublon)</div>
+                                                  {alerteForSelectedMois.factures.map((f, fi) => (
+                                                    <div key={fi} className="flex items-center gap-2 pl-2">
+                                                      <button
+                                                        onClick={(e) => { e.stopPropagation(); window.open(f.pdfUrl, '_blank'); }}
+                                                        className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-white transition"
+                                                        title={`Ouvrir le PDF\n${f.numero || 'N/A'}`}
+                                                      >
+                                                        {f.numero || 'N/A'}
+                                                      </button>
+                                                      <span className="text-slate-400">{f.date}</span>
+                                                      <span className="text-white font-medium">{f.montant}€</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              ) : selectedMoisInfo && selectedMoisInfo.nbFactures === 0 ? (
+                                                <div className="text-orange-400">Aucun relevé reçu pour {selectedMois}</div>
+                                              ) : (
+                                                <div className="text-slate-400">Mois {selectedMois} - {selectedMoisInfo?.nbFactures || 0} facture(s)</div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </>
+                                        );
+                                      })() : (
                                         /* Fournisseur normal : afficher alertes doublons */
                                         fournisseur.alertes && fournisseur.alertes.length > 0 ? (
                                           <div className="flex flex-col gap-1 items-end">
@@ -736,7 +833,7 @@ export default function TestsComptablesPage({
                                                     <button
                                                       onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[0]?.pdfUrl, '_blank'); }}
                                                       className="px-2 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs text-white"
-                                                      title={`📄 ${alerte.factures[0]?.numero || 'N/A'}\n📅 ${alerte.factures[0]?.date}\n💰 ${alerte.factures[0]?.montant}€\n\nCliquez pour ouvrir le PDF`}
+                                                      title={`${alerte.factures[0]?.numero || 'N/A'}\n${alerte.factures[0]?.date}\n${alerte.factures[0]?.montant}EUR\n\nCliquez pour ouvrir le PDF`}
                                                     >
                                                       {alerte.factures[0]?.date?.substring(5)} : {alerte.factures[0]?.montant}€
                                                     </button>
@@ -744,11 +841,11 @@ export default function TestsComptablesPage({
                                                     <button
                                                       onClick={(e) => { e.stopPropagation(); window.open(alerte.factures[1]?.pdfUrl, '_blank'); }}
                                                       className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-xs"
-                                                      title={`📄 ${alerte.factures[1]?.numero || 'N/A'}\n📅 ${alerte.factures[1]?.date}\n💰 ${alerte.factures[1]?.montant}€\n⏱ Écart: ${alerte.ecartJours || '?'}j\n\nCliquez pour ouvrir le PDF`}
+                                                      title={`${alerte.factures[1]?.numero || 'N/A'}\n${alerte.factures[1]?.date}\n${alerte.factures[1]?.montant}EUR\nEcart: ${alerte.ecartJours || '?'}j\n\nCliquez pour ouvrir le PDF`}
                                                     >
                                                       {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
                                                     </button>
-                                                    {alerte.ecartJours && (
+                                                    {alerte.ecartJours !== undefined && (
                                                       <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>
                                                     )}
                                                   </div>
@@ -757,12 +854,13 @@ export default function TestsComptablesPage({
                                             ))}
                                           </div>
                                         ) : (
-                                          <span className="text-green-500 text-xs">✓ OK</span>
+                                          <span className="text-green-500 text-xs">OK</span>
                                         )
                                       )}
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
 
                               {/* Légende pour le calendrier */}
@@ -771,9 +869,45 @@ export default function TestsComptablesPage({
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Manquant</span>
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Doublon</span>
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-600"></span> Futur</span>
+                                <span className="flex items-center gap-1"><Lightbulb size={12} className="text-yellow-400" /> Suggestion relevé</span>
                               </div>
+
+                              {/* Section fournisseurs ignorés */}
+                              {fournisseursIgnoresList.length > 0 && (
+                                <div className="mt-4 pt-3 border-t border-slate-700">
+                                  <button
+                                    onClick={() => setShowIgnored(!showIgnored)}
+                                    className="flex items-center gap-2 text-slate-400 hover:text-slate-300 transition text-xs"
+                                  >
+                                    {showIgnored ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    <EyeOff size={14} />
+                                    <span>Fournisseurs masqués ({fournisseursIgnoresList.length})</span>
+                                  </button>
+
+                                  {showIgnored && (
+                                    <div className="mt-2 space-y-1">
+                                      {fournisseursIgnoresList.map((fournisseur) => (
+                                        <div key={fournisseur.supplierId} className="flex items-center gap-3 p-2 rounded bg-slate-700/20 text-slate-500">
+                                          <EyeOff size={14} className="flex-shrink-0" />
+                                          <span className="flex-1 truncate">{fournisseur.nom}</span>
+                                          <span className="text-xs">{fournisseur.nbFactures} fact.</span>
+                                          <button
+                                            onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', false)}
+                                            className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded text-xs transition"
+                                            title="Restaurer ce fournisseur dans l'analyse"
+                                          >
+                                            <Eye size={12} />
+                                            Restaurer
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          )}
+                            );
+                          })()}
                           {resultat.donnees.ecritureFacture && resultat.donnees.ecritureBanque && (
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>

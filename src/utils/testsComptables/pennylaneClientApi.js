@@ -48,33 +48,49 @@ export async function callPennylaneAPI(apiKey, endpoint, params = {}) {
 
 /**
  * Récupère toutes les données paginées d'un endpoint
+ * L'API Pennylane v2 utilise une pagination par curseur (has_more + next_cursor)
  * @param {string} apiKey - Clé API Pennylane
  * @param {string} endpoint - Endpoint relatif
  * @param {Object} [baseParams] - Paramètres de base
- * @returns {Promise<Object[]>} Toutes les données
+ * @returns {Promise<Object[]>} Toutes les données (dédupliquées par id)
  */
 async function getAllPaginated(apiKey, endpoint, baseParams = {}) {
   let allItems = [];
-  let page = 1;
-  let hasMore = true;
+  let cursor = null;
+  let pageCount = 0;
+  const maxPages = 50; // sécurité
 
-  while (hasMore) {
-    const result = await callPennylaneAPI(apiKey, endpoint, {
-      ...baseParams,
-      page,
-      per_page: 100
-    });
+  while (pageCount < maxPages) {
+    pageCount++;
+    const params = { ...baseParams, per_page: 100 };
+    if (cursor) {
+      params.cursor = cursor;
+    }
+
+    const result = await callPennylaneAPI(apiKey, endpoint, params);
 
     const items = result.items || result.data || result.entries || [];
     allItems = allItems.concat(items);
 
-    // Vérifier s'il y a d'autres pages
-    const totalPages = result.total_pages || result.pagination?.total_pages || 1;
-    hasMore = page < totalPages;
-    page++;
+    // Pagination par curseur (API Pennylane v2)
+    if (result.has_more && result.next_cursor) {
+      cursor = result.next_cursor;
+    } else {
+      break;
+    }
   }
 
-  return allItems;
+  // Dédupliquer par id (l'API peut retourner des doublons)
+  const seen = new Set();
+  const uniqueItems = [];
+  for (const item of allItems) {
+    const itemId = item.id;
+    if (itemId && seen.has(itemId)) continue;
+    if (itemId) seen.add(itemId);
+    uniqueItems.push(item);
+  }
+
+  return uniqueItems;
 }
 
 /**
