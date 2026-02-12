@@ -34,12 +34,14 @@ function normalizeString(str) {
 
 /**
  * @typedef {Object} SyncResult
- * @property {number} customersMatched - Nombre de customers matchés
- * @property {number} customersNotMatched - Nombre de customers non matchés
+ * @property {number} customersMatched - Nombre de customers matchés (avec abonnements)
+ * @property {number} customersNotMatched - Nombre de customers non matchés (avec abonnements)
+ * @property {number} customersWithoutSubscription - Nombre de customers sans abonnement (ignorés)
  * @property {number} abonnementsCreated - Nombre d'abonnements créés
  * @property {number} abonnementsUpdated - Nombre d'abonnements mis à jour
  * @property {number} lignesCreated - Nombre de lignes créées
- * @property {Object[]} unmatchedCustomers - Liste des customers non matchés
+ * @property {Object[]} unmatchedCustomers - Liste des customers non matchés (avec abonnements)
+ * @property {Object[]} customersNoSubscription - Liste des customers sans abonnement
  * @property {string[]} errors - Liste des erreurs
  */
 
@@ -173,10 +175,12 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
   const result = {
     customersMatched: 0,
     customersNotMatched: 0,
+    customersWithoutSubscription: 0,
     abonnementsCreated: 0,
     abonnementsUpdated: 0,
     lignesCreated: 0,
     unmatchedCustomers: [],
+    customersNoSubscription: [],
     errors: []
   };
 
@@ -206,11 +210,31 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
     // 3. Récupérer les données Pennylane
     const { customers, subscriptions } = await fetchAllDataForSync(apiKey, onProgress);
 
-    // 4. Matcher et mettre à jour les clients
+    // 4. Identifier les customers qui ont au moins un abonnement
+    // On ne matche que ceux-là pour éviter les doublons sans activité
+    const customerIdsWithSubscription = new Set(
+      subscriptions.map(sub => sub.customer?.id).filter(Boolean)
+    );
+
+    report('matching', `${customerIdsWithSubscription.size} customers avec abonnements sur ${customers.length} total`);
+
+    // 5. Matcher et mettre à jour les clients (uniquement ceux avec abonnements)
     report('matching', 'Matching des customers avec les clients...');
     const customerToClientMap = new Map(); // customer.id (numérique) -> client.id
 
     for (const customer of customers) {
+      // Vérifier si ce customer a au moins un abonnement
+      if (!customerIdsWithSubscription.has(customer.id)) {
+        // Customer sans abonnement : on l'ignore mais on le note
+        result.customersWithoutSubscription++;
+        result.customersNoSubscription.push({
+          id: customer.id,
+          name: customer.name,
+          external_reference: customer.external_reference
+        });
+        continue;
+      }
+
       const matchedClient = matchCustomerToClient(customer, clients);
 
       if (matchedClient) {
@@ -244,7 +268,7 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
       }
     }
 
-    report('matching', `Matching terminé: ${result.customersMatched} matchés, ${result.customersNotMatched} non matchés`);
+    report('matching', `Matching terminé: ${result.customersMatched} matchés, ${result.customersNotMatched} non matchés, ${result.customersWithoutSubscription} ignorés (sans abonnement)`);
 
     // 5. Synchroniser les abonnements
     report('subscriptions', 'Synchronisation des abonnements...');
@@ -400,8 +424,9 @@ export async function getHonorairesResume(supabase, clientId = null) {
         montant_ttc,
         montant_ht
       )
-    `)
-    .eq('status', 'in_progress');
+    `);
+  // Note: le filtrage par status est fait côté UI dans HonorairesPage
+  // pour permettre de voir tous les abonnements (in_progress, not_started, stopped)
 
   if (clientId) {
     query = query.eq('client_id', clientId);

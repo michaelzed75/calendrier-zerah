@@ -3,6 +3,7 @@
 /**
  * @file Test de détection des doublons fournisseurs
  * Détecte les comptes 401 qui semblent correspondre au même fournisseur
+ * Utilise l'API /ledger_accounts de Pennylane (plan comptable)
  */
 
 /**
@@ -27,12 +28,27 @@ function normalizeString(str) {
 
 /**
  * Extrait les mots significatifs d'une chaîne (longueur >= 3)
+ * Exclut les mots génériques courants
  * @param {string} str - Chaîne source
  * @returns {string[]} Liste des mots
  */
 function extractWords(str) {
   const normalized = normalizeString(str);
-  return normalized.split(' ').filter(word => word.length >= 3);
+  // Mots à exclure car trop génériques (formes juridiques, mots courants)
+  const excludeWords = new Set([
+    // Formes juridiques
+    'sas', 'sarl', 'eurl', 'sci', 'sasu', 'snc', 'scp', 'scea',
+    'ste', 'societe', 'ets', 'etablissements', 'etablissement',
+    // Mots courants
+    'france', 'paris', 'services', 'service', 'group', 'groupe',
+    'fournisseur', 'fournisseurs', 'client', 'clients',
+    // Mots trop génériques pour la comparaison
+    'maison', 'chateau', 'domaine', 'les', 'des', 'aux', 'fils',
+    'cie', 'and', 'the', 'international', 'distribution', 'net'
+  ]);
+  return normalized
+    .split(' ')
+    .filter(word => word.length >= 3 && !excludeWords.has(word));
 }
 
 /**
@@ -110,70 +126,36 @@ function findCommonWords(label1, label2) {
 }
 
 /**
- * Extrait le nom du fournisseur du numéro de compte ou du libellé
- * @param {string} compteNum - Numéro de compte (ex: "401ORANGE")
- * @param {string} compteLib - Libellé du compte
- * @returns {string} Nom extrait
- */
-function extractSupplierName(compteNum, compteLib) {
-  // Si le compte contient un nom après 401 (ex: 401ORANGE, 401Forange)
-  const numMatch = compteNum.match(/^401[0-9]*([A-Za-z].*)$/i);
-  if (numMatch && numMatch[1]) {
-    return numMatch[1];
-  }
-
-  // Sinon utiliser le libellé
-  return compteLib || compteNum;
-}
-
-/**
  * Définition du test de doublons fournisseurs
  * @type {import('../../../types').TestDefinition}
  */
 export const doublonsFournisseurs = {
   code: 'doublons_fournisseurs',
   nom: 'Doublons fournisseurs',
-  description: 'Détecte des comptes 401 similaires (ex: 401Forange vs 401005456 avec libellé Orange)',
-  requiredData: ['fec'],
+  description: 'Détecte des comptes 401 similaires (ex: 401DARTY vs 401100059 DARTY GRAND EST)',
+  requiredData: ['ledgerAccounts'],
 
   /**
    * Exécute le test de détection des doublons
    * @param {Object} params - Paramètres d'exécution
-   * @param {import('../../../types').FECEntry[]} params.fec - Données FEC
+   * @param {Object[]} params.ledgerAccounts - Liste des comptes du plan comptable
    * @param {Object} [params.options] - Options du test
    * @param {number} [params.options.seuilSimilarite=0.6] - Seuil de similarité (0-1)
-   * @returns {Promise<import('../../../types').TestResultAnomalie[]>} Anomalies détectées
+   * @returns {Promise<{anomalies: import('../../../types').TestResultAnomalie[], donneesAnalysees: Object}>}
    */
-  async execute({ fec, options = {} }) {
+  async execute({ ledgerAccounts, options = {} }) {
     const seuilSimilarite = options.seuilSimilarite || 0.6;
     /** @type {import('../../../types').TestResultAnomalie[]} */
     const anomalies = [];
 
-    // Extraire les comptes 401 uniques
-    const comptes401Map = new Map();
-
-    for (const entry of fec) {
-      const compteNum = entry.CompteNum || '';
-      if (compteNum.startsWith('401')) {
-        if (!comptes401Map.has(compteNum)) {
-          comptes401Map.set(compteNum, {
-            compteNum,
-            compteLib: entry.CompteLib || '',
-            compAuxNum: entry.CompAuxNum || '',
-            compAuxLib: entry.CompAuxLib || '',
-            nbEcritures: 0,
-            totalDebit: 0,
-            totalCredit: 0
-          });
-        }
-        const compte = comptes401Map.get(compteNum);
-        compte.nbEcritures++;
-        compte.totalDebit += entry.Debit || 0;
-        compte.totalCredit += entry.Credit || 0;
-      }
-    }
-
-    const comptes401 = Array.from(comptes401Map.values());
+    // Filtrer les comptes 401 (fournisseurs)
+    const comptes401 = ledgerAccounts
+      .filter(acc => acc.number && acc.number.startsWith('401'))
+      .map(acc => ({
+        id: acc.id,
+        numero: acc.number,
+        libelle: acc.label || ''
+      }));
 
     // Comparer chaque paire de comptes
     const doublonsPotentiels = [];
@@ -183,21 +165,18 @@ export const doublonsFournisseurs = {
         const compte1 = comptes401[i];
         const compte2 = comptes401[j];
 
-        // Extraire les noms de fournisseurs
-        const nom1 = extractSupplierName(compte1.compteNum, compte1.compteLib);
-        const nom2 = extractSupplierName(compte2.compteNum, compte2.compteLib);
+        // Calculer la similarité des libellés
+        const similarity = similarityScore(compte1.libelle, compte2.libelle);
 
-        // Calculer la similarité
-        const similarity = similarityScore(nom1, nom2);
-
-        // Vérifier les mots communs
-        const { hasCommon, commonWords } = findCommonWords(
-          `${compte1.compteLib} ${compte1.compAuxLib}`,
-          `${compte2.compteLib} ${compte2.compAuxLib}`
-        );
+        // Chercher les mots communs significatifs
+        const { hasCommon, commonWords } = findCommonWords(compte1.libelle, compte2.libelle);
 
         // Détecter un doublon potentiel
-        const isDoublon = similarity >= seuilSimilarite || (hasCommon && commonWords.length >= 1);
+        // Critères:
+        // - Similarité >= 60% ET au moins 1 mot commun significatif
+        // - OU au moins 1 mot commun significatif (quelque soit la similarité)
+        const hasSignificantCommonWord = hasCommon && commonWords.length >= 1;
+        const isDoublon = hasSignificantCommonWord;
 
         if (isDoublon) {
           doublonsPotentiels.push({
@@ -205,9 +184,7 @@ export const doublonsFournisseurs = {
             compte2,
             similarity,
             commonWords,
-            raison: similarity >= seuilSimilarite
-              ? `Similarité élevée (${Math.round(similarity * 100)}%)`
-              : `Mots communs: ${commonWords.join(', ')}`
+            raison: `Mots communs: ${commonWords.join(', ')}${similarity >= seuilSimilarite ? ` (similarité ${Math.round(similarity * 100)}%)` : ''}`
           });
         }
       }
@@ -229,31 +206,43 @@ export const doublonsFournisseurs = {
         severite,
         donnees: {
           compte1: {
-            numero: doublon.compte1.compteNum,
-            libelle: doublon.compte1.compteLib,
-            auxiliaire: doublon.compte1.compAuxLib,
-            nbEcritures: doublon.compte1.nbEcritures,
-            totalDebit: doublon.compte1.totalDebit,
-            totalCredit: doublon.compte1.totalCredit
+            numero: doublon.compte1.numero,
+            libelle: doublon.compte1.libelle,
+            auxiliaire: ''
           },
           compte2: {
-            numero: doublon.compte2.compteNum,
-            libelle: doublon.compte2.compteLib,
-            auxiliaire: doublon.compte2.compAuxLib,
-            nbEcritures: doublon.compte2.nbEcritures,
-            totalDebit: doublon.compte2.totalDebit,
-            totalCredit: doublon.compte2.totalCredit
+            numero: doublon.compte2.numero,
+            libelle: doublon.compte2.libelle,
+            auxiliaire: ''
           },
           similarite: Math.round(doublon.similarity * 100),
           motsCommuns: doublon.commonWords
         },
         commentaire: `Doublon potentiel détecté: ${doublon.raison}. ` +
-          `${doublon.compte1.compteNum} (${doublon.compte1.compteLib}) vs ` +
-          `${doublon.compte2.compteNum} (${doublon.compte2.compteLib})`
+          `${doublon.compte1.numero} (${doublon.compte1.libelle}) vs ` +
+          `${doublon.compte2.numero} (${doublon.compte2.libelle})`
       });
     }
 
-    return anomalies;
+    // Retourner les anomalies ET les données analysées pour permettre l'export
+    return {
+      anomalies,
+      donneesAnalysees: {
+        type: 'fournisseurs',
+        fournisseurs: comptes401.map(c => ({
+          compte: c.numero,
+          libelle: c.libelle,
+          compteAuxiliaire: '',
+          libelleAuxiliaire: '',
+          nbEcritures: 0,
+          totalDebit: 0,
+          totalCredit: 0
+        })),
+        nbFournisseurs: comptes401.length,
+        nbComparaisons: (comptes401.length * (comptes401.length - 1)) / 2,
+        seuilSimilarite: seuilSimilarite * 100
+      }
+    };
   }
 };
 

@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../../supabaseClient.js';
-import { getFEC, getSupplierInvoices, getBankTransactions, getSuppliers, getLedgerAccounts } from './pennylaneClientApi.js';
+import { getFEC, getFECByAccounts, getSupplierInvoices, getBankTransactions, getSuppliers, getLedgerAccounts } from './pennylaneClientApi.js';
 import { getTest } from './tests/index.js';
 
 /**
@@ -34,15 +34,22 @@ import { getTest } from './tests/index.js';
  * @param {string[]} requiredData - Types de données requis
  * @param {string} apiKey - Clé API Pennylane
  * @param {number} millesime - Année fiscale
+ * @param {Object} [options] - Options du test (peut contenir comptesAchats pour filtrage optimisé)
  * @returns {Promise<Object>} Données récupérées
  */
-async function fetchRequiredData(requiredData, apiKey, millesime) {
+async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) {
   const data = {};
 
   for (const dataType of requiredData) {
     switch (dataType) {
       case 'fec':
-        data.fec = await getFEC(apiKey, millesime);
+        // Si des comptes spécifiques sont demandés, utiliser la version optimisée
+        // qui filtre par ledger_account_id côté API (beaucoup plus rapide)
+        if (options.comptesAchats && options.comptesAchats.length > 0) {
+          data.fec = await getFECByAccounts(apiKey, millesime, options.comptesAchats);
+        } else {
+          data.fec = await getFEC(apiKey, millesime);
+        }
         break;
       case 'invoices':
       case 'supplierInvoices':
@@ -106,7 +113,7 @@ export async function runTest(params) {
 
   try {
     // Récupérer les données nécessaires via l'API Pennylane
-    const data = await fetchRequiredData(testDefinition.requiredData, pennylaneApiKey, millesime);
+    const data = await fetchRequiredData(testDefinition.requiredData, pennylaneApiKey, millesime, options);
 
     // Exécuter le test
     const testResult = await testDefinition.execute({

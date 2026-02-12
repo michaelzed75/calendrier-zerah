@@ -10,6 +10,7 @@
 
 import { doublonsFournisseurs } from './doublonsFournisseurs.js';
 import { doubleSaisie } from './doubleSaisie.js';
+import { attestationAchats } from './attestationAchats.js';
 
 /**
  * Registre de tous les tests disponibles
@@ -17,7 +18,8 @@ import { doubleSaisie } from './doubleSaisie.js';
  */
 export const testsRegistry = {
   doublons_fournisseurs: doublonsFournisseurs,
-  double_saisie: doubleSaisie
+  double_saisie: doubleSaisie,
+  attestation_achats: attestationAchats
 };
 
 /**

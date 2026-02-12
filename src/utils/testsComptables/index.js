@@ -8,6 +8,7 @@
 export {
   callPennylaneAPI,
   getFEC,
+  getFECByAccounts,
   getSupplierInvoices,
   getCustomerInvoices,
   getBankTransactions,
@@ -35,9 +36,10 @@ export {
   categories
 } from './tests/index.js';
 
-// Export Excel
+// Export Excel et Word
 export {
   exportTestResults,
   exportHistorique,
-  exportDonneesAnalysees
+  exportDonneesAnalysees,
+  exportAttestationWord
 } from './exportResults.js';

@@ -430,6 +430,7 @@
  * @property {string} EcritureLib - Libellé de l'écriture
  * @property {number} Debit - Montant débit
  * @property {number} Credit - Montant crédit
+ * @property {string} [Produits] - Catégorie produit (Boissons, Food, Autres)
  * @property {string} EcritureLet - Lettrage
  * @property {string} DateLet - Date de lettrage
  * @property {string} ValidDate - Date de validation

@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { syncCustomersAndSubscriptions, getHonorairesResume, testConnection } from '../../utils/honoraires';
 
@@ -35,7 +36,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
 
   // Filtres
   const [filterCabinet, setFilterCabinet] = useState('tous');
-  const [filterStatus, setFilterStatus] = useState('in_progress');
+  const [filterStatus, setFilterStatus] = useState('tous');
   const [expandedClient, setExpandedClient] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -250,6 +251,33 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     border: `border-${accent}-200`
   };
 
+  /**
+   * Export Excel des clients sans abonnement
+   */
+  const handleExportClientsSansAbo = () => {
+    const dataToExport = clientsSansAbonnement.map(client => ({
+      'Nom': client.nom,
+      'Cabinet': client.cabinet || '-',
+      'Statut Pennylane': client.pennylane_customer_id ? 'Lié à PL sans abonnement' : 'Non lié à Pennylane',
+      'Pennylane Customer ID': client.pennylane_customer_id || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clients sans abonnement');
+
+    // Ajuster la largeur des colonnes
+    ws['!cols'] = [
+      { wch: 35 }, // Nom
+      { wch: 18 }, // Cabinet
+      { wch: 25 }, // Statut Pennylane
+      { wch: 40 }  // Pennylane Customer ID
+    ];
+
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `clients_sans_abonnement_${date}.xlsx`);
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -382,11 +410,25 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           {syncResult.unmatchedCustomers.length > 0 && (
             <details className="mt-3">
               <summary className="cursor-pointer text-sm text-orange-600">
-                {syncResult.unmatchedCustomers.length} customers non matchés
+                {syncResult.unmatchedCustomers.length} customers non matchés (avec abonnements)
               </summary>
+              <p className="mt-1 text-xs text-gray-500">Ces customers ont des abonnements mais ne correspondent à aucun client local</p>
               <ul className="mt-2 text-sm text-gray-600 max-h-40 overflow-y-auto">
                 {syncResult.unmatchedCustomers.map(c => (
                   <li key={c.id}>{c.name} ({c.external_reference || 'pas de ref'})</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {syncResult.customersNoSubscription?.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-gray-500">
+                {syncResult.customersNoSubscription.length} customers ignorés (sans abonnement)
+              </summary>
+              <p className="mt-1 text-xs text-gray-500">Ces customers existent dans Pennylane mais n'ont pas d'abonnement actif</p>
+              <ul className="mt-2 text-sm text-gray-400 max-h-40 overflow-y-auto">
+                {syncResult.customersNoSubscription.map(c => (
+                  <li key={c.id}>{c.name}</li>
                 ))}
               </ul>
             </details>
@@ -617,11 +659,20 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
       {/* Clients sans abonnement */}
       {clientsSansAbonnement.length > 0 && (
         <div className="mt-8">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertCircle size={20} className="text-orange-500" />
-            <h2 className="text-lg font-semibold text-gray-900">
-              Clients actifs sans abonnement ({clientsSansAbonnement.length})
-            </h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={20} className="text-orange-500" />
+              <h2 className="text-lg font-semibold text-gray-900">
+                Clients actifs sans abonnement ({clientsSansAbonnement.length})
+              </h2>
+            </div>
+            <button
+              onClick={handleExportClientsSansAbo}
+              className="px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-2 text-sm"
+            >
+              <Download size={14} />
+              Export Excel
+            </button>
           </div>
           <div className="bg-orange-50 rounded-lg border border-orange-200 p-4">
             <p className="text-sm text-orange-800 mb-4">
@@ -632,10 +683,25 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
               {clientsSansAbonnement.map(client => (
                 <div
                   key={client.id}
-                  className="bg-white px-3 py-2 rounded border border-orange-200 text-sm"
+                  className={`px-3 py-2 rounded border text-sm ${
+                    client.pennylane_customer_id
+                      ? 'bg-yellow-50 border-yellow-300'
+                      : 'bg-white border-orange-200'
+                  }`}
                 >
-                  <span className="font-medium">{client.nom}</span>
-                  <span className="text-gray-500 ml-2">({client.cabinet || '-'})</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{client.nom}</span>
+                    {client.pennylane_customer_id ? (
+                      <span className="text-xs px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded" title="Client lié à Pennylane mais sans abonnement">
+                        PL sans abo
+                      </span>
+                    ) : (
+                      <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded" title="Client non lié à Pennylane">
+                        Pas dans PL
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-gray-500 text-xs">{client.cabinet || '-'}</span>
                 </div>
               ))}
             </div>

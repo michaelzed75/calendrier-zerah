@@ -17,7 +17,8 @@ import {
   Settings,
   EyeOff,
   Eye,
-  Lightbulb
+  Lightbulb,
+  FileText
 } from 'lucide-react';
 import {
   runTest,
@@ -27,7 +28,8 @@ import {
   testConnection,
   exportTestResults,
   exportHistorique,
-  exportDonneesAnalysees
+  exportDonneesAnalysees,
+  exportAttestationWord
 } from '../../utils/testsComptables/index.js';
 import { supabase } from '../../supabaseClient.js';
 
@@ -59,6 +61,11 @@ export default function TestsComptablesPage({
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showIgnored, setShowIgnored] = useState(false);
+  const [comptesAchatsInput, setComptesAchatsInput] = useState('60701, 60702');
+  // Champs adresse client pour attestation Word (stockés en localStorage par client)
+  const [attestationNomSociete, setAttestationNomSociete] = useState('');
+  const [attestationAdresse, setAttestationAdresse] = useState('');
+  const [attestationCpVille, setAttestationCpVille] = useState('');
 
   // Données
   const [testsDisponibles, setTestsDisponibles] = useState(/** @type {import('../../types').TestDefinition[]} */ ([]));
@@ -68,6 +75,7 @@ export default function TestsComptablesPage({
   const [donneesAnalysees, setDonneesAnalysees] = useState(/** @type {Object|null} */ (null));
   const [fournisseursReleve, setFournisseursReleve] = useState(/** @type {Set<string>} */ (new Set()));
   const [fournisseursIgnores, setFournisseursIgnores] = useState(/** @type {Set<string>} */ (new Set()));
+  const [selectedFournisseursAttestation, setSelectedFournisseursAttestation] = useState(/** @type {Set<string>} */ (new Set()));
 
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
@@ -114,6 +122,22 @@ export default function TestsComptablesPage({
     if (selectedClientId) {
       loadHistoriqueEtDernierTest();
       loadFournisseursReleve();
+      // Charger les champs adresse depuis localStorage
+      const saved = localStorage.getItem(`attestation_addr_${selectedClientId}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setAttestationNomSociete(parsed.nomSociete || '');
+          setAttestationAdresse(parsed.adresse || '');
+          setAttestationCpVille(parsed.cpVille || '');
+        } catch { /* ignore */ }
+      } else {
+        // Pré-remplir avec le nom du client
+        const c = clients.find(cl => cl.id === selectedClientId);
+        setAttestationNomSociete(c?.nom || '');
+        setAttestationAdresse('');
+        setAttestationCpVille('');
+      }
     } else {
       setHistorique([]);
       setResultatsActuels([]);
@@ -121,6 +145,9 @@ export default function TestsComptablesPage({
       setDonneesAnalysees(null);
       setFournisseursReleve(new Set());
       setFournisseursIgnores(new Set());
+      setAttestationNomSociete('');
+      setAttestationAdresse('');
+      setAttestationCpVille('');
     }
   }, [selectedClientId]);
 
@@ -197,6 +224,12 @@ export default function TestsComptablesPage({
         // Charger les données analysées si disponibles
         if (dernierTest.donnees_analysees) {
           setDonneesAnalysees(dernierTest.donnees_analysees);
+          // Initialiser la sélection fournisseurs attestation
+          if (dernierTest.donnees_analysees.fournisseurs) {
+            setSelectedFournisseursAttestation(new Set(
+              dernierTest.donnees_analysees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+            ));
+          }
         }
       }
     }
@@ -243,13 +276,23 @@ export default function TestsComptablesPage({
         options: {
           fournisseursReleve: Array.from(fournisseursReleve),
           fournisseursIgnores: Array.from(fournisseursIgnores),
-          millesime: selectedMillesime
+          millesime: selectedMillesime,
+          // Options attestation achats : comptes à analyser
+          ...(selectedTestCode === 'attestation_achats' && comptesAchatsInput.trim() ? {
+            comptesAchats: comptesAchatsInput.split(',').map(c => c.trim()).filter(c => c.length > 0)
+          } : {})
         }
       });
 
       if (result.success) {
         setResultatsActuels(result.anomalies || []);
         setDonneesAnalysees(result.donneesAnalysees || null);
+        // Initialiser la sélection fournisseurs pour attestation avec tous les fournisseurs
+        if (result.donneesAnalysees?.fournisseurs) {
+          setSelectedFournisseursAttestation(new Set(
+            result.donneesAnalysees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+          ));
+        }
         if (result.executionId) {
           // Recharger l'exécution complète
           const { data } = await supabase
@@ -357,6 +400,36 @@ export default function TestsComptablesPage({
       client: selectedClient,
       test,
       millesime: selectedMillesime
+    });
+  }
+
+  /**
+   * Sauvegarde les champs adresse en localStorage
+   */
+  function saveAttestationAddr(field, value) {
+    const setters = { nomSociete: setAttestationNomSociete, adresse: setAttestationAdresse, cpVille: setAttestationCpVille };
+    setters[field](value);
+    if (selectedClientId) {
+      const saved = localStorage.getItem(`attestation_addr_${selectedClientId}`);
+      const current = saved ? JSON.parse(saved) : {};
+      current[field] = value;
+      localStorage.setItem(`attestation_addr_${selectedClientId}`, JSON.stringify(current));
+    }
+  }
+
+  /**
+   * Exporte l'attestation au format Word
+   */
+  async function handleExportAttestationWord() {
+    if (!donneesAnalysees || !selectedClient) return;
+    await exportAttestationWord({
+      donneesAnalysees,
+      client: selectedClient,
+      millesime: selectedMillesime,
+      nomSociete: attestationNomSociete || selectedClient.nom,
+      adresse: attestationAdresse,
+      cpVille: attestationCpVille,
+      selectedFournisseurs: selectedFournisseursAttestation.size > 0 ? selectedFournisseursAttestation : null
     });
   }
 
@@ -551,6 +624,53 @@ export default function TestsComptablesPage({
             <p className="text-sm text-slate-400">
               {testsDisponibles.find(t => t.code === selectedTestCode)?.description}
             </p>
+
+            {/* Options spécifiques au test Attestation achats */}
+            {selectedTestCode === 'attestation_achats' && (
+              <div className="mt-3 p-3 bg-slate-700/30 rounded-lg border border-slate-600">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Comptes d'achats à analyser
+                </label>
+                <input
+                  type="text"
+                  value={comptesAchatsInput}
+                  onChange={(e) => setComptesAchatsInput(e.target.value)}
+                  placeholder="Ex: 607, 601, 602, 606"
+                  className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Séparez les préfixes de comptes par des virgules. Ex: 60701 = Boissons, 60702 = Food
+                </p>
+
+                {/* Champs adresse pour l'attestation Word */}
+                <div className="mt-3 pt-3 border-t border-slate-600">
+                  <p className="text-xs text-slate-400 mb-2">Coordonnées pour l'attestation Word :</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={attestationNomSociete}
+                      onChange={(e) => saveAttestationAddr('nomSociete', e.target.value)}
+                      placeholder="Nom société"
+                      className="bg-slate-700 text-white rounded px-3 py-1.5 border border-slate-600 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={attestationAdresse}
+                      onChange={(e) => saveAttestationAddr('adresse', e.target.value)}
+                      placeholder="Adresse"
+                      className="bg-slate-700 text-white rounded px-3 py-1.5 border border-slate-600 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={attestationCpVille}
+                      onChange={(e) => saveAttestationAddr('cpVille', e.target.value)}
+                      placeholder="CP + Ville"
+                      className="bg-slate-700 text-white rounded px-3 py-1.5 border border-slate-600 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -570,6 +690,15 @@ export default function TestsComptablesPage({
             </h2>
 
             <div className="flex items-center gap-2">
+              {donneesAnalysees && donneesAnalysees.type === 'attestation_achats' && donneesAnalysees.parCategorie && (
+                <button
+                  onClick={handleExportAttestationWord}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-700 text-white rounded hover:bg-blue-600 transition text-sm"
+                >
+                  <FileText size={16} />
+                  Attestation Word
+                </button>
+              )}
               {donneesAnalysees && (
                 <button
                   onClick={handleExportDonneesAnalysees}
@@ -611,6 +740,30 @@ export default function TestsComptablesPage({
                   <div>
                     <span className="text-slate-400">Seuil similarité:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.seuilSimilarite}%</span>
+                  </div>
+                </div>
+              )}
+              {donneesAnalysees.type === 'attestation_achats' && (
+                <div className="grid grid-cols-5 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-400">Écritures analysées:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbEcrituresAnalysees}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Fournisseurs:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Total Débit:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.totalDebit?.toFixed(2)}€</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Total Crédit:</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.totalCredit?.toFixed(2)}€</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Total HT (solde):</span>
+                    <span className="ml-2 text-white font-medium">{donneesAnalysees.totalHT?.toFixed(2)}€</span>
                   </div>
                 </div>
               )}
@@ -687,8 +840,91 @@ export default function TestsComptablesPage({
                               </div>
                             </div>
                           )}
+                          {/* Attestation achats - tableau récapitulatif */}
+                          {resultat.type_anomalie === 'attestation_achats_resume' && resultat.donnees?.fournisseurs && (
+                            <div className="space-y-2 text-sm">
+                              {/* Boutons sélection */}
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-400">Sélection attestation Word :</span>
+                                <button
+                                  onClick={() => setSelectedFournisseursAttestation(new Set(
+                                    resultat.donnees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+                                  ))}
+                                  className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                                >
+                                  Tout cocher
+                                </button>
+                                <button
+                                  onClick={() => setSelectedFournisseursAttestation(new Set())}
+                                  className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                                >
+                                  Tout décocher
+                                </button>
+                                <span className="text-slate-500 ml-2">
+                                  {selectedFournisseursAttestation.size}/{resultat.donnees.fournisseurs.length} sélectionné(s)
+                                </span>
+                              </div>
+                              <div className="border border-slate-600 rounded">
+                                {/* En-tête colonnes */}
+                                <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-slate-700/50 text-xs text-slate-400 font-medium">
+                                  <div className="col-span-1 text-center">✓</div>
+                                  <div className="col-span-3">Fournisseur</div>
+                                  <div className="col-span-2 text-right">Nb écritures</div>
+                                  <div className="col-span-2 text-right">Débit</div>
+                                  <div className="col-span-2 text-right">Crédit</div>
+                                  <div className="col-span-2 text-right">Montant HT</div>
+                                </div>
+                                {/* Lignes fournisseurs */}
+                                <div className="max-h-[400px] overflow-y-auto">
+                                  {resultat.donnees.fournisseurs.map((f, idx) => {
+                                    const normKey = f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim();
+                                    const isChecked = selectedFournisseursAttestation.has(normKey);
+                                    return (
+                                      <div
+                                        key={idx}
+                                        onClick={() => {
+                                          setSelectedFournisseursAttestation(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(normKey)) next.delete(normKey);
+                                            else next.add(normKey);
+                                            return next;
+                                          });
+                                        }}
+                                        className={`grid grid-cols-12 gap-2 px-3 py-1.5 border-t border-slate-700 hover:bg-slate-700/30 cursor-pointer ${f.montantHT < 0 ? 'bg-red-500/5' : ''} ${!isChecked ? 'opacity-50' : ''}`}
+                                      >
+                                        <div className="col-span-1 flex justify-center items-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => {}}
+                                            className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-700 text-blue-500 cursor-pointer"
+                                          />
+                                        </div>
+                                        <div className="col-span-3 text-white truncate" title={f.nom}>{f.nom}</div>
+                                        <div className="col-span-2 text-right text-slate-400">{f.nbEcritures}</div>
+                                        <div className="col-span-2 text-right text-slate-400">{f.totalDebit?.toFixed(2)}€</div>
+                                        <div className="col-span-2 text-right text-slate-400">{f.totalCredit?.toFixed(2)}€</div>
+                                        <div className={`col-span-2 text-right font-medium ${f.montantHT < 0 ? 'text-red-400' : 'text-white'}`}>{f.montantHT?.toFixed(2)}€</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Total général */}
+                              {resultat.donnees.totalGeneral && (
+                                <div className="bg-slate-600/70 rounded px-3 py-2 flex justify-between items-center font-bold">
+                                  <span className="text-white">TOTAL GÉNÉRAL ({resultat.donnees.totalGeneral.nbFournisseurs} fournisseurs)</span>
+                                  <div className="flex gap-6">
+                                    <span className="text-slate-300">Débit: {resultat.donnees.totalGeneral.totalDebit?.toFixed(2)}€</span>
+                                    <span className="text-slate-300">Crédit: {resultat.donnees.totalGeneral.totalCredit?.toFixed(2)}€</span>
+                                    <span className="text-white">HT: {resultat.donnees.totalGeneral.totalHT?.toFixed(2)}€</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           {/* Liste fournisseurs - Relevé fournisseurs */}
-                          {resultat.donnees.fournisseurs && (
+                          {resultat.type_anomalie !== 'attestation_achats_resume' && resultat.donnees.fournisseurs && (
                             <div className="space-y-1 text-sm">
                               {/* En-tête */}
                               <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
