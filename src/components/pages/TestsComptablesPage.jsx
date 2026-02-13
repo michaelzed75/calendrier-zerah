@@ -61,7 +61,8 @@ export default function TestsComptablesPage({
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showIgnored, setShowIgnored] = useState(false);
-  const [comptesAchatsInput, setComptesAchatsInput] = useState('60701, 60702');
+  const [comptesBoissonsInput, setComptesBoissonsInput] = useState('60701');
+  const [comptesFoodInput, setComptesFoodInput] = useState('60702');
   // Champs adresse client pour attestation Word (stockés en localStorage par client)
   const [attestationNomSociete, setAttestationNomSociete] = useState('');
   const [attestationAdresse, setAttestationAdresse] = useState('');
@@ -277,9 +278,10 @@ export default function TestsComptablesPage({
           fournisseursReleve: Array.from(fournisseursReleve),
           fournisseursIgnores: Array.from(fournisseursIgnores),
           millesime: selectedMillesime,
-          // Options attestation achats : comptes à analyser
-          ...(selectedTestCode === 'attestation_achats' && comptesAchatsInput.trim() ? {
-            comptesAchats: comptesAchatsInput.split(',').map(c => c.trim()).filter(c => c.length > 0)
+          // Options attestation achats : comptes Boissons et Food séparés
+          ...(selectedTestCode === 'attestation_achats' ? {
+            comptesBoissons: comptesBoissonsInput.split(',').map(c => c.trim()).filter(c => c.length > 0),
+            comptesFood: comptesFoodInput.split(',').map(c => c.trim()).filter(c => c.length > 0)
           } : {})
         }
       });
@@ -628,18 +630,34 @@ export default function TestsComptablesPage({
             {/* Options spécifiques au test Attestation achats */}
             {selectedTestCode === 'attestation_achats' && (
               <div className="mt-3 p-3 bg-slate-700/30 rounded-lg border border-slate-600">
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Comptes d'achats à analyser
-                </label>
-                <input
-                  type="text"
-                  value={comptesAchatsInput}
-                  onChange={(e) => setComptesAchatsInput(e.target.value)}
-                  placeholder="Ex: 607, 601, 602, 606"
-                  className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-green-400 mb-1">
+                      🍷 Comptes Boissons
+                    </label>
+                    <input
+                      type="text"
+                      value={comptesBoissonsInput}
+                      onChange={(e) => setComptesBoissonsInput(e.target.value)}
+                      placeholder="Ex: 60701"
+                      className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-orange-400 mb-1">
+                      🍔 Comptes Food
+                    </label>
+                    <input
+                      type="text"
+                      value={comptesFoodInput}
+                      onChange={(e) => setComptesFoodInput(e.target.value)}
+                      placeholder="Ex: 60702"
+                      className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
+                    />
+                  </div>
+                </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Séparez les préfixes de comptes par des virgules. Ex: 60701 = Boissons, 60702 = Food
+                  Séparez les préfixes de comptes par des virgules. Ex: PPF = 60701 / 60702, Goodbeer = 6071 / 6072
                 </p>
 
                 {/* Champs adresse pour l'attestation Word */}

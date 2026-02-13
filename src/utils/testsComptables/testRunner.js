@@ -45,8 +45,14 @@ async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) 
       case 'fec':
         // Si des comptes spécifiques sont demandés, utiliser la version optimisée
         // qui filtre par ledger_account_id côté API (beaucoup plus rapide)
-        if (options.comptesAchats && options.comptesAchats.length > 0) {
-          data.fec = await getFECByAccounts(apiKey, millesime, options.comptesAchats);
+        // Supporte comptesBoissons/comptesFood (nouveau) ou comptesAchats (legacy)
+        const comptesAchats = [
+          ...(options.comptesBoissons || []),
+          ...(options.comptesFood || []),
+          ...(options.comptesAchats || [])
+        ];
+        if (comptesAchats.length > 0) {
+          data.fec = await getFECByAccounts(apiKey, millesime, comptesAchats);
         } else {
           data.fec = await getFEC(apiKey, millesime);
         }

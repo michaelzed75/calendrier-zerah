@@ -9,33 +9,11 @@
 
 /**
  * Comptes d'achats par défaut (restauration)
- * 60701 = Achats de marchandises — Boissons
- * 60702 = Achats de marchandises — Food
+ * Boissons : 60701 | Food : 60702
+ * Configurable par l'utilisateur via l'UI (deux listes séparées)
  */
-const COMPTES_ACHATS_DEFAUT = ['60701', '60702'];
-
-/**
- * Mapping compte → catégorie produit
- * Utilisé pour regrouper les achats par type dans l'attestation Word
- */
-const CATEGORIES_PAR_COMPTE = {
-  '60701': 'Boissons',
-  '60702': 'Food'
-};
-
-/**
- * Détermine la catégorie d'une écriture à partir de son numéro de compte
- * @param {string} compteNum - Numéro de compte (ex: '60701', '607010000')
- * @returns {string} Catégorie (Boissons, Food, ou Autres)
- */
-function getCategorieForEntry(compteNum) {
-  for (const [prefix, cat] of Object.entries(CATEGORIES_PAR_COMPTE)) {
-    if (compteNum.startsWith(prefix) || prefix.startsWith(compteNum)) {
-      return cat;
-    }
-  }
-  return 'Autres';
-}
+const COMPTES_BOISSONS_DEFAUT = ['60701'];
+const COMPTES_FOOD_DEFAUT = ['60702'];
 
 /**
  * Extrait le nom du fournisseur depuis les données FEC
@@ -45,7 +23,8 @@ function getCategorieForEntry(compteNum) {
  */
 function extractFournisseurName(ecriture) {
   // 1. CompAuxLib (compte auxiliaire) = source la plus fiable
-  if (ecriture.CompAuxLib && ecriture.CompAuxLib.trim()) {
+  // Ignorer les valeurs purement numériques (ex: "0") qui ne sont pas des noms de fournisseur
+  if (ecriture.CompAuxLib && ecriture.CompAuxLib.trim() && !/^\d+$/.test(ecriture.CompAuxLib.trim())) {
     return ecriture.CompAuxLib.trim();
   }
 
@@ -107,11 +86,30 @@ export const attestationAchats = {
    * @param {Object} params - Paramètres d'exécution
    * @param {import('../../../types').FECEntry[]} params.fec - Écritures FEC
    * @param {Object} [params.options] - Options du test
-   * @param {string[]} [params.options.comptesAchats] - Comptes d'achat à filtrer (ex: ['607', '601'])
+   * @param {string[]} [params.options.comptesBoissons] - Comptes Boissons (ex: ['60701'] ou ['6071'])
+   * @param {string[]} [params.options.comptesFood] - Comptes Food (ex: ['60702'] ou ['6072'])
    * @returns {Promise<{anomalies: import('../../../types').TestResultAnomalie[], donneesAnalysees: Object}>}
    */
   async execute({ fec, options = {} }) {
-    const comptesAchats = options.comptesAchats || COMPTES_ACHATS_DEFAUT;
+    // Mapping catégories configurable depuis l'UI
+    const comptesBoissons = options.comptesBoissons || COMPTES_BOISSONS_DEFAUT;
+    const comptesFood = options.comptesFood || COMPTES_FOOD_DEFAUT;
+    const comptesAchats = [...comptesBoissons, ...comptesFood];
+
+    /**
+     * Détermine la catégorie d'une écriture à partir de son numéro de compte
+     * @param {string} compteNum - Numéro de compte
+     * @returns {string} Catégorie (Boissons, Food, ou Autres)
+     */
+    function getCategorieForEntry(compteNum) {
+      for (const prefix of comptesBoissons) {
+        if (compteNum.startsWith(prefix) || prefix.startsWith(compteNum)) return 'Boissons';
+      }
+      for (const prefix of comptesFood) {
+        if (compteNum.startsWith(prefix) || prefix.startsWith(compteNum)) return 'Food';
+      }
+      return 'Autres';
+    }
 
     /** @type {import('../../../types').TestResultAnomalie[]} */
     const anomalies = [];
