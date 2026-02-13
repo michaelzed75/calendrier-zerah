@@ -99,14 +99,9 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       const filteredSelected = (prefs.selectedCollaborateurs || []).filter(id => visibleIds.includes(id));
 
       setCurrentUser(userCollaborateur?.id || prefs.currentUser);
-      setViewMode(prefs.viewMode || 'month');
+      setViewMode('month');
       setSelectedCollaborateurs(filteredSelected.length > 0 ? filteredSelected : visibleIds);
       setExpandedEquipes(prefs.expandedEquipes || {});
-      if (prefs.viewMode === 'day' && prefs.selectedDay) {
-        setSelectedDay(prefs.selectedDay);
-      } else if (prefs.viewMode === 'day') {
-        setSelectedDay(formatDateToYMD(new Date()));
-      }
     } else {
       setCurrentUser(userCollaborateur?.id || visibleCollaborateurs[0]?.id || 1);
       setSelectedCollaborateurs(visibleCollaborateurs.map(c => c.id));
