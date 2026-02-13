@@ -31,7 +31,7 @@ import { formatDateToYMD, parseDateString } from '../../utils/dateUtils';
  * @returns {JSX.Element}
  */
 function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur, impotsTaxes, suiviEcheances, setSuiviEcheances }) {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [filteredCollaborateurs, setFilteredCollaborateurs] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
