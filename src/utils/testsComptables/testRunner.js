@@ -6,7 +6,7 @@
  */
 
 import { supabase } from '../../supabaseClient.js';
-import { getFEC, getFECByAccounts, getSupplierInvoices, getBankTransactions, getSuppliers, getLedgerAccounts } from './pennylaneClientApi.js';
+import { getFEC, getFECByAccounts, getFECByAccountsToDate, getSupplierInvoices, getBankTransactions, getSuppliers, getLedgerAccounts } from './pennylaneClientApi.js';
 import { getTest } from './tests/index.js';
 
 /**
@@ -78,6 +78,14 @@ async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) 
       case 'suppliers':
         data.suppliers = await getSuppliers(apiKey);
         break;
+      case 'fecDettes': {
+        // État des dettes : récupération FEC avec date personnalisée et préfixes de comptes
+        const prefixesDettes = options.comptesPrefixes || ['164','421','428','455','53','401','467','468','512'];
+        const debutExercice = `${millesime}-01-01`;
+        const dateArrete = options.dateArrete || `${millesime}-12-31`;
+        data.fec = await getFECByAccountsToDate(apiKey, debutExercice, dateArrete, prefixesDettes);
+        break;
+      }
       case 'ledgerAccounts':
         data.ledgerAccounts = await getLedgerAccounts(apiKey);
         break;

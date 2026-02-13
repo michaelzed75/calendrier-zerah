@@ -11,6 +11,7 @@
 import { doublonsFournisseurs } from './doublonsFournisseurs.js';
 import { doubleSaisie } from './doubleSaisie.js';
 import { attestationAchats } from './attestationAchats.js';
+import { etatDettes } from './etatDettes.js';
 
 /**
  * Registre de tous les tests disponibles
@@ -19,7 +20,8 @@ import { attestationAchats } from './attestationAchats.js';
 export const testsRegistry = {
   doublons_fournisseurs: doublonsFournisseurs,
   double_saisie: doubleSaisie,
-  attestation_achats: attestationAchats
+  attestation_achats: attestationAchats,
+  etat_dettes: etatDettes
 };
 
 /**

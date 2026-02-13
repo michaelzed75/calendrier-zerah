@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ClipboardCheck,
   Play,
@@ -67,6 +67,11 @@ export default function TestsComptablesPage({
   const [attestationNomSociete, setAttestationNomSociete] = useState('');
   const [attestationAdresse, setAttestationAdresse] = useState('');
   const [attestationCpVille, setAttestationCpVille] = useState('');
+  // Champs pour le test État des Dettes
+  const [jourArreteInput, setJourArreteInput] = useState('31');
+  const [moisArreteInput, setMoisArreteInput] = useState('12');
+  const [comptesDetteInput, setComptesDetteInput] = useState('164,421,428,451,455,53,401,408,467,468,512');
+  const [seuilSignificationInput, setSeuilSignificationInput] = useState('0');
 
   // Données
   const [testsDisponibles, setTestsDisponibles] = useState(/** @type {import('../../types').TestDefinition[]} */ ([]));
@@ -282,6 +287,12 @@ export default function TestsComptablesPage({
           ...(selectedTestCode === 'attestation_achats' ? {
             comptesBoissons: comptesBoissonsInput.split(',').map(c => c.trim()).filter(c => c.length > 0),
             comptesFood: comptesFoodInput.split(',').map(c => c.trim()).filter(c => c.length > 0)
+          } : {}),
+          // Options état des dettes
+          ...(selectedTestCode === 'etat_dettes' ? {
+            dateArrete: `${selectedMillesime}-${String(moisArreteInput).padStart(2, '0')}-${String(jourArreteInput).padStart(2, '0')}`,
+            comptesPrefixes: comptesDetteInput.split(',').map(c => c.trim()).filter(c => c.length > 0),
+            seuilSignification: parseFloat(seuilSignificationInput) || 0
           } : {})
         }
       });
@@ -689,6 +700,69 @@ export default function TestsComptablesPage({
                 </div>
               </div>
             )}
+
+            {/* Options spécifiques au test État des Dettes */}
+            {selectedTestCode === 'etat_dettes' && (
+              <div className="mt-3 p-3 bg-slate-700/30 rounded-lg border border-slate-600">
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-blue-400 mb-1">
+                      Arrêté au (jj/mm/{selectedMillesime})
+                    </label>
+                    <div className="flex gap-1 items-center">
+                      <input
+                        type="number"
+                        value={jourArreteInput}
+                        onChange={(e) => setJourArreteInput(e.target.value)}
+                        placeholder="JJ"
+                        min="1"
+                        max="31"
+                        className="w-16 bg-slate-700 text-white rounded px-2 py-2 border border-slate-600 text-sm text-center"
+                      />
+                      <span className="text-slate-400">/</span>
+                      <input
+                        type="number"
+                        value={moisArreteInput}
+                        onChange={(e) => setMoisArreteInput(e.target.value)}
+                        placeholder="MM"
+                        min="1"
+                        max="12"
+                        className="w-16 bg-slate-700 text-white rounded px-2 py-2 border border-slate-600 text-sm text-center"
+                      />
+                      <span className="text-slate-400 text-sm">/ {selectedMillesime}</span>
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-yellow-400 mb-1">
+                      Préfixes de comptes
+                    </label>
+                    <input
+                      type="text"
+                      value={comptesDetteInput}
+                      onChange={(e) => setComptesDetteInput(e.target.value)}
+                      placeholder="164,421,428,451,455,53,401,408,467,468,512"
+                      className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-red-400 mb-1">
+                      Seuil de signification (€)
+                    </label>
+                    <input
+                      type="number"
+                      value={seuilSignificationInput}
+                      onChange={(e) => setSeuilSignificationInput(e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  La date est calculée avec le millésime sélectionné. Séparez les préfixes par des virgules. Seuls les comptes dont le solde dépasse le seuil seront retenus.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -812,6 +886,76 @@ export default function TestsComptablesPage({
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.toleranceJours}j</span>
                   </div>
                 </div>
+              )}
+              {donneesAnalysees.type === 'etat_dettes' && (
+                <>
+                  <div className="grid grid-cols-5 gap-4 text-sm mb-4">
+                    <div>
+                      <span className="text-slate-400">Arrêté au:</span>
+                      <span className="ml-2 text-white font-medium">{donneesAnalysees.dateArrete || 'Fin exercice'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Seuil:</span>
+                      <span className="ml-2 text-white font-medium">{donneesAnalysees.seuilSignification?.toFixed(0) || '0'} €</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Comptes analysés:</span>
+                      <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComptesAnalyses}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Comptes retenus:</span>
+                      <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComptesRetenus}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Total dettes:</span>
+                      <span className="ml-2 text-red-400 font-bold">{donneesAnalysees.totalDettes?.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span>
+                    </div>
+                  </div>
+
+                  {/* Tableau état des dettes par catégorie */}
+                  {donneesAnalysees.categories && donneesAnalysees.categories.length > 0 && (
+                    <div className="overflow-x-auto mt-2">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-slate-400 border-b border-slate-600">
+                            <th className="text-left py-2 px-3">Catégorie</th>
+                            <th className="text-left py-2 px-3">N° Compte</th>
+                            <th className="text-left py-2 px-3">Libellé</th>
+                            <th className="text-right py-2 px-3">Débit</th>
+                            <th className="text-right py-2 px-3">Crédit</th>
+                            <th className="text-right py-2 px-3">Solde</th>
+                            <th className="text-right py-2 px-3">Montant dette</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {donneesAnalysees.categories.map((cat, catIdx) => (
+                            <React.Fragment key={`cat-${catIdx}`}>
+                              {cat.comptes.map((c, cIdx) => (
+                                <tr key={`${catIdx}-${cIdx}`} className="border-b border-slate-700/50 hover:bg-slate-700/20">
+                                  <td className="py-1.5 px-3 text-slate-300">{cIdx === 0 ? cat.categorie : ''}</td>
+                                  <td className="py-1.5 px-3 text-slate-400 font-mono text-xs">{c.compteNum}</td>
+                                  <td className="py-1.5 px-3 text-white">{c.compteLib}</td>
+                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.totalDebit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.totalCredit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.solde?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-red-400 font-medium">{c.montantDette > 0 ? c.montantDette.toLocaleString('fr-FR', {minimumFractionDigits: 2}) : '-'}</td>
+                                </tr>
+                              ))}
+                              <tr key={`subtotal-${catIdx}`} className="border-b border-slate-600 bg-slate-700/30">
+                                <td colSpan={6} className="py-1.5 px-3 text-right text-slate-400 text-xs font-medium">Sous-total {cat.categorie}</td>
+                                <td className="py-1.5 px-3 text-right text-red-400 font-bold">{cat.sousTotal?.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</td>
+                              </tr>
+                            </React.Fragment>
+                          ))}
+                          <tr className="bg-slate-700/50 font-bold">
+                            <td colSpan={6} className="py-2 px-3 text-right text-white">TOTAL GÉNÉRAL</td>
+                            <td className="py-2 px-3 text-right text-red-300 text-base">{donneesAnalysees.totalDettes?.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

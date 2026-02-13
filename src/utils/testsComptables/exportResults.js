@@ -4,7 +4,7 @@
  * @file Utilitaires d'export Excel pour les résultats des tests comptables
  */
 
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import {
   Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun,
   AlignmentType, WidthType, BorderStyle, HeadingLevel, convertMillimetersToTwip
@@ -355,6 +355,379 @@ export function exportDonneesAnalysees({ donneesAnalysees, client, test, millesi
         { wch: 12 }   // Solde
       ];
       XLSX.utils.book_append_sheet(wb, wsVerification, 'Vérification FEC');
+    }
+  }
+
+  // === ÉTAT DES DETTES : Rapport professionnel stylé ===
+  if (donneesAnalysees.type === 'etat_dettes') {
+    // ─── Styles réutilisables ───
+    const BLEU_FONCE = '1F3864';
+    const BLEU_MOYEN = '2B4C7E';
+    const BLEU_CLAIR = 'D6E4F0';
+    const GRIS_CLAIR = 'F2F2F2';
+    const GRIS_SOUS_TOTAL = 'E8E8E8';
+    const BLANC = 'FFFFFF';
+
+    const borderThin = { style: 'thin', color: { rgb: '999999' } };
+    const borderMedium = { style: 'medium', color: { rgb: BLEU_MOYEN } };
+    const allBordersThin = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
+    const allBordersMedium = { top: borderMedium, bottom: borderMedium, left: borderMedium, right: borderMedium };
+
+    const fmtEuro = '#,##0.00" €"';
+
+    const styleTitre = {
+      font: { name: 'Calibri', sz: 18, bold: true, color: { rgb: BLANC } },
+      fill: { fgColor: { rgb: BLEU_FONCE } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: allBordersMedium
+    };
+    const styleSubTitre = {
+      font: { name: 'Calibri', sz: 11, color: { rgb: '333333' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      fill: { fgColor: { rgb: BLEU_CLAIR } },
+      border: allBordersThin
+    };
+    const styleHeader = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: BLANC } },
+      fill: { fgColor: { rgb: BLEU_MOYEN } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: allBordersThin
+    };
+    const styleHeaderLeft = { ...styleHeader, alignment: { horizontal: 'left', vertical: 'center' } };
+    const styleCategorie = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: BLEU_FONCE } },
+      fill: { fgColor: { rgb: BLEU_CLAIR } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: allBordersThin
+    };
+    const styleCategorieNum = {
+      ...styleCategorie,
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: fmtEuro
+    };
+    const styleCell = {
+      font: { name: 'Calibri', sz: 10 },
+      border: allBordersThin,
+      alignment: { vertical: 'center' }
+    };
+    const styleCellNum = {
+      ...styleCell,
+      alignment: { horizontal: 'right', vertical: 'center' },
+      numFmt: fmtEuro
+    };
+    const styleCellNumPlain = {
+      ...styleCell,
+      alignment: { horizontal: 'center', vertical: 'center' },
+      numFmt: '#,##0'
+    };
+    const styleSousTotal = {
+      font: { name: 'Calibri', sz: 10, bold: true, italic: true },
+      fill: { fgColor: { rgb: GRIS_SOUS_TOTAL } },
+      border: allBordersThin,
+      alignment: { horizontal: 'right', vertical: 'center' }
+    };
+    const styleSousTotalNum = {
+      ...styleSousTotal,
+      numFmt: fmtEuro
+    };
+    const styleTotalGen = {
+      font: { name: 'Calibri', sz: 12, bold: true, color: { rgb: BLANC } },
+      fill: { fgColor: { rgb: BLEU_FONCE } },
+      border: allBordersMedium,
+      alignment: { horizontal: 'right', vertical: 'center' }
+    };
+    const styleTotalGenNum = {
+      ...styleTotalGen,
+      numFmt: fmtEuro
+    };
+    const styleInfo = {
+      font: { name: 'Calibri', sz: 9, italic: true, color: { rgb: '666666' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    };
+
+    // ─── Helper : set cell with style ───
+    function setCell(ws, ref, value, style) {
+      const cell = { v: value, s: style };
+      if (typeof value === 'number') cell.t = 'n';
+      else cell.t = 's';
+      ws[ref] = cell;
+    }
+
+    // ─── Construire la feuille "Résumé" stylée ───
+    const wsResumeSt = {};
+    const dateArreteFormatted = donneesAnalysees.dateArrete
+      ? new Date(donneesAnalysees.dateArrete).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+      : `31 décembre ${millesime}`;
+
+    // Row 1 : Titre AUDIT UP fusionné
+    wsResumeSt['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },  // Titre
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },  // Sous-titre
+    ];
+    setCell(wsResumeSt, 'A1', 'AUDIT UP', {
+      font: { name: 'Calibri', sz: 20, bold: true, color: { rgb: BLANC } },
+      fill: { fgColor: { rgb: BLEU_FONCE } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: allBordersMedium
+    });
+    setCell(wsResumeSt, 'B1', '', { fill: { fgColor: { rgb: BLEU_FONCE } }, border: allBordersMedium });
+
+    // Row 2 : Sous-titre
+    setCell(wsResumeSt, 'A2', `État des Dettes Provisoires — ${client.nom} — Exercice ${millesime}`, {
+      font: { name: 'Calibri', sz: 12, bold: true, color: { rgb: BLEU_FONCE } },
+      fill: { fgColor: { rgb: BLEU_CLAIR } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: allBordersThin
+    });
+    setCell(wsResumeSt, 'B2', '', { fill: { fgColor: { rgb: BLEU_CLAIR } }, border: allBordersThin });
+
+    // Row 3 : vide
+    // Row 4-10 : Infos
+    const resumeInfos = [
+      ['Client', client.nom],
+      ['Exercice (Millésime)', String(millesime)],
+      ['Arrêté au', dateArreteFormatted],
+      ['Seuil de signification', `${(donneesAnalysees.seuilSignification || 0).toLocaleString('fr-FR')} €`],
+      ['Comptes analysés', String(donneesAnalysees.nbComptesAnalyses || 0)],
+      ['Comptes retenus', String(donneesAnalysees.nbComptesRetenus || 0)],
+      ['Total des dettes', (donneesAnalysees.totalDettes || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'],
+      ['Date de l\'export', formatDate(new Date())]
+    ];
+
+    const styleInfoLabel = {
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: BLEU_FONCE } },
+      fill: { fgColor: { rgb: GRIS_CLAIR } },
+      border: allBordersThin,
+      alignment: { vertical: 'center' }
+    };
+    const styleInfoValue = {
+      font: { name: 'Calibri', sz: 10 },
+      border: allBordersThin,
+      alignment: { vertical: 'center' }
+    };
+    const styleInfoValueBold = {
+      font: { name: 'Calibri', sz: 12, bold: true, color: { rgb: 'CC0000' } },
+      border: allBordersThin,
+      alignment: { vertical: 'center' }
+    };
+
+    resumeInfos.forEach(([label, value], i) => {
+      const row = i + 4; // Start at row 4 (0-indexed: 3)
+      setCell(wsResumeSt, `A${row}`, label, styleInfoLabel);
+      // Total des dettes en rouge gras
+      setCell(wsResumeSt, `B${row}`, value, i === 6 ? styleInfoValueBold : styleInfoValue);
+    });
+
+    wsResumeSt['!cols'] = [{ wch: 30 }, { wch: 45 }];
+    wsResumeSt['!rows'] = [{ hpt: 35 }, { hpt: 25 }];
+    wsResumeSt['!ref'] = `A1:B${3 + resumeInfos.length}`;
+    // Remplacer la feuille résumé
+    wb.Sheets['Résumé'] = wsResumeSt;
+
+    // ─── Feuille "État des Dettes" : rapport principal stylé ───
+    if (donneesAnalysees.categories && donneesAnalysees.categories.length > 0) {
+      const ws = {};
+      const merges = [];
+      let row = 1;
+      const nbCols = 7; // A-G
+      const lastCol = String.fromCharCode(64 + nbCols); // 'G'
+
+      // Row 1 : Grand titre fusionné
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: nbCols - 1 } });
+      setCell(ws, `A${row}`, 'ÉTAT DES DETTES PROVISOIRES', styleTitre);
+      for (let c = 1; c < nbCols; c++) {
+        setCell(ws, `${String.fromCharCode(65 + c)}${row}`, '', styleTitre);
+      }
+      row++;
+
+      // Row 2 : Sous-titre avec client + date
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: nbCols - 1 } });
+      setCell(ws, `A${row}`, `${client.nom} — Arrêté au ${dateArreteFormatted} — Exercice ${millesime}`, styleSubTitre);
+      for (let c = 1; c < nbCols; c++) {
+        setCell(ws, `${String.fromCharCode(65 + c)}${row}`, '', styleSubTitre);
+      }
+      row++;
+
+      // Row 3 : vide
+      row++;
+
+      // Row 4 : En-tête du tableau
+      const headers = ['Catégorie', 'N° Compte', 'Libellé', 'Nb écritures', 'Total Débit', 'Total Crédit', 'Montant dette'];
+      headers.forEach((h, i) => {
+        const style = i <= 2 ? styleHeaderLeft : styleHeader;
+        setCell(ws, `${String.fromCharCode(65 + i)}${row}`, h, style);
+      });
+      row++;
+
+      // Lignes de données par catégorie
+      for (const cat of donneesAnalysees.categories) {
+        // Ligne catégorie (fusionner A-C)
+        merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 2 } });
+        setCell(ws, `A${row}`, `▸ ${cat.label || cat.categorie}`, styleCategorie);
+        setCell(ws, `B${row}`, '', styleCategorie);
+        setCell(ws, `C${row}`, '', styleCategorie);
+        setCell(ws, `D${row}`, '', styleCategorie);
+        setCell(ws, `E${row}`, '', styleCategorie);
+        setCell(ws, `F${row}`, '', styleCategorie);
+        setCell(ws, `G${row}`, cat.sousTotal || 0, styleCategorieNum);
+        row++;
+
+        // Lignes de comptes
+        for (const c of cat.comptes) {
+          setCell(ws, `A${row}`, '', styleCell);
+          setCell(ws, `B${row}`, c.compteNum || '', styleCell);
+          setCell(ws, `C${row}`, c.compteLib || '', styleCell);
+          setCell(ws, `D${row}`, c.nbEcritures || 0, styleCellNumPlain);
+          setCell(ws, `E${row}`, c.totalDebit || 0, styleCellNum);
+          setCell(ws, `F${row}`, c.totalCredit || 0, styleCellNum);
+          setCell(ws, `G${row}`, c.montantDette || 0, styleCellNum);
+          row++;
+        }
+
+        // Ligne sous-total
+        merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 4 } });
+        setCell(ws, `A${row}`, `Sous-total ${cat.categorie}`, styleSousTotal);
+        setCell(ws, `B${row}`, '', styleSousTotal);
+        setCell(ws, `C${row}`, '', styleSousTotal);
+        setCell(ws, `D${row}`, '', styleSousTotal);
+        setCell(ws, `E${row}`, '', styleSousTotal);
+        setCell(ws, `F${row}`, '', styleSousTotal);
+        setCell(ws, `G${row}`, cat.sousTotal || 0, styleSousTotalNum);
+        row++;
+
+        // Ligne vide de séparation
+        row++;
+      }
+
+      // Ligne TOTAL GÉNÉRAL
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 5 } });
+      setCell(ws, `A${row}`, 'TOTAL GÉNÉRAL DES DETTES', styleTotalGen);
+      setCell(ws, `B${row}`, '', styleTotalGen);
+      setCell(ws, `C${row}`, '', styleTotalGen);
+      setCell(ws, `D${row}`, '', styleTotalGen);
+      setCell(ws, `E${row}`, '', styleTotalGen);
+      setCell(ws, `F${row}`, '', styleTotalGen);
+      setCell(ws, `G${row}`, donneesAnalysees.totalDettes || 0, styleTotalGenNum);
+      row++;
+
+      // Ligne vide
+      row++;
+
+      // Ligne info seuil
+      const seuilVal = donneesAnalysees.seuilSignification || 0;
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: nbCols - 1 } });
+      if (seuilVal > 0) {
+        setCell(ws, `A${row}`, `ℹ Seuil de signification appliqué : ${seuilVal.toLocaleString('fr-FR')} € — Seuls les comptes dont le solde en valeur absolue est ≥ ${seuilVal.toLocaleString('fr-FR')} € sont retenus dans cet état.`, styleInfo);
+      } else {
+        setCell(ws, `A${row}`, 'ℹ Aucun seuil de signification appliqué — Tous les comptes de dettes sont présentés.', styleInfo);
+      }
+      row++;
+
+      // Ligne info export
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: nbCols - 1 } });
+      setCell(ws, `A${row}`, `Document généré le ${formatDate(new Date())} — AUDIT UP`, styleInfo);
+      row++;
+
+      ws['!ref'] = `A1:${lastCol}${row}`;
+      ws['!merges'] = merges;
+      ws['!cols'] = [
+        { wch: 12 },  // A: Catégorie (vide pour lignes comptes)
+        { wch: 14 },  // B: N° Compte
+        { wch: 42 },  // C: Libellé
+        { wch: 13 },  // D: Nb écritures
+        { wch: 16 },  // E: Total Débit
+        { wch: 16 },  // F: Total Crédit
+        { wch: 18 }   // G: Montant dette
+      ];
+      ws['!rows'] = [{ hpt: 32 }, { hpt: 22 }]; // Titre + sous-titre height
+
+      // Print settings
+      ws['!printHeader'] = '1:4';
+
+      XLSX.utils.book_append_sheet(wb, ws, 'État des Dettes');
+    }
+
+    // ─── Feuille "Détail comptes" stylée ───
+    if (donneesAnalysees.detailComptes && donneesAnalysees.detailComptes.length > 0) {
+      const wsDet = {};
+      const mergesDet = [];
+      let rowD = 1;
+
+      // Titre
+      mergesDet.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } });
+      setCell(wsDet, `A${rowD}`, 'DÉTAIL DES COMPTES ANALYSÉS', {
+        ...styleTitre,
+        font: { ...styleTitre.font, sz: 14 }
+      });
+      for (let c = 1; c <= 9; c++) {
+        setCell(wsDet, `${String.fromCharCode(65 + c)}${rowD}`, '', {
+          ...styleTitre,
+          font: { ...styleTitre.font, sz: 14 }
+        });
+      }
+      rowD++;
+      rowD++; // ligne vide
+
+      // Headers
+      const detHeaders = ['#', 'Catégorie', 'N° Compte', 'Libellé', 'Nb écritures', 'Total Débit', 'Total Crédit', 'Solde', 'Montant dette', 'Retenu'];
+      detHeaders.forEach((h, i) => {
+        setCell(wsDet, `${String.fromCharCode(65 + i)}${rowD}`, h, styleHeader);
+      });
+      rowD++;
+
+      // Données
+      const styleRetenuOui = {
+        ...styleCell,
+        font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '006600' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
+      const styleRetenuNon = {
+        ...styleCell,
+        font: { name: 'Calibri', sz: 10, color: { rgb: '999999' } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
+
+      donneesAnalysees.detailComptes.forEach((c, i) => {
+        const isRetenu = c.retenu;
+        const rowStyle = isRetenu ? styleCell : {
+          ...styleCell,
+          font: { name: 'Calibri', sz: 10, color: { rgb: '999999' } }
+        };
+        const rowNumStyle = isRetenu ? styleCellNum : {
+          ...styleCellNum,
+          font: { name: 'Calibri', sz: 10, color: { rgb: '999999' } }
+        };
+
+        setCell(wsDet, `A${rowD}`, i + 1, { ...rowStyle, alignment: { horizontal: 'center', vertical: 'center' } });
+        setCell(wsDet, `B${rowD}`, c.categorie || '', rowStyle);
+        setCell(wsDet, `C${rowD}`, c.compteNum || '', rowStyle);
+        setCell(wsDet, `D${rowD}`, c.compteLib || '', rowStyle);
+        setCell(wsDet, `E${rowD}`, c.nbEcritures || 0, { ...rowStyle, alignment: { horizontal: 'center', vertical: 'center' }, numFmt: '#,##0' });
+        setCell(wsDet, `F${rowD}`, c.totalDebit || 0, rowNumStyle);
+        setCell(wsDet, `G${rowD}`, c.totalCredit || 0, rowNumStyle);
+        setCell(wsDet, `H${rowD}`, c.solde || 0, rowNumStyle);
+        setCell(wsDet, `I${rowD}`, c.montantDette || 0, rowNumStyle);
+        setCell(wsDet, `J${rowD}`, isRetenu ? '✓ Oui' : 'Non', isRetenu ? styleRetenuOui : styleRetenuNon);
+        rowD++;
+      });
+
+      wsDet['!ref'] = `A1:J${rowD}`;
+      wsDet['!merges'] = mergesDet;
+      wsDet['!cols'] = [
+        { wch: 5 },   // #
+        { wch: 25 },  // Catégorie
+        { wch: 14 },  // N° Compte
+        { wch: 40 },  // Libellé
+        { wch: 13 },  // Nb écritures
+        { wch: 16 },  // Total Débit
+        { wch: 16 },  // Total Crédit
+        { wch: 16 },  // Solde
+        { wch: 16 },  // Montant dette
+        { wch: 10 }   // Retenu
+      ];
+      wsDet['!rows'] = [{ hpt: 28 }];
+
+      XLSX.utils.book_append_sheet(wb, wsDet, 'Détail comptes');
     }
   }
 

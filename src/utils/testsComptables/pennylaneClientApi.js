@@ -410,6 +410,139 @@ export async function getFECByAccounts(apiKey, millesime, comptePrefixes) {
 }
 
 /**
+ * Récupère les écritures FEC filtrées par préfixes de comptes avec dates personnalisées
+ * Variante de getFECByAccounts qui accepte une plage de dates au lieu d'un millésime
+ * @param {string} apiKey - Clé API Pennylane du client
+ * @param {string} startDate - Date début au format 'YYYY-MM-DD'
+ * @param {string} endDate - Date fin au format 'YYYY-MM-DD'
+ * @param {string[]} comptePrefixes - Préfixes de comptes à récupérer (ex: ['164', '421', '512'])
+ * @returns {Promise<import('../../types').FECEntry[]>} Écritures comptables filtrées
+ */
+export async function getFECByAccountsToDate(apiKey, startDate, endDate, comptePrefixes) {
+  // 1. Récupérer les référentiels
+  /** @type {Map<number, {code: string, label: string}>} */
+  const journalsMap = new Map();
+  try {
+    const journals = await getAllPaginated(apiKey, '/journals', {});
+    for (const j of journals) {
+      journalsMap.set(j.id, { code: j.code || '', label: j.label || '' });
+    }
+  } catch (e) {
+    console.warn('Impossible de récupérer les journaux:', e.message);
+  }
+
+  // 2. Récupérer TOUS les comptes et trouver ceux qui matchent les préfixes
+  const allAccounts = await getAllPaginated(apiKey, '/ledger_accounts', {});
+
+  /** @type {Map<number, {number: string, label: string}>} */
+  const accountsMap = new Map();
+  /** @type {number[]} */
+  const targetAccountIds = [];
+
+  for (const acc of allAccounts) {
+    accountsMap.set(acc.id, { number: acc.number || '', label: acc.label || '' });
+    const accNum = acc.number || '';
+    const matches = comptePrefixes.some(prefix =>
+      accNum.startsWith(prefix) || prefix.startsWith(accNum)
+    );
+    if (matches && accNum.length > 0) {
+      targetAccountIds.push(acc.id);
+    }
+  }
+
+  console.log(`getFECByAccountsToDate: ${targetAccountIds.length} comptes trouvés pour préfixes [${comptePrefixes.join(', ')}] (${startDate} → ${endDate})`);
+
+  // 3. Récupérer les lignes d'écritures pour chaque compte cible
+  /** @type {Object[]} */
+  let allLines = [];
+
+  for (const accountId of targetAccountIds) {
+    const filter = JSON.stringify([
+      { field: 'date', operator: 'gteq', value: startDate },
+      { field: 'date', operator: 'lteq', value: endDate },
+      { field: 'ledger_account_id', operator: 'eq', value: accountId }
+    ]);
+
+    const lines = await getAllPaginated(apiKey, '/ledger_entry_lines', { filter });
+    allLines = allLines.concat(lines);
+  }
+
+  console.log(`getFECByAccountsToDate: ${allLines.length} lignes récupérées au total`);
+
+  // 4. Récupérer les en-têtes d'écritures pour enrichir
+  const entryIds = new Set(allLines.map(l => l.ledger_entry?.id).filter(Boolean));
+
+  /** @type {Map<number, {label: string, pieceNumber: string, journalId: number}>} */
+  const entriesMap = new Map();
+
+  if (entryIds.size > 0) {
+    const dateFilter = JSON.stringify([
+      { field: 'date', operator: 'gteq', value: startDate },
+      { field: 'date', operator: 'lteq', value: endDate }
+    ]);
+    const entries = await getAllPaginated(apiKey, '/ledger_entries', { filter: dateFilter });
+    for (const entry of entries) {
+      if (entryIds.has(entry.id)) {
+        entriesMap.set(entry.id, {
+          label: entry.label || '',
+          pieceNumber: entry.piece_number || '',
+          journalId: entry.journal_id || entry.journal?.id || 0
+        });
+      }
+    }
+  }
+
+  // 5. Mapper vers le format FEC
+  return allLines.map(line => {
+    const parentEntry = entriesMap.get(line.ledger_entry?.id) || { label: '', pieceNumber: '', journalId: 0 };
+    const journal = journalsMap.get(line.journal?.id || parentEntry.journalId) || { code: '', label: '' };
+    const account = accountsMap.get(line.ledger_account?.id) || null;
+    const accountNumber = line.ledger_account?.number || account?.number || '';
+    const accountLabel = account?.label || '';
+
+    const parentLabel = parentEntry.label || '';
+    const rawLabel = parentLabel || line.label || '';
+    let fournisseurName = '';
+    if (rawLabel) {
+      let cleaned = rawLabel;
+      cleaned = cleaned.replace(/\s*\(label généré\)\s*$/i, '').trim();
+      cleaned = cleaned.replace(/^(?:Facture|Avoir)\s+/i, '').trim();
+      const dashIdx = cleaned.lastIndexOf(' - ');
+      if (dashIdx > 0) {
+        cleaned = cleaned.substring(0, dashIdx).trim();
+      }
+      cleaned = cleaned.replace(/\s*n°\s*.+$/i, '').trim();
+      cleaned = cleaned.replace(/\s+\d{2}[\/\-]\d{4}\s*$/, '').trim();
+      cleaned = cleaned.replace(/\s+F\d{4,}\w*\s*$/, '').trim();
+      fournisseurName = cleaned || rawLabel;
+    }
+
+    const isAuxiliary = accountNumber.startsWith('401') || accountNumber.startsWith('411');
+
+    return {
+      JournalCode: journal.code,
+      JournalLib: journal.label,
+      EcritureNum: (line.ledger_entry?.id || line.id)?.toString() || '',
+      EcritureDate: line.date || '',
+      CompteNum: accountNumber,
+      CompteLib: accountLabel,
+      CompAuxNum: isAuxiliary ? accountNumber : '',
+      CompAuxLib: fournisseurName || (isAuxiliary ? accountLabel : ''),
+      PieceRef: parentEntry.pieceNumber,
+      PieceDate: line.date || '',
+      EcritureLib: line.label || parentLabel,
+      Debit: parseFloat(line.debit) || 0,
+      Credit: parseFloat(line.credit) || 0,
+      EcritureLet: '',
+      DateLet: '',
+      ValidDate: '',
+      Montantdevise: 0,
+      Idevise: 'EUR'
+    };
+  });
+}
+
+/**
  * Récupère les factures fournisseurs
  * @param {string} apiKey - Clé API Pennylane du client
  * @param {number} millesime - Année fiscale
