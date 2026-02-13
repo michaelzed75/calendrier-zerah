@@ -90,11 +90,26 @@ export const attestationAchats = {
    * @param {string[]} [params.options.comptesFood] - Comptes Food (ex: ['60702'] ou ['6072'])
    * @returns {Promise<{anomalies: import('../../../types').TestResultAnomalie[], donneesAnalysees: Object}>}
    */
-  async execute({ fec, options = {} }) {
+  async execute({ fec, fec401, options = {} }) {
     // Mapping catégories configurable depuis l'UI
     const comptesBoissons = options.comptesBoissons || COMPTES_BOISSONS_DEFAUT;
     const comptesFood = options.comptesFood || COMPTES_FOOD_DEFAUT;
     const comptesAchats = [...comptesBoissons, ...comptesFood];
+
+    // Workaround import Sage 2025 : index EcritureLib → nom fournisseur 401
+    // Permet de retrouver le vrai nom fournisseur quand les lignes d'achats n'ont pas de CompAuxLib
+    /** @type {Map<string, string>} */
+    const fournisseurParLibelle = new Map();
+    if (fec401 && fec401.length > 0) {
+      for (const ligne401 of fec401) {
+        if (ligne401.CompAuxLib && ligne401.CompAuxLib.trim() && !/^\d+$/.test(ligne401.CompAuxLib.trim())) {
+          const lib = (ligne401.EcritureLib || '').trim();
+          if (lib) {
+            fournisseurParLibelle.set(lib, ligne401.CompAuxLib.trim());
+          }
+        }
+      }
+    }
 
     /**
      * Détermine la catégorie d'une écriture à partir de son numéro de compte
@@ -129,7 +144,17 @@ export const attestationAchats = {
     const parFournisseur = new Map();
 
     for (const ecriture of ecrituresAchats) {
-      const nomBrut = extractFournisseurName(ecriture);
+      // Workaround Sage 2025 : si l'écriture n'a pas de CompAuxLib exploitable,
+      // chercher le nom fournisseur via l'index des lignes 401 (même EcritureLib)
+      let nomBrut;
+      const lib = (ecriture.EcritureLib || '').trim();
+      const nomDepuis401 = lib ? fournisseurParLibelle.get(lib) : null;
+      if (nomDepuis401) {
+        // On a trouvé le vrai nom fournisseur via la ligne 401
+        nomBrut = nomDepuis401;
+      } else {
+        nomBrut = extractFournisseurName(ecriture);
+      }
       const nomNorm = normalizeFournisseurName(nomBrut);
       const categorie = getCategorieForEntry(ecriture.CompteNum || '');
 

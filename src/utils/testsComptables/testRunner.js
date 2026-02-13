@@ -53,6 +53,17 @@ async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) 
         ];
         if (comptesAchats.length > 0) {
           data.fec = await getFECByAccounts(apiKey, millesime, comptesAchats);
+          // Workaround import Sage 2025 : récupérer les lignes 401 pour enrichir les noms fournisseurs
+          // Uniquement si des lignes d'achats n'ont pas de CompAuxLib exploitable
+          const hasOrphanLines = data.fec.some(e => !e.CompAuxLib || /^\d+$/.test(e.CompAuxLib.trim()));
+          if (hasOrphanLines) {
+            try {
+              data.fec401 = await getFECByAccounts(apiKey, millesime, ['401']);
+            } catch (err) {
+              console.warn('Impossible de récupérer les lignes 401 pour enrichissement:', err.message);
+              data.fec401 = [];
+            }
+          }
         } else {
           data.fec = await getFEC(apiKey, millesime);
         }

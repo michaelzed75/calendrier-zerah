@@ -55,6 +55,54 @@ Certains fournisseurs envoient un relevé mensuel récapitulatif. Dans ce cas, l
 
 ---
 
+### 3. Attestation achats fournisseurs
+
+**Code:** `attestation_achats`
+
+**Objectif:** Générer une attestation officielle des achats HT répartis par fournisseur et par catégorie (Boissons, Food), avec export Word au format AUDIT UP.
+
+**Fonctionnement:**
+- Récupère les écritures FEC filtrées par comptes d'achats (défaut: 60701, 60702)
+- Utilise `getFECByAccounts()` pour filtrer côté API par `ledger_account_id` (performant)
+- Regroupe les achats par fournisseur ET par catégorie
+- Calcule le montant HT net (Débit - Crédit) par fournisseur
+- Génère un tableau récapitulatif avec sous-totaux par catégorie
+
+**Catégories par défaut:**
+| Compte | Catégorie |
+|--------|-----------|
+| 60701  | Boissons  |
+| 60702  | Food      |
+| Autres | Autres    |
+
+**Options:**
+- `comptesAchats`: Préfixes de comptes à analyser (défaut: `['60701', '60702']`)
+
+**Exports disponibles:**
+1. **Excel "Données analysées"** (vert) : 3 feuilles
+   - Résumé : statistiques globales
+   - Attestation : récapitulatif par fournisseur (nom, nb écritures, débit, crédit, HT)
+   - Vérification FEC : détail de chaque écriture (JournalCode, CompteNum, Produits, Débit, Crédit, Solde)
+
+2. **Attestation Word** (bleu) : document .docx officiel
+   - En-tête AUDIT UP
+   - Coordonnées client (nom, adresse, CP+ville - stockés en localStorage)
+   - Date en français
+   - Tableau par catégorie avec sous-totaux et total général
+   - Signature M MICHAEL ZERAH, EXPERT-COMPTABLE
+   - **Sélection fournisseurs** : cochez/décochez les fournisseurs à inclure dans le document
+
+3. **Export anomalies** (gris) : anomalies détectées (fournisseurs à montant négatif)
+
+**Interface utilisateur:**
+- Champ "Comptes d'achats à analyser" (modifiable, défaut: 60701, 60702)
+- Champs adresse pour l'attestation Word (nom société, adresse, CP+ville)
+- Tableau récapitulatif avec checkboxes par fournisseur
+- Boutons "Tout cocher" / "Tout décocher" pour la sélection
+- Compteur fournisseurs sélectionnés
+
+---
+
 ## Architecture technique
 
 ### Fichiers principaux
@@ -68,7 +116,8 @@ src/utils/testsComptables/
 └── tests/
     ├── doublonsFournisseurs.js   # Test doublons comptes 401
     ├── doubleSaisie.js           # Test relevé fournisseurs
-    └── doubleSaisie.test.js      # Tests unitaires (14 tests)
+    ├── doubleSaisie.test.js      # Tests unitaires (14 tests)
+    └── attestationAchats.js     # Attestation achats fournisseurs + export Word
 ```
 
 ### Tables Supabase
@@ -147,6 +196,9 @@ Fournisseurs marqués "au relevé" par client.
 - `GET /ledger_accounts` - Plan comptable
 - `GET /supplier_invoices` - Factures fournisseurs
 - `GET /me` - Test de connexion
+- `GET /ledger_entry_lines` - Lignes d'écritures comptables (FEC) — filtrage par ledger_account_id et date
+- `GET /ledger_entries` - En-têtes d'écritures (labels, pièces)
+- `GET /journals` - Journaux comptables
 
 ### Proxy
 Les appels passent par `/api/pennylane-proxy` (fonction serverless Vercel) pour éviter les problèmes CORS.

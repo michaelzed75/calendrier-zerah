@@ -8,7 +8,7 @@
     "styling": "Tailwind CSS",
     "icons": "lucide-react",
     "backend": "Supabase (PostgreSQL + Auth + Edge Functions)",
-    "export": "xlsx (SheetJS) pour export Excel",
+    "export": "xlsx (SheetJS) pour export Excel, docx pour export Word",
     "deployment": "Vercel (auto-deploy depuis GitHub)",
     "api_externe": "Pennylane API (synchronisation clients)",
     "typing": "JSDoc + @ts-check (typage progressif sans TypeScript)",
@@ -139,7 +139,7 @@
         "modals_used": ["ClientModal", "MergeClientModal"]
       },
       "TestsComptablesPage.jsx": {
-        "lines": 1091,
+        "lines": 1269,
         "role": "Tests comptables automatisés",
         "typing": "@ts-check + JSDoc",
         "features": [
@@ -156,7 +156,11 @@
           "Panneau détail mois via DOM pur (zéro re-render React) pour la perf",
           "Liens PDF directs vers les factures Pennylane",
           "Suggestion de marquage au relevé (icône ampoule) si doublons classiques détectés",
-          "Bouton restaurer pour fournisseurs masqués"
+          "Bouton restaurer pour fournisseurs masqués",
+          "Attestation achats: comptes d'achats personnalisables (défaut 60701, 60702)",
+          "Attestation achats: catégories Boissons/Food avec export Word (.docx)",
+          "Attestation achats: sélection fournisseurs par coches pour l'attestation Word",
+          "Attestation achats: champs adresse client (localStorage) pour en-tête Word"
         ],
         "props": [
           "clients", "collaborateurs", "userCollaborateur",
@@ -330,6 +334,7 @@
             "exports": [
               "callPennylaneAPI(apiKey, endpoint, params) - Appel générique via proxy",
               "getFEC(apiKey, millesime) - Récupère le FEC d'un exercice",
+              "getFECByAccounts(apiKey, millesime, comptePrefixes) - Version optimisée du FEC filtré par comptes",
               "getSupplierInvoices(apiKey, millesime) - Factures fournisseurs",
               "getCustomerInvoices(apiKey, millesime) - Factures clients",
               "getBankTransactions(apiKey, millesime) - Opérations bancaires",
@@ -354,7 +359,8 @@
             "exports": [
               "exportTestResults({execution, resultats, client, test}) - Export anomalies en xlsx",
               "exportHistorique({executions, client}) - Export historique des exécutions",
-              "exportDonneesAnalysees({donneesAnalysees, client, test, millesime}) - Export données analysées (même sans anomalies)"
+              "exportDonneesAnalysees({donneesAnalysees, client, test, millesime}) - Export données analysées (même sans anomalies)",
+              "exportAttestationWord({donneesAnalysees, client, millesime, nomSociete, adresse, cpVille, selectedFournisseurs}) - Export attestation Word (.docx)"
             ]
           },
           "tests/": {
@@ -375,17 +381,15 @@
               "role": "Attestation achats fournisseurs liste limitative",
               "code": "attestation_achats",
               "nom_affiche": "Attestation achats fournisseurs",
-              "requiredData": "fec (API /ledger_entries)",
-              "description": "Génère attestation HT/TTC par fournisseur, groupé par catégorie (Boissons, Food, etc.) avec détail vérification FEC",
+              "requiredData": "fec (API /ledger_entry_lines via getFECByAccounts)",
+              "description": "Génère attestation HT par fournisseur, groupé par catégorie (Boissons, Food) avec détail vérification FEC et export Word",
               "options": {
-                "comptesAchats": "Préfixes comptes à filtrer (défaut: ['601','602','606','607'])",
-                "categories": "Catégories personnalisées [{id, nom, description}]",
-                "categoriesFournisseurs": "Mapping fournisseur -> catégorie",
-                "tauxTVA": "Taux TVA par catégorie (défaut: boissons 20%, food 10%, autres 20%)"
+                "comptesAchats": "Préfixes comptes à filtrer (défaut: ['60701','60702'])"
               },
               "output": {
-                "excel_attestation": "Feuille récapitulatif par fournisseur/catégorie avec sous-totaux HT et TTC",
-                "excel_verification": "Feuille détail FEC (toutes les écritures d'achats filtrées)"
+                "excel_attestation": "Feuille récapitulatif par fournisseur/catégorie avec sous-totaux HT",
+                "excel_verification": "Feuille détail FEC (Débit/Crédit/Solde/Produits)",
+                "word_attestation": "Document Word (.docx) AUDIT UP avec sélection fournisseurs"
               }
             },
             "index.js": "Registry des tests disponibles (testsRegistry, getTest, getAllTests, getTestsByCategory)"
@@ -991,7 +995,14 @@
       "Section fournisseurs ignorés pliable avec bouton Restaurer",
       "TestsComptablesPage: 632 → 1091 lignes",
       "Ajout tests: doubleSaisie.test.js (14 tests), calculsSalaires.test.js (54 tests)",
-      "Total tests: 158 → 226"
+      "Total tests: 158 → 226",
+      "Attestation achats fournisseurs: nouveau test avec export Word (.docx) AUDIT UP",
+      "Catégories Boissons/Food avec sous-totaux par catégorie",
+      "Sélection fournisseurs par coches pour filtrer l'attestation Word",
+      "API Pennylane: getFECByAccounts pour filtrage optimisé par ledger_account_id",
+      "Champs adresse client (localStorage) pour en-tête attestation Word",
+      "Retrait logique TVA/TTC (non nécessaire)",
+      "Dépendance docx ajoutée pour génération Word côté navigateur"
     ]
   }
 }
