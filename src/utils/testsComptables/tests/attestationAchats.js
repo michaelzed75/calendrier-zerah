@@ -45,8 +45,8 @@ function extractFournisseurName(ecriture) {
     if (dashIdx > 0) {
       cleaned = cleaned.substring(0, dashIdx).trim();
     }
-    // Supprimer les numéros de facture courants (n°XXXX)
-    cleaned = cleaned.replace(/\s*n°\s*\d+.*$/i, '').trim();
+    // Supprimer les numéros de facture courants (n°XXXX, n° VTExxxx, etc.)
+    cleaned = cleaned.replace(/\s*n°\s*.+$/i, '').trim();
     if (cleaned) return cleaned;
     return lib;
   }
@@ -110,6 +110,7 @@ export const attestationAchats = {
         }
       }
     }
+
 
     /**
      * Détermine la catégorie d'une écriture à partir de son numéro de compte
