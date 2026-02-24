@@ -453,6 +453,103 @@ describe('Niveaux de matching — weak match detection', () => {
   });
 });
 
+describe('Enrichissement emails par SIREN (logique sync-pennylane serveur)', () => {
+  /**
+   * Simule la logique d'enrichissement emails de sync-pennylane.js :
+   * - Indexe les clients par SIREN
+   * - Pour chaque customer v2, extrait emails[0] + reg_no (SIREN)
+   * - Match par SIREN et met à jour si email différent
+   */
+  function enrichEmails(clients, customers) {
+    const clientsBySiren = {};
+    for (const c of clients) {
+      if (c.siren) clientsBySiren[c.siren] = c;
+    }
+
+    const updates = [];
+    for (const customer of customers) {
+      const email = (customer.emails && customer.emails[0]) || null;
+      if (!email || !customer.reg_no) continue;
+      const client = clientsBySiren[customer.reg_no];
+      if (client && client.email !== email) {
+        updates.push({ clientId: client.id, email });
+      }
+    }
+    return updates;
+  }
+
+  it('devrait matcher par SIREN et retourner les emails à mettre à jour', () => {
+    const clients = [
+      { id: 1, siren: '111111111', email: null },
+      { id: 2, siren: '222222222', email: null },
+      { id: 3, siren: '333333333', email: 'old@test.fr' }
+    ];
+    const customers = [
+      { reg_no: '111111111', emails: ['contact@alpha.fr'] },
+      { reg_no: '222222222', emails: ['info@beta.fr'] },
+      { reg_no: '333333333', emails: ['new@gamma.fr'] }
+    ];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(3);
+    expect(updates[0]).toEqual({ clientId: 1, email: 'contact@alpha.fr' });
+    expect(updates[1]).toEqual({ clientId: 2, email: 'info@beta.fr' });
+    expect(updates[2]).toEqual({ clientId: 3, email: 'new@gamma.fr' });
+  });
+
+  it('devrait ignorer les customers sans SIREN (reg_no)', () => {
+    const clients = [{ id: 1, siren: '111111111', email: null }];
+    const customers = [
+      { reg_no: null, emails: ['nope@test.fr'] },
+      { reg_no: '', emails: ['nope2@test.fr'] },
+      { emails: ['nope3@test.fr'] }
+    ];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('devrait ignorer les customers sans email', () => {
+    const clients = [{ id: 1, siren: '111111111', email: null }];
+    const customers = [
+      { reg_no: '111111111', emails: [] },
+      { reg_no: '111111111', emails: null },
+      { reg_no: '111111111' }
+    ];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('devrait ne pas mettre à jour si email identique', () => {
+    const clients = [{ id: 1, siren: '111111111', email: 'same@test.fr' }];
+    const customers = [{ reg_no: '111111111', emails: ['same@test.fr'] }];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('devrait ignorer les customers dont le SIREN ne matche aucun client', () => {
+    const clients = [{ id: 1, siren: '111111111', email: null }];
+    const customers = [{ reg_no: '999999999', emails: ['unknown@test.fr'] }];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('devrait gérer les clients sans SIREN (non indexés)', () => {
+    const clients = [
+      { id: 1, siren: null, email: null },
+      { id: 2, siren: '222222222', email: null }
+    ];
+    const customers = [{ reg_no: '222222222', emails: ['contact@test.fr'] }];
+
+    const updates = enrichEmails(clients, customers);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].clientId).toBe(2);
+  });
+});
+
 describe('Extraction email depuis customer Pennylane', () => {
   it('devrait extraire le premier email de la liste emails[]', () => {
     const customer = {

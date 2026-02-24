@@ -119,18 +119,19 @@
         "modals_used": ["CollaborateurModal"]
       },
       "ClientsPage.jsx": {
-        "lines": 800,
+        "lines": 820,
         "role": "Gestion des clients — SIREN clé universelle",
         "typing": "@ts-check + JSDoc",
         "features": [
-          "Liste des clients avec filtres (cabinet, recherche)",
-          "Colonnes: Nom, Type (PM/PP badge), SIREN (monospace), NIC, Cabinet, Chef, Charges, API, Actif",
+          "Liste des clients avec filtres (cabinet, recherche par nom ou email)",
+          "Colonnes: Nom, Type (PM/PP badge), SIREN (monospace), Email (mailto:), NIC, Cabinet, Chef, Charges, API, Actif",
+          "Toutes les colonnes triables (clic entête avec flèche ▲/▼)",
           "Ajout/modification de client avec PM/PP + SIREN + siret_complement",
-          "Synchronisation avec Pennylane API (sync-pennylane.js)",
+          "Synchronisation Pennylane : firm/v1 (dossiers) + v2/customers (emails) côté serveur",
           "Fusion complète de clients (9 tables FK transférées, gestion doublons UNIQUE)",
           "Assignation chef de mission",
           "Configuration clé API Pennylane par client",
-          "Export Excel avec colonnes Type, SIREN, SIRET (NIC)"
+          "Export Excel avec colonnes Type, SIREN, SIRET (NIC), Email"
         ],
         "props": [
           "clients", "setClients", "charges", "setCharges",
@@ -467,7 +468,7 @@
               "Clients inactifs avec abonnements actifs",
               "Matches faibles (name_partial, name_clean_partial)"
             ],
-            "tests": "syncPreview.test.js (27 tests)"
+            "tests": "syncPreview.test.js (37 tests)"
           },
           "syncHonoraires.js": {
             "role": "Service de synchronisation honoraires (legacy, utilisé par commitSync)",
@@ -659,8 +660,8 @@
         "coverage": "normalizeString, removeJuridicalSuffixes, matchCustomerToClient, getFamilleFromLabel, filtrage customers sans abonnement, cas réels doublons cabinet"
       },
       "src/utils/honoraires/syncPreview.test.js": {
-        "tests": 27,
-        "coverage": "matchCustomerToClientWithLevel (UUID/SIREN/nom/nettoyé/partiel), séparation actifs/inactifs, detectInactiveWithSubscriptions, génération anomalies, détection matches faibles"
+        "tests": 37,
+        "coverage": "matchCustomerToClientWithLevel (UUID/SIREN/nom/nettoyé/partiel), séparation actifs/inactifs, detectInactiveWithSubscriptions, génération anomalies, détection matches faibles, extraction email depuis customer Pennylane"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -671,7 +672,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 365
+    "total_tests": 375
   },
   "database_tables": {
     "collaborateurs": {
@@ -712,6 +713,7 @@
         "code_pennylane": "TEXT (code dossier Pennylane ex: CHQOTMLUDT)",
         "code_silae": "TEXT (code client Silae pour mapping social)",
         "pennylane_client_api_key": "TEXT (clé API Pennylane du client pour tests comptables)",
+        "email": "TEXT (email contact synchronisé depuis Pennylane v2/customers)",
         "mode_facturation_social": "TEXT ('forfait' ou 'reel')"
       },
       "indexes": {
@@ -868,7 +870,8 @@
   },
     "migrations": {
       "006_type_personne_siret.sql": "Ajout colonnes type_personne (PM/PP) + siret_complement sur clients",
-      "007_unique_siren.sql": "UNIQUE INDEX sur (siren, COALESCE(siret_complement, '')) WHERE actif=true"
+      "007_unique_siren.sql": "UNIQUE INDEX sur (siren, COALESCE(siret_complement, '')) WHERE actif=true",
+      "011_client_email.sql": "Ajout colonne email TEXT sur clients (contact synchronisé depuis Pennylane v2/customers)"
     },
   "known_issues_and_todos": [
     "Pas de gestion d'erreurs centralisée",
@@ -887,16 +890,22 @@
       "target_api": "https://app.pennylane.com/api/external/v2"
     },
     "sync-pennylane.js": {
-      "role": "Sync dossiers Pennylane firm/v1/companies → table clients",
+      "role": "Sync dossiers Pennylane (firm/v1 + v2/customers emails) → table clients",
       "endpoint": "/api/sync-pennylane",
       "method": "POST",
       "env_vars": ["PENNYLANE_AUDIT_UP_TOKEN", "PENNYLANE_ZERAH_FIDUCIAIRE_TOKEN", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"],
+      "steps": [
+        "Étape 1: firm/v1/companies → sync dossiers (nom, SIREN, adresse, cabinet)",
+        "Étape 2: v2/customers → enrichissement emails (clés API depuis pennylane_api_keys, match par SIREN)"
+      ],
       "matching_strategy": [
         "1. Match par pennylane_id + cabinet (identifiant technique)",
         "2. Fallback par SIREN → TOUT client actif avec ce SIREN (pas seulement sans pennylane_id)",
         "3. Sinon insert nouveau client"
       ],
-      "anti_doublon": "Fallback SIREN élargi empêche la création de doublons même si le client existe via une autre source"
+      "email_enrichment": "Lit les clés API depuis pennylane_api_keys (Supabase), appelle v2/customers directement côté serveur, match par SIREN, met à jour email",
+      "anti_doublon": "Fallback SIREN élargi empêche la création de doublons même si le client existe via une autre source",
+      "soft_delete": "Désactivé — la désactivation des clients est gérée manuellement par l'utilisateur"
     }
   },
   "database_tables_honoraires": {
@@ -1160,7 +1169,16 @@
       "businessLogic.js: getAccessibleClients inclut les clients inactifs (aligné avec App.jsx)",
       "Ajout syncPreview.test.js (27 tests matching/anomalies/inactifs)",
       "Mise à jour businessLogic.test.js et scenarios.test.js pour clients inactifs",
-      "Total tests: 226 → 365"
+      "Total tests: 226 → 365",
+      "Migration 011: colonne email TEXT sur clients (synchronisé depuis Pennylane v2/customers)",
+      "Email Pennylane: sync-pennylane.js enrichit les emails côté serveur via API v2/customers + match SIREN",
+      "syncPreview.js + syncHonoraires.js: extraction emails[0] dans commitSync et updateData",
+      "ClientsPage: colonne Email (mailto:), toutes colonnes triables (clic entête ▲/▼), recherche par email",
+      "ClientModal: affichage email en lecture seule quand disponible",
+      "Export Excel: colonne Email ajoutée",
+      "Suppression soft delete automatique dans sync-pennylane.js (désactivation manuelle uniquement)",
+      "Ajout 4 tests extraction email dans syncPreview.test.js",
+      "Total tests: 365 → 375"
     ]
   }
 }
