@@ -5,7 +5,6 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
 import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
-import { getAllCustomers, setCompanyId } from '../../utils/honoraires/pennylaneCustomersApi.js';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -45,13 +44,12 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Peut synchroniser : admin ou chef de mission
   const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
 
-  // Synchronisation Pennylane via API serverless + enrichissement emails v2
+  // Synchronisation Pennylane (firm/v1 + enrichissement emails v2 côté serveur)
   const handleSyncPennylane = async () => {
     setSyncing(true);
     setSyncMessage(null);
 
     try {
-      // Étape 1 : Sync firm/v1 (dossiers, SIREN, adresse)
       const response = await fetch('/api/sync-pennylane', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -63,93 +61,15 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         throw new Error(result.error || 'Erreur de synchronisation');
       }
 
-      // Étape 2 : Enrichissement emails via API v2/customers
-      let emailsUpdated = 0;
-      let emailDebug = '';
-      try {
-        // Lire les clés API depuis pennylane_api_keys
-        const { data: apiKeys, error: apiKeysError } = await supabase
-          .from('pennylane_api_keys')
-          .select('cabinet, api_key, company_id');
-
-        if (apiKeysError) {
-          emailDebug = ` [Email: erreur lecture clés API: ${apiKeysError.message}]`;
-        } else if (!apiKeys || apiKeys.length === 0) {
-          emailDebug = ' [Email: aucune clé API configurée dans pennylane_api_keys]';
-        } else {
-          emailDebug = ` [Email: ${apiKeys.length} clé(s) API trouvée(s)]`;
-
-          // Charger les clients actuels (après sync firm)
-          const { data: currentClients } = await supabase
-            .from('clients')
-            .select('id, siren, email, actif')
-            .eq('actif', true);
-
-          // Index par SIREN pour matching rapide
-          const clientsBySiren = {};
-          for (const c of (currentClients || [])) {
-            if (c.siren) {
-              clientsBySiren[c.siren] = c;
-            }
-          }
-          const nbClientsSiren = Object.keys(clientsBySiren).length;
-
-          // Pour chaque cabinet, récupérer les customers v2
-          for (const keyRow of apiKeys) {
-            if (!keyRow.api_key) {
-              emailDebug += ` [${keyRow.cabinet}: pas de clé API]`;
-              continue;
-            }
-            try {
-              if (keyRow.company_id) {
-                setCompanyId(keyRow.company_id);
-              } else {
-                emailDebug += ` [${keyRow.cabinet}: pas de company_id]`;
-              }
-              const customers = await getAllCustomers(keyRow.api_key);
-              let withEmail = 0;
-              let withSiren = 0;
-              let matched = 0;
-
-              for (const customer of customers) {
-                const email = (customer.emails && customer.emails[0]) || null;
-                if (email) withEmail++;
-                if (customer.reg_no) withSiren++;
-                if (!email || !customer.reg_no) continue;
-
-                // Match par SIREN (clé universelle)
-                const client = clientsBySiren[customer.reg_no];
-                if (client) {
-                  matched++;
-                  if (client.email !== email) {
-                    await supabase
-                      .from('clients')
-                      .update({ email })
-                      .eq('id', client.id);
-                    emailsUpdated++;
-                  }
-                }
-              }
-              emailDebug += ` [${keyRow.cabinet}: ${customers.length} customers, ${withEmail} emails, ${withSiren} SIREN, ${matched} matchés, ${emailsUpdated} mis à jour]`;
-            } catch (err) {
-              emailDebug += ` [${keyRow.cabinet}: ERREUR ${err.message}]`;
-              console.error(`Erreur enrichissement emails ${keyRow.cabinet}:`, err.message);
-            }
-          }
-        }
-      } catch (err) {
-        emailDebug = ` [Email: ERREUR ${err.message}]`;
-        console.error('Erreur enrichissement emails:', err.message);
-      }
-
-      // Recharger les clients (avec emails enrichis)
+      // Recharger les clients
       const { data: newClients } = await supabase.from('clients').select('*').order('id');
       if (newClients) setClients(newClients);
 
-      const cabinetsMsg = result.cabinets_ok ? ` Cabinets : ${result.cabinets_ok.join(', ')}.` : '';
+      const emailMsg = result.emails_updated > 0 ? ` ${result.emails_updated} emails enrichis.` : '';
+      const debugMsg = result.email_debug ? ` [${result.email_debug}]` : '';
       setSyncMessage({
         type: 'success',
-        text: `Sync terminée ! ${result.total} dossiers. ${result.imported} nouveaux, ${result.updated} mis à jour. ${emailsUpdated} emails enrichis.${cabinetsMsg}${emailDebug}`
+        text: `Sync terminée ! ${result.total} dossiers. ${result.imported} nouveaux, ${result.updated} mis à jour.${emailMsg}${debugMsg}`
       });
     } catch (err) {
       console.error('Erreur sync:', err);

@@ -16,10 +16,11 @@ const CABINETS = {
   }
 };
 
-const API_BASE = 'https://app.pennylane.com/api/external/firm/v1';
+const FIRM_API_BASE = 'https://app.pennylane.com/api/external/firm/v1';
+const V2_API_BASE = 'https://app.pennylane.com/api/external/v2';
 
 async function apiCall(endpoint, token) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${FIRM_API_BASE}${endpoint}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json'
@@ -32,6 +33,53 @@ async function apiCall(endpoint, token) {
   }
 
   return response.json();
+}
+
+/**
+ * Appel API Pennylane v2 (customers) — côté serveur, pas besoin de proxy
+ */
+async function v2ApiCall(endpoint, apiKey, companyId) {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Accept': 'application/json'
+  };
+  if (companyId) {
+    headers['X-Company-Id'] = companyId;
+  }
+
+  const response = await fetch(`${V2_API_BASE}${endpoint}`, { headers });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`V2 API Error ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Récupère tous les customers v2 (paginés par curseur)
+ */
+async function getAllCustomersV2(apiKey, companyId) {
+  let allCustomers = [];
+  let cursor = null;
+
+  while (true) {
+    let endpoint = '/customers?per_page=100';
+    if (cursor) {
+      endpoint += `&cursor=${cursor}`;
+    }
+    const result = await v2ApiCall(endpoint, apiKey, companyId);
+    const items = result.items || [];
+    allCustomers = allCustomers.concat(items);
+
+    if (result.has_more === false || !result.next_cursor) {
+      break;
+    }
+    cursor = result.next_cursor;
+  }
+
+  return allCustomers;
 }
 
 async function getAllCompanies(cabinetKey) {
@@ -69,14 +117,14 @@ export default async function handler(req, res) {
 
   try {
     const allDossiers = [];
-    const syncedCabinets = []; // Cabinets qui ont réussi le sync
+    const syncedCabinets = [];
 
-    // Recuperer les dossiers des deux cabinets
+    // === ÉTAPE 1 : Sync firm/v1 (dossiers, SIREN, adresse) ===
     for (const [key, cabinet] of Object.entries(CABINETS)) {
       try {
         const companies = await getAllCompanies(key);
         companies.forEach(c => {
-          const dossier = {
+          allDossiers.push({
             nom: c.name,
             code_pennylane: c.external_id || c.client_code || String(c.id),
             pennylane_id: c.id,
@@ -86,23 +134,14 @@ export default async function handler(req, res) {
             ville: c.city || null,
             code_postal: c.postal_code || null,
             actif: true
-          };
-          // Capturer l'email si disponible dans l'API firm
-          const firmEmail = c.email || (c.emails && c.emails[0]) || null;
-          if (firmEmail) {
-            dossier.email = firmEmail;
-          }
-          allDossiers.push(dossier);
+          });
         });
-        // Ce cabinet a réussi → on peut désactiver ses clients manquants
         syncedCabinets.push(cabinet.name);
       } catch (err) {
-        // Cabinet en erreur → on ne désactivera PAS ses clients
-        console.error(`Erreur sync ${cabinet.name}:`, err.message);
+        console.error(`Erreur sync firm ${cabinet.name}:`, err.message);
       }
     }
 
-    // Si aucun dossier recupere, ne pas desactiver
     if (allDossiers.length === 0) {
       return res.status(500).json({
         error: 'Aucun dossier recupere depuis Pennylane. Verifiez les tokens API.'
@@ -113,10 +152,8 @@ export default async function handler(req, res) {
     let updated = 0;
 
     // Importer/mettre a jour les dossiers
-    // Stratégie : match par pennylane_id+cabinet → fallback par SIREN → sinon insert
     for (const dossier of allDossiers) {
       try {
-        // 1. Match par pennylane_id + cabinet (identifiant technique Pennylane)
         const { data: existing } = await supabase
           .from('clients')
           .select('id')
@@ -128,9 +165,6 @@ export default async function handler(req, res) {
           await supabase.from('clients').update(dossier).eq('id', existing.id);
           updated++;
         } else if (dossier.siren) {
-          // 2. Fallback : match par SIREN (CLÉ UNIVERSELLE)
-          // Chercher TOUT client actif avec ce SIREN (pas seulement sans pennylane_id)
-          // Cela évite de créer un doublon quand le même client existe déjà via une autre source
           const { data: existingBySiren } = await supabase
             .from('clients')
             .select('id')
@@ -140,7 +174,6 @@ export default async function handler(req, res) {
             .single();
 
           if (existingBySiren) {
-            // Mettre à jour sans écraser le pennylane_id existant s'il y en a déjà un différent
             await supabase.from('clients').update(dossier).eq('id', existingBySiren.id);
             updated++;
           } else {
@@ -156,14 +189,86 @@ export default async function handler(req, res) {
       }
     }
 
-    // Pas de soft delete automatique : la désactivation est gérée manuellement par l'utilisateur
+    // === ÉTAPE 2 : Enrichissement emails via API v2/customers (côté serveur) ===
+    let emailsUpdated = 0;
+    let emailDebug = '';
+
+    try {
+      // Lire les clés API v2 depuis pennylane_api_keys
+      const { data: apiKeys, error: apiKeysError } = await supabase
+        .from('pennylane_api_keys')
+        .select('cabinet, api_key, company_id');
+
+      if (apiKeysError) {
+        emailDebug = `erreur lecture cles: ${apiKeysError.message}`;
+      } else if (!apiKeys || apiKeys.length === 0) {
+        emailDebug = 'aucune cle API dans pennylane_api_keys';
+      } else {
+        // Charger les clients actifs avec SIREN
+        const { data: currentClients } = await supabase
+          .from('clients')
+          .select('id, siren, email')
+          .eq('actif', true)
+          .not('siren', 'is', null);
+
+        const clientsBySiren = {};
+        for (const c of (currentClients || [])) {
+          if (c.siren) {
+            clientsBySiren[c.siren] = c;
+          }
+        }
+
+        const debugParts = [];
+
+        for (const keyRow of apiKeys) {
+          if (!keyRow.api_key) {
+            debugParts.push(`${keyRow.cabinet}: pas de cle`);
+            continue;
+          }
+          try {
+            const customers = await getAllCustomersV2(keyRow.api_key, keyRow.company_id);
+            let withEmail = 0;
+            let withSiren = 0;
+            let matched = 0;
+
+            for (const customer of customers) {
+              const email = (customer.emails && customer.emails[0]) || null;
+              if (email) withEmail++;
+              if (customer.reg_no) withSiren++;
+              if (!email || !customer.reg_no) continue;
+
+              const client = clientsBySiren[customer.reg_no];
+              if (client) {
+                matched++;
+                if (client.email !== email) {
+                  await supabase
+                    .from('clients')
+                    .update({ email })
+                    .eq('id', client.id);
+                  emailsUpdated++;
+                }
+              }
+            }
+            debugParts.push(`${keyRow.cabinet}: ${customers.length} customers, ${withEmail} emails, ${withSiren} SIREN, ${matched} matches, ${emailsUpdated} maj`);
+          } catch (err) {
+            debugParts.push(`${keyRow.cabinet}: ERREUR ${err.message}`);
+            console.error(`Erreur v2 ${keyRow.cabinet}:`, err.message);
+          }
+        }
+        emailDebug = debugParts.join(' | ');
+      }
+    } catch (err) {
+      emailDebug = `ERREUR: ${err.message}`;
+      console.error('Erreur enrichissement emails:', err.message);
+    }
 
     return res.status(200).json({
       success: true,
       imported,
       updated,
-      deactivated: 0,
       total: allDossiers.length,
+      emails_updated: emailsUpdated,
+      email_debug: emailDebug,
       cabinets_ok: syncedCabinets
     });
 
