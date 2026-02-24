@@ -139,12 +139,23 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       // 8. tests_comptables : supprimer (données éphémères, cascade vers resultats)
       await supabase.from('tests_comptables_executions').delete().eq('client_id', sourceId);
 
-      // 9. Transférer temps_reels
-      const { error: e9 } = await supabase
+      // 9. temps_reels : UNIQUE(collaborateur_id, client_id, date, cabinet)
+      // Transfert un par un pour gérer les doublons (même collab/date sur les 2 clients)
+      const { data: sourceTemps } = await supabase
         .from('temps_reels')
-        .update({ client_id: targetId })
+        .select('*')
         .eq('client_id', sourceId);
-      if (e9) throw e9;
+
+      for (const t of (sourceTemps || [])) {
+        const { error: tErr } = await supabase
+          .from('temps_reels')
+          .update({ client_id: targetId })
+          .eq('id', t.id);
+        if (tErr) {
+          // Doublon UNIQUE → supprimer (même saisie déjà sur le target)
+          await supabase.from('temps_reels').delete().eq('id', t.id);
+        }
+      }
 
       // 10. Supprimer le client source
       const { error: deleteError } = await supabase

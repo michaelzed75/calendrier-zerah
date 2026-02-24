@@ -122,16 +122,18 @@ export default async function handler(req, res) {
           updated++;
         } else if (dossier.siren) {
           // 2. Fallback : match par SIREN (CLÉ UNIVERSELLE)
-          // Un client peut exister sans pennylane_id (créé manuellement depuis l'app)
+          // Chercher TOUT client actif avec ce SIREN (pas seulement sans pennylane_id)
+          // Cela évite de créer un doublon quand le même client existe déjà via une autre source
           const { data: existingBySiren } = await supabase
             .from('clients')
             .select('id')
             .eq('siren', dossier.siren)
-            .is('pennylane_id', null)
+            .eq('actif', true)
             .limit(1)
             .single();
 
           if (existingBySiren) {
+            // Mettre à jour sans écraser le pennylane_id existant s'il y en a déjà un différent
             await supabase.from('clients').update(dossier).eq('id', existingBySiren.id);
             updated++;
           } else {
