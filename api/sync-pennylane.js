@@ -106,8 +106,10 @@ export default async function handler(req, res) {
     let deactivated = 0;
 
     // Importer/mettre a jour les dossiers
+    // Stratégie : match par pennylane_id+cabinet → fallback par SIREN → sinon insert
     for (const dossier of allDossiers) {
       try {
+        // 1. Match par pennylane_id + cabinet (identifiant technique Pennylane)
         const { data: existing } = await supabase
           .from('clients')
           .select('id')
@@ -118,6 +120,24 @@ export default async function handler(req, res) {
         if (existing) {
           await supabase.from('clients').update(dossier).eq('id', existing.id);
           updated++;
+        } else if (dossier.siren) {
+          // 2. Fallback : match par SIREN (CLÉ UNIVERSELLE)
+          // Un client peut exister sans pennylane_id (créé manuellement depuis l'app)
+          const { data: existingBySiren } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('siren', dossier.siren)
+            .is('pennylane_id', null)
+            .limit(1)
+            .single();
+
+          if (existingBySiren) {
+            await supabase.from('clients').update(dossier).eq('id', existingBySiren.id);
+            updated++;
+          } else {
+            await supabase.from('clients').insert([dossier]);
+            imported++;
+          }
         } else {
           await supabase.from('clients').insert([dossier]);
           imported++;

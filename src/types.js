@@ -36,10 +36,15 @@
  * @property {number} id - Identifiant unique
  * @property {string} nom - Nom du client
  * @property {boolean} actif - Si le client est actif
+ * @property {'PM'|'PP'|null} type_personne - PM = Personne Morale, PP = Personne Physique
+ * @property {string|null} siren - Numéro SIREN (9 chiffres). Clé universelle de matching
+ * @property {string|null} siret_complement - NIC : 5 chiffres complémentaires du SIRET (facultatif)
  * @property {Cabinet|null} cabinet - Cabinet (zerah ou audit_up)
  * @property {number|null} chef_mission_id - ID du chef de mission assigné
  * @property {string|null} pennylane_id - ID Pennylane pour la synchronisation
+ * @property {string|null} pennylane_customer_id - UUID Pennylane du customer
  * @property {string|null} code_pennylane - Code Pennylane
+ * @property {string|null} code_silae - Code dossier Silae
  * @property {string|null} pennylane_client_api_key - Clé API Pennylane du client
  */
 

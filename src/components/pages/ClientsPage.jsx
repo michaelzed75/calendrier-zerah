@@ -127,11 +127,18 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     }
   };
 
-  const handleAddClient = async (nom, codePennylane) => {
+  const handleAddClient = async (fields) => {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .insert([{ nom, code_pennylane: codePennylane, actif: true }])
+        .insert([{
+          nom: fields.nom,
+          type_personne: fields.type_personne,
+          siren: fields.siren,
+          siret_complement: fields.siret_complement,
+          code_pennylane: fields.code_pennylane,
+          actif: true
+        }])
         .select();
 
       if (error) throw error;
@@ -139,26 +146,32 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       setClients(prev => [...prev, data[0]]);
     } catch (err) {
       console.error('Erreur ajout client:', err);
-      alert('Erreur lors de l\'ajout');
+      alert('Erreur lors de l\'ajout : ' + (err.message || err));
     }
     setShowAddModal(false);
   };
 
-  const handleUpdateClient = async (id, nom, codePennylane) => {
+  const handleUpdateClient = async (id, fields) => {
     try {
       const { error } = await supabase
         .from('clients')
-        .update({ nom, code_pennylane: codePennylane })
+        .update({
+          nom: fields.nom,
+          type_personne: fields.type_personne,
+          siren: fields.siren,
+          siret_complement: fields.siret_complement,
+          code_pennylane: fields.code_pennylane,
+        })
         .eq('id', id);
 
       if (error) throw error;
 
       setClients(prev => prev.map(c =>
-        c.id === id ? { ...c, nom, code_pennylane: codePennylane } : c
+        c.id === id ? { ...c, ...fields } : c
       ));
     } catch (err) {
       console.error('Erreur mise à jour client:', err);
-      alert('Erreur lors de la mise à jour');
+      alert('Erreur lors de la mise à jour : ' + (err.message || err));
     }
     setEditingClient(null);
   };
@@ -376,11 +389,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     const dataToExport = filteredClients.map(client => ({
       'ID': client.id,
       'Nom': client.nom,
+      'Type': client.type_personne || '',
+      'SIREN': client.siren || '',
+      'SIRET (NIC)': client.siret_complement || '',
       'Cabinet': client.cabinet || '',
       'Pennylane Customer ID': client.pennylane_customer_id || '',
       'Code Pennylane': client.code_pennylane || '',
       'Chef de mission': getChefName(client.chef_mission_id) || 'Non assigné',
-      'SIREN': client.siren || '',
       'Charges': getChargesCount(client.id),
       'Actif': client.actif ? 'Oui' : 'Non'
     }));
@@ -393,11 +408,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     ws['!cols'] = [
       { wch: 8 },  // ID
       { wch: 30 }, // Nom
+      { wch: 5 },  // Type
+      { wch: 12 }, // SIREN
+      { wch: 8 },  // SIRET NIC
       { wch: 15 }, // Cabinet
-      { wch: 18 }, // Pennylane Customer ID
+      { wch: 38 }, // Pennylane Customer ID
       { wch: 15 }, // Code Pennylane
       { wch: 20 }, // Chef
-      { wch: 12 }, // SIREN
       { wch: 8 },  // Charges
       { wch: 6 }   // Actif
     ];
@@ -478,6 +495,8 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             <thead>
               <tr className="bg-slate-700 text-slate-300">
                 <th className="text-left py-3 px-4">Nom</th>
+                <th className="text-center py-3 px-2">Type</th>
+                <th className="text-left py-3 px-4">SIREN</th>
                 <th className="text-left py-3 px-4">Cabinet</th>
                 <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
@@ -495,6 +514,29 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       <span className="text-white font-medium">{client.nom}</span>
                       {client.code_pennylane && (
                         <div className="text-slate-500 text-xs">{client.code_pennylane}</div>
+                      )}
+                    </td>
+                    <td className="py-3 px-2 text-center">
+                      {client.type_personne ? (
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          client.type_personne === 'PM'
+                            ? 'bg-blue-600/30 text-blue-300'
+                            : 'bg-purple-600/30 text-purple-300'
+                        }`}>
+                          {client.type_personne}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {client.siren ? (
+                        <span className="text-slate-300 text-sm font-mono">{client.siren}</span>
+                      ) : (
+                        <span className="text-slate-500 text-sm">-</span>
+                      )}
+                      {client.siret_complement && (
+                        <div className="text-slate-500 text-xs font-mono">NIC {client.siret_complement}</div>
                       )}
                     </td>
                     <td className="py-3 px-4">
@@ -592,7 +634,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         </div>
 
         {showAddModal && (
-          <ClientModal 
+          <ClientModal
             onSave={handleAddClient}
             onClose={() => setShowAddModal(false)}
           />
@@ -601,7 +643,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         {editingClient && (
           <ClientModal
             client={editingClient}
-            onSave={(nom, code, tva) => handleUpdateClient(editingClient.id, nom, code, tva)}
+            onSave={(fields) => handleUpdateClient(editingClient.id, fields)}
             onClose={() => setEditingClient(null)}
           />
         )}
