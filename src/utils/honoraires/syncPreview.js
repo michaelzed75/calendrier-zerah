@@ -148,7 +148,18 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
     subscriptions.map(sub => sub.customer?.id).filter(Boolean)
   );
 
-  // ---- 3. Matching customers → clients locaux ----
+  // ---- 3. Pré-détecter les customers qui matchent un client INACTIF ----
+  // (pour ne pas les compter comme "non matchés" — ils seront reportés dans les anomalies)
+  const inactiveCustomerIds = new Set();
+  for (const customer of customers) {
+    if (!customerIdsWithSub.has(customer.id)) continue;
+    const inactiveMatch = matchCustomerToClientWithLevel(customer, inactiveClients);
+    if (inactiveMatch) {
+      inactiveCustomerIds.add(customer.id);
+    }
+  }
+
+  // ---- 4. Matching customers → clients locaux (actifs uniquement) ----
   report('matching', 'Matching des customers...');
   const customerToClientMap = new Map(); // customer.id → { client, level }
   const clientsMatches = [];
@@ -175,7 +186,8 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
         levelLabel: MATCH_LEVEL_LABELS[matchResult.level] || matchResult.level,
         cabinetChange
       });
-    } else {
+    } else if (!inactiveCustomerIds.has(customer.id)) {
+      // N'ajouter aux "non matchés" que si le customer ne correspond pas à un client inactif
       clientsNew.push({
         customer: { id: customer.id, name: customer.name, external_reference: customer.external_reference, reg_no: customer.reg_no }
       });
@@ -188,7 +200,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
     .filter(c => c.cabinet === cabinet && !matchedClientIds.has(c.id))
     .map(c => ({ client: c }));
 
-  // ---- 4. Récupérer les lignes de chaque abonnement ----
+  // ---- 5. Récupérer les lignes de chaque abonnement ----
   report('lines', 'Récupération des lignes de facturation...');
   const linesMap = new Map(); // subscription.id → InvoiceLine[]
   let linesFetched = 0;
@@ -213,7 +225,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
-  // ---- 5. Comparer les abonnements ----
+  // ---- 6. Comparer les abonnements ----
   report('compare', 'Comparaison des données...');
   const abonnementsNew = [];
   const abonnementsUpdated = [];
@@ -286,7 +298,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
       return { existing: abo, clientName: client?.nom || 'Inconnu' };
     });
 
-  // ---- 6. Comparer les lignes (prix) ----
+  // ---- 7. Comparer les lignes (prix) ----
   const lignesModified = [];
   const lignesNew = [];
   const lignesRemoved = [];
@@ -379,7 +391,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
     }
   }
 
-  // ---- 7. Détecter les anomalies ----
+  // ---- 8. Détecter les anomalies ----
   const anomalies = [];
 
   // Variations de prix > 20%
@@ -475,7 +487,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
     });
   }
 
-  // ---- 8. Résumé ----
+  // ---- 9. Résumé ----
   const totalDeltaHT = lignesModified.reduce((sum, l) => sum + l.deltaHT, 0);
 
   const summary = {
