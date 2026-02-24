@@ -59,7 +59,7 @@ const SEVERITY_STYLES = {
 
 const STATUS_BADGES = {
   in_progress: 'bg-green-500/20 text-green-400',
-  not_started: 'bg-slate-500/20 text-slate-400',
+  not_started: 'bg-slate-500/20 text-white',
   stopped: 'bg-red-500/20 text-red-400',
   finished: 'bg-blue-500/20 text-blue-400'
 };
@@ -125,14 +125,14 @@ function DiagnosticModal({ report, onClose }) {
                 Aucune anomalie
               </span>
             )}
-            <button onClick={onClose} className="p-1 text-slate-400 hover:text-white rounded">
+            <button onClick={onClose} className="p-1 text-white hover:text-white rounded">
               <X size={18} />
             </button>
           </div>
         </div>
 
         {/* Stats bar */}
-        <div className="flex items-center gap-6 px-6 py-2 bg-slate-800/50 border-b border-slate-700/50 text-xs text-slate-400">
+        <div className="flex items-center gap-6 px-6 py-2 bg-slate-800/50 border-b border-slate-700/50 text-xs text-white">
           <span>{report.totalClients} clients</span>
           <span>{report.totalAbonnements} abonnements</span>
           <span>{report.totalLignes} lignes</span>
@@ -154,8 +154,8 @@ function DiagnosticModal({ report, onClose }) {
                   onClick={() => toggleSection(section.key)}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800/50 rounded-lg transition-colors"
                 >
-                  <Icon size={16} className={items.length > 0 ? `text-${section.severityColor}-400` : 'text-slate-500'} />
-                  <span className={`text-sm font-medium ${items.length > 0 ? 'text-white' : 'text-slate-500'}`}>
+                  <Icon size={16} className={items.length > 0 ? `text-${section.severityColor}-400` : 'text-white'} />
+                  <span className={`text-sm font-medium ${items.length > 0 ? 'text-white' : 'text-white'}`}>
                     {section.label}
                   </span>
                   {items.length > 0 ? (
@@ -163,9 +163,9 @@ function DiagnosticModal({ report, onClose }) {
                       {items.length}
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-600">{section.emptyText}</span>
+                    <span className="text-xs text-white">{section.emptyText}</span>
                   )}
-                  <span className="ml-auto text-slate-500">
+                  <span className="ml-auto text-white">
                     {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </span>
                 </button>
@@ -185,7 +185,7 @@ function DiagnosticModal({ report, onClose }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-slate-700 bg-slate-800/30">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-white">
             Corrigez les anomalies dans Pennylane puis resynchronisez les données.
           </p>
           <div className="flex items-center gap-2">
@@ -225,14 +225,14 @@ function AnomalyCard({ anomaly, sectionKey }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <span className="text-sm font-medium text-white">{anomaly.clientNom}</span>
-            <span className="text-xs text-slate-500">{anomaly.clientCabinet}</span>
+            <span className="text-xs text-white">{anomaly.clientCabinet}</span>
           </div>
-          <p className="text-xs text-slate-300">{anomaly.description}</p>
+          <p className="text-xs text-white">{anomaly.description}</p>
         </div>
         {anomaly.details?.length > 0 && (
           <button
             onClick={() => setDetailsOpen(!detailsOpen)}
-            className="text-xs text-slate-400 hover:text-slate-200 flex-shrink-0"
+            className="text-xs text-white hover:text-slate-200 flex-shrink-0"
           >
             {detailsOpen ? 'Masquer' : `Détails (${anomaly.details.length})`}
           </button>
@@ -258,7 +258,7 @@ function LineDetails({ details }) {
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-slate-500 border-b border-slate-700/50">
+        <tr className="text-white border-b border-slate-700/50">
           <th className="text-left py-1 pr-2">Label</th>
           <th className="text-left py-1 pr-2">Famille</th>
           <th className="text-left py-1 pr-2">Axe</th>
@@ -275,21 +275,21 @@ function LineDetails({ details }) {
             <tr key={i} className={isAnomaly
               ? 'bg-red-900/40 border-b border-red-500/30'
               : 'border-b border-slate-700/30'}>
-              <td className={`py-1.5 pr-2 max-w-[200px] truncate ${isAnomaly ? 'text-red-400 font-semibold' : 'text-slate-300'}`} title={d.label}>
+              <td className={`py-1.5 pr-2 max-w-[200px] truncate ${isAnomaly ? 'text-red-400 font-semibold' : 'text-white'}`} title={d.label}>
                 {d.label}
                 {d.classification && (
-                  <span className={`ml-1 text-[10px] ${isAnomaly ? 'text-red-400/70' : 'text-slate-500'}`}>({d.classification})</span>
+                  <span className={`ml-1 text-[10px] ${isAnomaly ? 'text-red-400/70' : 'text-white'}`}>({d.classification})</span>
                 )}
               </td>
-              <td className={`py-1.5 pr-2 ${isAnomaly ? 'text-red-400/60' : 'text-slate-500'}`}>{d.famille || '-'}</td>
-              <td className={`py-1.5 pr-2 ${isAnomaly ? 'text-red-400/60' : 'text-slate-500'}`}>{d.axe || '-'}</td>
-              <td className={`py-1.5 pr-2 text-right ${isAnomaly ? 'text-red-400/60' : 'text-slate-400'}`}>{d.quantite}</td>
-              <td className={`py-1.5 pr-2 text-right ${isAnomaly ? 'text-red-400 font-semibold' : 'text-slate-300'}`}>{fmt(d.montant_ht)} €</td>
-              <td className={`py-1.5 pr-2 truncate max-w-[120px] ${isAnomaly ? 'text-red-400/60' : 'text-slate-500'}`} title={d.abo_label}>
+              <td className={`py-1.5 pr-2 ${isAnomaly ? 'text-red-400/60' : 'text-white'}`}>{d.famille || '-'}</td>
+              <td className={`py-1.5 pr-2 ${isAnomaly ? 'text-red-400/60' : 'text-white'}`}>{d.axe || '-'}</td>
+              <td className={`py-1.5 pr-2 text-right ${isAnomaly ? 'text-red-400/60' : 'text-white'}`}>{d.quantite}</td>
+              <td className={`py-1.5 pr-2 text-right ${isAnomaly ? 'text-red-400 font-semibold' : 'text-white'}`}>{fmt(d.montant_ht)} €</td>
+              <td className={`py-1.5 pr-2 truncate max-w-[120px] ${isAnomaly ? 'text-red-400/60' : 'text-white'}`} title={d.abo_label}>
                 {d.abo_label || `#${d.abonnement_id}`}
               </td>
               <td className="py-1.5">
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGES[d.abo_status] || 'bg-slate-600 text-slate-300'}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGES[d.abo_status] || 'bg-slate-600 text-white'}`}>
                   {d.abo_status}
                 </span>
               </td>
@@ -306,7 +306,7 @@ function SubscriptionDetails({ details }) {
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-slate-500 border-b border-slate-700/50">
+        <tr className="text-white border-b border-slate-700/50">
           <th className="text-left py-1 pr-2">Abonnement</th>
           <th className="text-left py-1 pr-2">PL ID</th>
           <th className="text-left py-1 pr-2">Statut</th>
@@ -317,15 +317,15 @@ function SubscriptionDetails({ details }) {
       <tbody>
         {details.map((d, i) => (
           <tr key={i} className="border-b border-slate-700/30">
-            <td className="py-1 pr-2 text-slate-300">{d.label || `#${d.abonnement_id}`}</td>
-            <td className="py-1 pr-2 text-slate-500">{d.pennylane_id}</td>
+            <td className="py-1 pr-2 text-white">{d.label || `#${d.abonnement_id}`}</td>
+            <td className="py-1 pr-2 text-white">{d.pennylane_id}</td>
             <td className="py-1 pr-2">
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGES[d.status] || 'bg-slate-600 text-slate-300'}`}>
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGES[d.status] || 'bg-slate-600 text-white'}`}>
                 {d.status}
               </span>
             </td>
-            <td className="py-1 pr-2 text-right text-slate-300">{fmt(d.total_ht)} €</td>
-            <td className="py-1 text-right text-slate-400">{d.nb_lignes}</td>
+            <td className="py-1 pr-2 text-right text-white">{fmt(d.total_ht)} €</td>
+            <td className="py-1 text-right text-white">{d.nb_lignes}</td>
           </tr>
         ))}
       </tbody>

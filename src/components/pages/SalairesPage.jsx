@@ -65,7 +65,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
         <div className="bg-red-900/50 border border-red-500 rounded-lg p-8 text-center">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-red-400 mb-2">Accès refusé</h2>
-          <p className="text-slate-300">
+          <p className="text-white">
             Cette page est strictement réservée aux administrateurs.
           </p>
         </div>
@@ -307,7 +307,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
             <DollarSign className="text-green-400" />
             Gestion des Salaires
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-white text-sm mt-1">
             Accès administrateur uniquement • Données protégées
           </p>
         </div>
@@ -337,24 +337,24 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
       {/* Résumé masse salariale */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg p-4">
-          <p className="text-slate-400 text-sm">Masse salariale brute</p>
+          <p className="text-white text-sm">Masse salariale brute</p>
           <p className="text-2xl font-bold text-white">{formatMontant(masseSalariale.totalBrut, false)}</p>
-          <p className="text-slate-500 text-xs">/an</p>
+          <p className="text-white text-xs">/an</p>
         </div>
         <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg p-4">
-          <p className="text-slate-400 text-sm">Charges patronales</p>
+          <p className="text-white text-sm">Charges patronales</p>
           <p className="text-2xl font-bold text-orange-400">{formatMontant(masseSalariale.totalCharges, false)}</p>
-          <p className="text-slate-500 text-xs">/an</p>
+          <p className="text-white text-xs">/an</p>
         </div>
         <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg p-4">
-          <p className="text-slate-400 text-sm">Coût total employeur</p>
+          <p className="text-white text-sm">Coût total employeur</p>
           <p className="text-2xl font-bold text-green-400">{formatMontant(masseSalariale.coutTotal, false)}</p>
-          <p className="text-slate-500 text-xs">/an</p>
+          <p className="text-white text-xs">/an</p>
         </div>
         <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-lg p-4">
-          <p className="text-slate-400 text-sm">Primes {filterAnnee}</p>
+          <p className="text-white text-sm">Primes {filterAnnee}</p>
           <p className="text-2xl font-bold text-purple-400">{formatMontant(totalPrimesAnnee, false)}</p>
-          <p className="text-slate-500 text-xs">brut</p>
+          <p className="text-white text-xs">brut</p>
         </div>
       </div>
 
@@ -363,7 +363,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
         <button
           onClick={() => setActiveTab('salaires')}
           className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition ${
-            activeTab === 'salaires' ? `${accent.color} text-white` : 'text-slate-400 hover:text-white'
+            activeTab === 'salaires' ? `${accent.color} text-white` : 'text-white hover:text-white'
           }`}
         >
           <Users size={18} />
@@ -372,7 +372,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
         <button
           onClick={() => setActiveTab('primes')}
           className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition ${
-            activeTab === 'primes' ? `${accent.color} text-white` : 'text-slate-400 hover:text-white'
+            activeTab === 'primes' ? `${accent.color} text-white` : 'text-white hover:text-white'
           }`}
         >
           <Award size={18} />
@@ -381,7 +381,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
         <button
           onClick={() => setActiveTab('simulations')}
           className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition ${
-            activeTab === 'simulations' ? `${accent.color} text-white` : 'text-slate-400 hover:text-white'
+            activeTab === 'simulations' ? `${accent.color} text-white` : 'text-white hover:text-white'
           }`}
         >
           <Calculator size={18} />
@@ -392,7 +392,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
       {/* Filtres */}
       <div className="flex flex-wrap gap-4 items-center">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white" size={18} />
           <input
             type="text"
             placeholder="Rechercher..."
@@ -414,7 +414,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
           </select>
         )}
 
-        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+        <label className="flex items-center gap-2 text-white cursor-pointer">
           <input
             type="checkbox"
             checked={showInactifs}
@@ -528,7 +528,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
 function SalairesTable({ salaires, accent, onEdit, onDelete, onShowHistorique }) {
   if (salaires.length === 0) {
     return (
-      <div className="bg-slate-800/90 rounded-lg p-8 text-center text-slate-400">
+      <div className="bg-slate-800/90 rounded-lg p-8 text-center text-white">
         Aucun salaire enregistré
       </div>
     );
@@ -540,13 +540,13 @@ function SalairesTable({ salaires, accent, onEdit, onDelete, onShowHistorique })
         <table className="w-full">
           <thead className="bg-slate-900/50">
             <tr>
-              <th className="text-left px-4 py-3 text-slate-300 font-medium">Collaborateur</th>
-              <th className="text-right px-4 py-3 text-slate-300 font-medium">Brut annuel</th>
-              <th className="text-right px-4 py-3 text-slate-300 font-medium">Charges</th>
-              <th className="text-right px-4 py-3 text-slate-300 font-medium">Coût total</th>
-              <th className="text-right px-4 py-3 text-slate-300 font-medium">Taux horaire</th>
-              <th className="text-center px-4 py-3 text-slate-300 font-medium">Date effet</th>
-              <th className="text-center px-4 py-3 text-slate-300 font-medium">Actions</th>
+              <th className="text-left px-4 py-3 text-white font-medium">Collaborateur</th>
+              <th className="text-right px-4 py-3 text-white font-medium">Brut annuel</th>
+              <th className="text-right px-4 py-3 text-white font-medium">Charges</th>
+              <th className="text-right px-4 py-3 text-white font-medium">Coût total</th>
+              <th className="text-right px-4 py-3 text-white font-medium">Taux horaire</th>
+              <th className="text-center px-4 py-3 text-white font-medium">Date effet</th>
+              <th className="text-center px-4 py-3 text-white font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700">
@@ -560,7 +560,7 @@ function SalairesTable({ salaires, accent, onEdit, onDelete, onShowHistorique })
                     <div>
                       <span className="text-white font-medium">{s.collaborateur?.nom}</span>
                       {!s.collaborateur?.actif && (
-                        <span className="ml-2 text-xs text-slate-500">(inactif)</span>
+                        <span className="ml-2 text-xs text-white">(inactif)</span>
                       )}
                     </div>
                   </td>
@@ -576,28 +576,28 @@ function SalairesTable({ salaires, accent, onEdit, onDelete, onShowHistorique })
                   <td className="px-4 py-3 text-right text-blue-400 font-mono">
                     {formatTauxHoraire(tauxCharge)}
                   </td>
-                  <td className="px-4 py-3 text-center text-slate-300">
+                  <td className="px-4 py-3 text-center text-white">
                     {s.date_effet}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => onShowHistorique(s.collaborateur_id, s.collaborateur?.nom)}
-                        className="p-1 text-slate-400 hover:text-blue-400 transition"
+                        className="p-1 text-white hover:text-blue-400 transition"
                         title="Historique"
                       >
                         <TrendingUp size={16} />
                       </button>
                       <button
                         onClick={() => onEdit(s)}
-                        className="p-1 text-slate-400 hover:text-white transition"
+                        className="p-1 text-white hover:text-white transition"
                         title="Modifier"
                       >
                         <Edit2 size={16} />
                       </button>
                       <button
                         onClick={() => onDelete(s.id)}
-                        className="p-1 text-slate-400 hover:text-red-400 transition"
+                        className="p-1 text-white hover:text-red-400 transition"
                         title="Supprimer"
                       >
                         <Trash2 size={16} />
@@ -617,7 +617,7 @@ function SalairesTable({ salaires, accent, onEdit, onDelete, onShowHistorique })
 function PrimesTable({ primes, accent, onEdit, onDelete }) {
   if (primes.length === 0) {
     return (
-      <div className="bg-slate-800/90 rounded-lg p-8 text-center text-slate-400">
+      <div className="bg-slate-800/90 rounded-lg p-8 text-center text-white">
         Aucune prime enregistrée
       </div>
     );
@@ -629,39 +629,39 @@ function PrimesTable({ primes, accent, onEdit, onDelete }) {
         <table className="w-full">
           <thead className="bg-slate-900/50">
             <tr>
-              <th className="text-left px-4 py-3 text-slate-300 font-medium">Collaborateur</th>
-              <th className="text-left px-4 py-3 text-slate-300 font-medium">Type</th>
-              <th className="text-left px-4 py-3 text-slate-300 font-medium">Libellé</th>
-              <th className="text-right px-4 py-3 text-slate-300 font-medium">Montant brut</th>
-              <th className="text-center px-4 py-3 text-slate-300 font-medium">Période</th>
-              <th className="text-center px-4 py-3 text-slate-300 font-medium">Actions</th>
+              <th className="text-left px-4 py-3 text-white font-medium">Collaborateur</th>
+              <th className="text-left px-4 py-3 text-white font-medium">Type</th>
+              <th className="text-left px-4 py-3 text-white font-medium">Libellé</th>
+              <th className="text-right px-4 py-3 text-white font-medium">Montant brut</th>
+              <th className="text-center px-4 py-3 text-white font-medium">Période</th>
+              <th className="text-center px-4 py-3 text-white font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700">
             {primes.map((p) => (
               <tr key={p.id} className="hover:bg-slate-700/50">
                 <td className="px-4 py-3 text-white">{p.collaborateur?.nom}</td>
-                <td className="px-4 py-3 text-slate-300">
+                <td className="px-4 py-3 text-white">
                   {TYPES_PRIMES.find(t => t.value === p.type_prime)?.label || p.type_prime}
                 </td>
-                <td className="px-4 py-3 text-slate-300">{p.libelle}</td>
+                <td className="px-4 py-3 text-white">{p.libelle}</td>
                 <td className="px-4 py-3 text-right text-purple-400 font-mono">
                   {formatMontant(p.montant_brut)}
                 </td>
-                <td className="px-4 py-3 text-center text-slate-300">
+                <td className="px-4 py-3 text-center text-white">
                   {p.mois ? `${p.mois}/${p.annee}` : p.annee}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-center gap-2">
                     <button
                       onClick={() => onEdit(p)}
-                      className="p-1 text-slate-400 hover:text-white transition"
+                      className="p-1 text-white hover:text-white transition"
                     >
                       <Edit2 size={16} />
                     </button>
                     <button
                       onClick={() => onDelete(p.id)}
-                      className="p-1 text-slate-400 hover:text-red-400 transition"
+                      className="p-1 text-white hover:text-red-400 transition"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -749,7 +749,7 @@ function SimulationsPanel({ simulations, collaborateurs, salaires, accent, userC
         </div>
 
         {simulations.length === 0 ? (
-          <div className="bg-slate-800/90 rounded-lg p-4 text-center text-slate-400">
+          <div className="bg-slate-800/90 rounded-lg p-4 text-center text-white">
             Aucune simulation
           </div>
         ) : (
@@ -765,12 +765,12 @@ function SimulationsPanel({ simulations, collaborateurs, salaires, accent, userC
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="text-white font-medium">{sim.nom_simulation}</h4>
-                    <p className="text-slate-400 text-sm">Année cible: {sim.annee_cible}</p>
+                    <p className="text-white text-sm">Année cible: {sim.annee_cible}</p>
                   </div>
                   <span className={`px-2 py-1 rounded text-xs ${
                     sim.statut === 'applique' ? 'bg-green-900/50 text-green-400' :
                     sim.statut === 'valide' ? 'bg-blue-900/50 text-blue-400' :
-                    'bg-slate-700 text-slate-400'
+                    'bg-slate-700 text-white'
                   }`}>
                     {sim.statut}
                   </span>
@@ -779,7 +779,7 @@ function SimulationsPanel({ simulations, collaborateurs, salaires, accent, userC
                   {sim.statut !== 'applique' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteSimulation(sim.id); }}
-                      className="text-slate-400 hover:text-red-400 text-sm"
+                      className="text-white hover:text-red-400 text-sm"
                     >
                       Supprimer
                     </button>
@@ -809,7 +809,7 @@ function SimulationsPanel({ simulations, collaborateurs, salaires, accent, userC
             setError={setError}
           />
         ) : (
-          <div className="bg-slate-800/90 rounded-lg p-8 text-center text-slate-400">
+          <div className="bg-slate-800/90 rounded-lg p-8 text-center text-white">
             Sélectionnez une simulation ou créez-en une nouvelle
           </div>
         )}
@@ -857,7 +857,7 @@ function SimulationDetail({ simulation, lignes, collaborateurs, salaires, accent
         <div className="flex justify-between items-start">
           <div>
             <h3 className="text-xl font-bold text-white">{simulation.nom_simulation}</h3>
-            <p className="text-slate-400">Année cible: {simulation.annee_cible}</p>
+            <p className="text-white">Année cible: {simulation.annee_cible}</p>
           </div>
           {simulation.statut === 'brouillon' && (
             <button
@@ -873,15 +873,15 @@ function SimulationDetail({ simulation, lignes, collaborateurs, salaires, accent
         {/* Résumé impact */}
         <div className="grid grid-cols-3 gap-4 mt-4">
           <div className="bg-slate-900/50 rounded p-3">
-            <p className="text-slate-400 text-sm">Coût actuel</p>
+            <p className="text-white text-sm">Coût actuel</p>
             <p className="text-white font-mono">{formatMontant(coutActuel, false)}</p>
           </div>
           <div className="bg-slate-900/50 rounded p-3">
-            <p className="text-slate-400 text-sm">Nouveau coût</p>
+            <p className="text-white text-sm">Nouveau coût</p>
             <p className="text-white font-mono">{formatMontant(nouveauCout, false)}</p>
           </div>
           <div className="bg-slate-900/50 rounded p-3">
-            <p className="text-slate-400 text-sm">Différence</p>
+            <p className="text-white text-sm">Différence</p>
             <p className={`font-mono ${difference >= 0 ? 'text-red-400' : 'text-green-400'}`}>
               {difference >= 0 ? '+' : ''}{formatMontant(difference, false)}
             </p>
@@ -902,7 +902,7 @@ function SimulationDetail({ simulation, lignes, collaborateurs, salaires, accent
         </div>
 
         {lignes.length === 0 ? (
-          <p className="text-slate-400 text-center py-4">
+          <p className="text-white text-center py-4">
             Aucun collaborateur dans cette simulation
           </p>
         ) : (
@@ -922,10 +922,10 @@ function SimulationDetail({ simulation, lignes, collaborateurs, salaires, accent
                     <span className="text-white">{ligne.collaborateur?.nom}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm">
-                    <span className="text-slate-400">
+                    <span className="text-white">
                       {formatMontant(ligne.salaire_actuel_brut)}
                     </span>
-                    <span className="text-slate-500">→</span>
+                    <span className="text-white">→</span>
                     <span className="text-white font-medium">
                       {formatMontant(ligne.nouveau_salaire_brut)}
                     </span>
@@ -935,7 +935,7 @@ function SimulationDetail({ simulation, lignes, collaborateurs, salaires, accent
                     {simulation.statut === 'brouillon' && (
                       <button
                         onClick={() => setEditingLigne(ligne)}
-                        className="text-slate-400 hover:text-white"
+                        className="text-white hover:text-white"
                       >
                         <Edit2 size={14} />
                       </button>
@@ -1007,14 +1007,14 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           <h3 className="text-lg font-bold text-white">
             {salaire ? 'Modifier salaire' : 'Nouveau salaire'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Collaborateur</label>
+            <label className="block text-white text-sm mb-1">Collaborateur</label>
             <select
               value={formData.collaborateur_id}
               onChange={(e) => setFormData({ ...formData, collaborateur_id: e.target.value })}
@@ -1030,7 +1030,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Année</label>
+              <label className="block text-white text-sm mb-1">Année</label>
               <input
                 type="number"
                 value={formData.annee}
@@ -1040,7 +1040,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
               />
             </div>
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Date effet</label>
+              <label className="block text-white text-sm mb-1">Date effet</label>
               <input
                 type="date"
                 value={formData.date_effet}
@@ -1052,7 +1052,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Salaire brut annuel (€)</label>
+            <label className="block text-white text-sm mb-1">Salaire brut annuel (€)</label>
             <input
               type="number"
               step="0.01"
@@ -1065,7 +1065,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">
+            <label className="block text-white text-sm mb-1">
               Charges patronales annuelles (€)
               <button
                 type="button"
@@ -1085,7 +1085,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Heures annuelles</label>
+            <label className="block text-white text-sm mb-1">Heures annuelles</label>
             <input
               type="number"
               value={formData.heures_annuelles}
@@ -1095,7 +1095,7 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Motif</label>
+            <label className="block text-white text-sm mb-1">Motif</label>
             <input
               type="text"
               value={formData.motif_modification}
@@ -1108,9 +1108,9 @@ function SalaireModal({ salaire, collaborateurs, accent, onSave, onClose }) {
           {/* Aperçu calculs */}
           {formData.salaire_brut_annuel && (
             <div className="bg-slate-900/50 rounded p-3 text-sm">
-              <p className="text-slate-400">Mensuel brut: <span className="text-white">{formatMontant(formData.salaire_brut_annuel / 12)}</span></p>
-              <p className="text-slate-400">Coût total: <span className="text-green-400">{formatMontant(calculerCoutTotal(Number(formData.salaire_brut_annuel), Number(formData.charges_patronales_annuel) || 0))}</span></p>
-              <p className="text-slate-400">Taux horaire chargé: <span className="text-blue-400">{formatTauxHoraire(calculerTauxHoraireCharge(Number(formData.salaire_brut_annuel), Number(formData.charges_patronales_annuel) || 0, formData.heures_annuelles))}</span></p>
+              <p className="text-white">Mensuel brut: <span className="text-white">{formatMontant(formData.salaire_brut_annuel / 12)}</span></p>
+              <p className="text-white">Coût total: <span className="text-green-400">{formatMontant(calculerCoutTotal(Number(formData.salaire_brut_annuel), Number(formData.charges_patronales_annuel) || 0))}</span></p>
+              <p className="text-white">Taux horaire chargé: <span className="text-blue-400">{formatTauxHoraire(calculerTauxHoraireCharge(Number(formData.salaire_brut_annuel), Number(formData.charges_patronales_annuel) || 0, formData.heures_annuelles))}</span></p>
             </div>
           )}
 
@@ -1167,14 +1167,14 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           <h3 className="text-lg font-bold text-white">
             {prime ? 'Modifier prime' : 'Nouvelle prime'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Collaborateur</label>
+            <label className="block text-white text-sm mb-1">Collaborateur</label>
             <select
               value={formData.collaborateur_id}
               onChange={(e) => setFormData({ ...formData, collaborateur_id: e.target.value })}
@@ -1189,7 +1189,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Type de prime</label>
+            <label className="block text-white text-sm mb-1">Type de prime</label>
             <select
               value={formData.type_prime}
               onChange={(e) => setFormData({ ...formData, type_prime: e.target.value })}
@@ -1203,7 +1203,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Libellé</label>
+            <label className="block text-white text-sm mb-1">Libellé</label>
             <input
               type="text"
               value={formData.libelle}
@@ -1216,7 +1216,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Année</label>
+              <label className="block text-white text-sm mb-1">Année</label>
               <input
                 type="number"
                 value={formData.annee}
@@ -1226,7 +1226,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
               />
             </div>
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Mois (optionnel)</label>
+              <label className="block text-white text-sm mb-1">Mois (optionnel)</label>
               <select
                 value={formData.mois}
                 onChange={(e) => setFormData({ ...formData, mois: e.target.value })}
@@ -1241,7 +1241,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Montant brut (€)</label>
+            <label className="block text-white text-sm mb-1">Montant brut (€)</label>
             <input
               type="number"
               step="0.01"
@@ -1253,7 +1253,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Charges patronales (€)</label>
+            <label className="block text-white text-sm mb-1">Charges patronales (€)</label>
             <input
               type="number"
               step="0.01"
@@ -1264,7 +1264,7 @@ function PrimeModal({ prime, collaborateurs, filterAnnee, accent, onSave, onClos
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Date de versement</label>
+            <label className="block text-white text-sm mb-1">Date de versement</label>
             <input
               type="date"
               value={formData.date_versement}
@@ -1302,14 +1302,14 @@ function HistoriqueModal({ collaborateur, historique, accent, onClose }) {
           <h3 className="text-lg font-bold text-white">
             Historique - {collaborateur?.nom}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <div className="flex-1 overflow-auto p-4">
           {historique.length === 0 ? (
-            <p className="text-slate-400 text-center">Aucun historique</p>
+            <p className="text-white text-center">Aucun historique</p>
           ) : (
             <div className="space-y-3">
               {historique.map((h, index) => {
@@ -1323,7 +1323,7 @@ function HistoriqueModal({ collaborateur, historique, accent, onClose }) {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="text-white font-medium">{formatMontant(h.salaire_brut_annuel)}</p>
-                        <p className="text-slate-400 text-sm">
+                        <p className="text-white text-sm">
                           Effet: {h.date_effet}
                           {h.motif_modification && ` • ${h.motif_modification}`}
                         </p>
@@ -1334,7 +1334,7 @@ function HistoriqueModal({ collaborateur, historique, accent, onClose }) {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 text-sm text-slate-500">
+                    <div className="mt-2 text-sm text-white">
                       Taux horaire: {formatTauxHoraire(calculerTauxHoraireCharge(h.salaire_brut_annuel, h.charges_patronales_annuel, h.heures_annuelles))}
                     </div>
                   </div>
@@ -1375,14 +1375,14 @@ function NewSimulationModal({ accent, onSave, onClose }) {
       <div className="bg-slate-800 rounded-lg w-full max-w-md">
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
           <h3 className="text-lg font-bold text-white">Nouvelle simulation</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Nom de la simulation</label>
+            <label className="block text-white text-sm mb-1">Nom de la simulation</label>
             <input
               type="text"
               value={formData.nom_simulation}
@@ -1395,7 +1395,7 @@ function NewSimulationModal({ accent, onSave, onClose }) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Année cible</label>
+              <label className="block text-white text-sm mb-1">Année cible</label>
               <input
                 type="number"
                 value={formData.annee_cible}
@@ -1405,7 +1405,7 @@ function NewSimulationModal({ accent, onSave, onClose }) {
               />
             </div>
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Date effet prévue</label>
+              <label className="block text-white text-sm mb-1">Date effet prévue</label>
               <input
                 type="date"
                 value={formData.date_effet_prevue}
@@ -1416,7 +1416,7 @@ function NewSimulationModal({ accent, onSave, onClose }) {
           </div>
 
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Notes</label>
+            <label className="block text-white text-sm mb-1">Notes</label>
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -1505,14 +1505,14 @@ function LigneSimulationModal({ ligne, collaborateurs, salaires, accent, onSave,
           <h3 className="text-lg font-bold text-white">
             {ligne?.id ? 'Modifier' : 'Ajouter'} collaborateur
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-slate-300 text-sm mb-1">Collaborateur</label>
+            <label className="block text-white text-sm mb-1">Collaborateur</label>
             <select
               value={formData.collaborateur_id}
               onChange={(e) => setFormData({ ...formData, collaborateur_id: e.target.value })}
@@ -1528,13 +1528,13 @@ function LigneSimulationModal({ ligne, collaborateurs, salaires, accent, onSave,
           </div>
 
           <div className="bg-slate-900/50 rounded p-3">
-            <p className="text-slate-400 text-sm">Salaire actuel</p>
+            <p className="text-white text-sm">Salaire actuel</p>
             <p className="text-white font-medium">{formatMontant(formData.salaire_actuel_brut)}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-300 text-sm mb-1">Type augmentation</label>
+              <label className="block text-white text-sm mb-1">Type augmentation</label>
               <select
                 value={formData.type_augmentation}
                 onChange={(e) => setFormData({ ...formData, type_augmentation: e.target.value })}
@@ -1545,7 +1545,7 @@ function LigneSimulationModal({ ligne, collaborateurs, salaires, accent, onSave,
               </select>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm mb-1">
+              <label className="block text-white text-sm mb-1">
                 Valeur ({formData.type_augmentation === 'pourcentage' ? '%' : '€'})
               </label>
               <input
@@ -1562,7 +1562,7 @@ function LigneSimulationModal({ ligne, collaborateurs, salaires, accent, onSave,
           <div className="bg-green-900/30 rounded p-3">
             <p className="text-green-400 text-sm">Nouveau salaire</p>
             <p className="text-white font-medium text-lg">{formatMontant(formData.nouveau_salaire_brut)}</p>
-            <p className="text-slate-400 text-xs">
+            <p className="text-white text-xs">
               Coût total: {formatMontant(formData.nouveau_salaire_brut + formData.nouvelles_charges)}
             </p>
           </div>

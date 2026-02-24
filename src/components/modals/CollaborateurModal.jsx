@@ -57,14 +57,14 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
           <h3 className="text-xl font-bold text-white">
             {collaborateur ? 'Modifier le collaborateur' : 'Ajouter un collaborateur'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={24} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Nom *</label>
+            <label className="block text-sm font-medium text-white mb-1">Nom *</label>
             <input
               type="text"
               value={nom}
@@ -75,7 +75,7 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
           </div>
 
           <div>
-            <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+            <label className="flex items-center gap-2 cursor-pointer text-white">
               <input
                 type="checkbox"
                 checked={estChefMission}
@@ -87,13 +87,13 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Ses chefs de mission</label>
+            <label className="block text-sm font-medium text-white mb-2">Ses chefs de mission</label>
             {chefsMission.length === 0 ? (
-              <p className="text-slate-500 text-sm">Aucun chef de mission disponible. Créez d'abord un chef de mission.</p>
+              <p className="text-white text-sm">Aucun chef de mission disponible. Créez d'abord un chef de mission.</p>
             ) : (
               <div className="space-y-2 bg-slate-700 rounded p-3 max-h-40 overflow-y-auto">
                 {chefsMission.map(chef => (
-                  <label key={chef.id} className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+                  <label key={chef.id} className="flex items-center gap-2 cursor-pointer text-white hover:text-white">
                     <input
                       type="checkbox"
                       checked={selectedChefIds.includes(chef.id)}
@@ -105,7 +105,7 @@ function CollaborateurModal({ collaborateur, chefsMission, collaborateurChefs, o
                 ))}
               </div>
             )}
-            <p className="text-slate-500 text-xs mt-1">Vous pouvez sélectionner plusieurs chefs</p>
+            <p className="text-white text-xs mt-1">Vous pouvez sélectionner plusieurs chefs</p>
           </div>
 
           <div className="flex gap-3 pt-2">

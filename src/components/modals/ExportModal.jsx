@@ -60,19 +60,19 @@ function ExportModal({ viewMode, currentDate, weekDays, onExport, onClose }) {
       <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold text-white">Export Excel</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={24} />
           </button>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Date de début</label>
+            <label className="block text-sm font-medium text-white mb-1">Date de début</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Date de fin</label>
+            <label className="block text-sm font-medium text-white mb-1">Date de fin</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600" />
           </div>
 

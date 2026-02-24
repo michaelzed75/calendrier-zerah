@@ -93,7 +93,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
         </span>
       )}
       {client.code_silae && (
-        <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded font-mono">
+        <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-900 rounded font-mono">
           Silae: {client.code_silae}
         </span>
       )}
@@ -117,7 +117,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
         <div className="flex justify-between items-center p-4 border-b">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Mapping dossiers Silae</h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-900">
               {nbMatched + nbTotal} dossier{(nbMatched + nbTotal) > 1 ? 's' : ''} — {nbMatched} reconnu{nbMatched > 1 ? 's' : ''} — {nbTotal} à mapper ({nbMapped} fait{nbMapped > 1 ? 's' : ''})
             </p>
           </div>
@@ -182,7 +182,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
                             <div key={c.id} className="flex items-center gap-2 bg-green-50 rounded p-2">
                               <Check size={14} className="text-green-600 flex-shrink-0" />
                               <span className="text-green-800 font-medium text-sm">{c.nom}</span>
-                              <span className="text-xs text-gray-500">({c.cabinet || '-'})</span>
+                              <span className="text-xs text-gray-900">({c.cabinet || '-'})</span>
                               <ClientBadges client={c} />
                               <button
                                 onClick={() => removeClientFromMapping(row.code, c.id)}
@@ -201,12 +201,12 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
                         <div>
                           {selectedClients.length > 0 && (
                             <div className="flex items-center gap-1 mb-1">
-                              <Plus size={12} className="text-gray-400" />
-                              <span className="text-xs text-gray-400">Ajouter un 2e client (optionnel)</span>
+                              <Plus size={12} className="text-gray-900" />
+                              <span className="text-xs text-gray-900">Ajouter un 2e client (optionnel)</span>
                             </div>
                           )}
                           <div className="relative">
-                            <Search size={14} className="absolute left-2 top-2.5 text-gray-400" />
+                            <Search size={14} className="absolute left-2 top-2.5 text-gray-900" />
                             <input
                               type="text"
                               value={searchTerms[row.code] || ''}
@@ -218,7 +218,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
                           {(search || searchTerms[row.code]) && (
                             <div className="mt-1 max-h-40 overflow-y-auto border rounded shadow-sm">
                               {filteredClients.length === 0 ? (
-                                <p className="px-3 py-2 text-sm text-gray-400">Aucun client trouvé</p>
+                                <p className="px-3 py-2 text-sm text-gray-900">Aucun client trouvé</p>
                               ) : (
                                 filteredClients.slice(0, 15).map(c => (
                                   <button
@@ -228,7 +228,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
                                   >
                                     <div className="flex items-center justify-between">
                                       <span className="font-medium text-gray-900">{c.nom}</span>
-                                      <span className="text-xs text-gray-400 ml-2">{c.cabinet || '-'}</span>
+                                      <span className="text-xs text-gray-900 ml-2">{c.cabinet || '-'}</span>
                                     </div>
                                     <ClientBadges client={c} />
                                   </button>
@@ -250,7 +250,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
             <div>
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <h3 className="font-medium text-gray-400 text-sm uppercase tracking-wide">
+                <h3 className="font-medium text-gray-900 text-sm uppercase tracking-wide">
                   Déjà reconnus ({nbMatched})
                 </h3>
               </div>
@@ -261,29 +261,29 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
                     <div key={`${row.code}-${client_id}`} className="rounded-lg px-3 py-2 bg-gray-50 border border-gray-100">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-gray-400 text-sm">{row.nom}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded text-gray-400 font-mono">
+                          <span className="text-gray-900 text-sm">{row.nom}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded text-gray-900 font-mono">
                             {row.code}
                           </span>
                           {row.siren && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-900 rounded">
                               {row.siren}
                             </span>
                           )}
-                          <Link2 size={12} className="text-gray-300" />
-                          <span className="text-gray-500 text-sm font-medium">{client_nom}</span>
+                          <Link2 size={12} className="text-gray-900" />
+                          <span className="text-gray-900 text-sm font-medium">{client_nom}</span>
                           {client?.code_silae && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded font-mono">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-900 rounded font-mono">
                               Silae: {client.code_silae}
                             </span>
                           )}
                           {client?.siren && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-900 rounded">
                               SIREN: {client.siren}
                             </span>
                           )}
                         </div>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-900">
                           {row.bulletins} bull.
                         </span>
                       </div>
@@ -297,7 +297,7 @@ function SilaeMappingModal({ unmatchedRows, matchedRows = [], clients, onSave, o
 
         {/* Footer */}
         <div className="flex justify-between items-center p-4 border-t bg-gray-50">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-900">
             {nbTotal - nbMapped > 0
               ? `${nbTotal - nbMapped} dossier${(nbTotal - nbMapped) > 1 ? 's' : ''} sera ignoré${(nbTotal - nbMapped) > 1 ? 's' : ''}`
               : 'Tous les dossiers sont mappés'

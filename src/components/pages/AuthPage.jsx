@@ -235,10 +235,10 @@ function AuthPage({ authPage, setAuthPage, accent }) {
           <form onSubmit={handleVerifyOtpAndReset} className="space-y-4">
             <div className="text-center mb-4">
               <h2 className="text-xl font-bold text-white">Nouveau mot de passe</h2>
-              <p className="text-slate-400 text-sm">Entrez le code reçu par email et votre nouveau mot de passe</p>
+              <p className="text-white text-sm">Entrez le code reçu par email et votre nouveau mot de passe</p>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Code de vérification</label>
+              <label className="block text-white text-sm font-medium mb-2">Code de vérification</label>
               <input
                 type="text"
                 value={otpCode}
@@ -249,9 +249,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               />
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Nouveau mot de passe</label>
+              <label className="block text-white text-sm font-medium mb-2">Nouveau mot de passe</label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="password"
                   value={password}
@@ -263,9 +263,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               </div>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Confirmer le mot de passe</label>
+              <label className="block text-white text-sm font-medium mb-2">Confirmer le mot de passe</label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="password"
                   value={confirmPassword}
@@ -286,7 +286,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
             <button
               type="button"
               onClick={() => { setShowOtpForm(false); setOtpCode(''); setPassword(''); setConfirmPassword(''); setError(''); setSuccess(''); }}
-              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+              className="w-full text-white hover:text-white text-sm"
             >
               Annuler
             </button>
@@ -297,9 +297,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         {authPage === 'login' && !showOtpForm && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <label className="block text-white text-sm font-medium mb-2">Email</label>
               <div className="relative">
-                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="email"
                   value={email}
@@ -311,9 +311,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               </div>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Mot de passe</label>
+              <label className="block text-white text-sm font-medium mb-2">Mot de passe</label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="password"
                   value={password}
@@ -342,7 +342,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               <button
                 type="button"
                 onClick={() => { setAuthPage('forgot'); setError(''); setSuccess(''); }}
-                className="text-slate-400 hover:text-slate-300"
+                className="text-white hover:text-white"
               >
                 Mot de passe oublié ?
               </button>
@@ -354,9 +354,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         {authPage === 'register' && !showOtpForm && (
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <label className="block text-white text-sm font-medium mb-2">Email</label>
               <div className="relative">
-                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="email"
                   value={email}
@@ -366,12 +366,12 @@ function AuthPage({ authPage, setAuthPage, accent }) {
                   required
                 />
               </div>
-              <p className="text-xs text-slate-500 mt-1">Utilisez l'email fourni par votre administrateur</p>
+              <p className="text-xs text-white mt-1">Utilisez l'email fourni par votre administrateur</p>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Mot de passe</label>
+              <label className="block text-white text-sm font-medium mb-2">Mot de passe</label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="password"
                   value={password}
@@ -383,9 +383,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
               </div>
             </div>
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Confirmer le mot de passe</label>
+              <label className="block text-white text-sm font-medium mb-2">Confirmer le mot de passe</label>
               <div className="relative">
-                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="password"
                   value={confirmPassword}
@@ -406,7 +406,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
             <button
               type="button"
               onClick={() => { setAuthPage('login'); setError(''); setSuccess(''); }}
-              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+              className="w-full text-white hover:text-white text-sm"
             >
               Déjà un compte ? Se connecter
             </button>
@@ -417,9 +417,9 @@ function AuthPage({ authPage, setAuthPage, accent }) {
         {authPage === 'forgot' && !showOtpForm && (
           <form onSubmit={handleForgotPassword} className="space-y-4">
             <div>
-              <label className="block text-slate-300 text-sm font-medium mb-2">Email</label>
+              <label className="block text-white text-sm font-medium mb-2">Email</label>
               <div className="relative">
-                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                 <input
                   type="email"
                   value={email}
@@ -440,7 +440,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
             <button
               type="button"
               onClick={() => { setAuthPage('login'); setError(''); setSuccess(''); }}
-              className="w-full text-slate-400 hover:text-slate-300 text-sm"
+              className="w-full text-white hover:text-white text-sm"
             >
               Retour à la connexion
             </button>
@@ -449,8 +449,8 @@ function AuthPage({ authPage, setAuthPage, accent }) {
 
         {/* Footer - Powered by */}
         <div className="mt-8 pt-6 border-t border-slate-700 text-center">
-          <p className="text-slate-500 text-xs">Powered by</p>
-          <p className="text-slate-400 font-semibold">AUDIT UP</p>
+          <p className="text-white text-xs">Powered by</p>
+          <p className="text-white font-semibold">AUDIT UP</p>
         </div>
       </div>
     </div>

@@ -309,7 +309,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
         <div className="flex justify-between items-center mb-8">
           <div>
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Collaborateurs</h2>
-            <p className="text-slate-400">Gérez votre équipe et la hiérarchie</p>
+            <p className="text-white">Gérez votre équipe et la hiérarchie</p>
           </div>
           <div className="flex gap-3 flex-wrap">
             {isAdmin && (
@@ -365,7 +365,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
         <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-700 text-slate-300">
+              <tr className="bg-slate-700 text-white">
                 <th className="text-left py-3 px-4">Nom</th>
                 {isAdmin && <th className="text-left py-3 px-4">Email (accès app)</th>}
                 <th className="text-center py-3 px-4">Chef de mission</th>
@@ -413,7 +413,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
                                 <span className="text-green-400 text-sm">{collab.email}</span>
                                 <button
                                   onClick={() => { setEditingEmail(collab.id); setNewEmail(collab.email || ''); }}
-                                  className="text-slate-400 hover:text-white p-1"
+                                  className="text-white hover:text-white p-1"
                                   title="Modifier l'email"
                                 >
                                   <Pencil size={14} />
@@ -422,7 +422,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
                             ) : (
                               <button
                                 onClick={() => { setEditingEmail(collab.id); setNewEmail(''); }}
-                                className="text-slate-500 hover:text-slate-300 text-sm flex items-center gap-1"
+                                className="text-white hover:text-white text-sm flex items-center gap-1"
                               >
                                 <Mail size={14} />
                                 Ajouter
@@ -436,23 +436,23 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
                       {collab.est_chef_mission ? (
                         <span className="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-sm">Oui</span>
                       ) : (
-                        <span className="text-slate-500">Non</span>
+                        <span className="text-white">Non</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-300 text-sm">{getChefsNoms(collab.id)}</td>
+                    <td className="py-3 px-4 text-white text-sm">{getChefsNoms(collab.id)}</td>
                     <td className="py-3 px-4 text-center">
                       {collab.est_chef_mission && equipe.length > 0 ? (
                         <span className="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-sm">
                           {equipe.length} membre(s)
                         </span>
                       ) : (
-                        <span className="text-slate-500">-</span>
+                        <span className="text-white">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button 
                         onClick={() => handleToggleActif(collab.id)}
-                        className={`p-1 rounded transition ${collab.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
+                        className={`p-1 rounded transition ${collab.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-white hover:bg-slate-700'}`}
                       >
                         <Check size={18} />
                       </button>
@@ -483,7 +483,7 @@ function CollaborateursPage({ collaborateurs, setCollaborateurs, collaborateurCh
         </div>
 
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
-          <p className="text-slate-400 text-sm">
+          <p className="text-white text-sm">
             Total : {collaborateurs.length} collaborateurs | Actifs : {collaborateurs.filter(c => c.actif).length} | Chefs de mission : {chefsMission.length}
           </p>
         </div>

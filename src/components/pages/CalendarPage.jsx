@@ -756,7 +756,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-white mb-2">Calendrier d'équipe</h2>
-          <p className="text-slate-400">Gestion des charges de travail par collaborateur</p>
+          <p className="text-white">Gestion des charges de travail par collaborateur</p>
         </div>
 
         <div className="bg-slate-800 rounded-lg p-4 mb-6 border border-slate-700 flex items-center justify-between flex-wrap gap-4">
@@ -811,7 +811,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
               <button
                 onClick={() => switchToView('month')}
                 className={`px-4 py-2 text-sm font-medium transition ${
-                  viewMode === 'month' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  viewMode === 'month' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 Mois
@@ -819,7 +819,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
               <button
                 onClick={() => switchToView('week')}
                 className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
-                  viewMode === 'week' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  viewMode === 'week' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 Semaine
@@ -827,7 +827,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
               <button
                 onClick={() => switchToView('day')}
                 className={`px-4 py-2 text-sm font-medium transition border-l border-slate-600 ${
-                  viewMode === 'day' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  viewMode === 'day' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 Jour
@@ -902,7 +902,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                           className="rounded"
                         />
                         <span className="text-white font-semibold">Équipe {chef.nom}</span>
-                        <span className="text-slate-400 text-sm">({equipe.length + 1} personnes)</span>
+                        <span className="text-white text-sm">({equipe.length + 1} personnes)</span>
                       </div>
                     </div>
 
@@ -911,7 +911,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                       <div className="p-3 space-y-2">
                         {/* Le chef lui-même */}
                         <div className="flex items-center gap-2 pl-8">
-                          <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                          <label className="flex items-center gap-2 cursor-pointer text-white hover:text-white flex-1">
                             <input
                               type="checkbox"
                               checked={selectedCollaborateurs.includes(chef.id)}
@@ -946,7 +946,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                               </>
                             )}
                             {isInSourdine(chef.id) && (
-                              <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                              <span className="text-xs bg-slate-600/30 text-white px-1.5 py-0.5 rounded" title="Alertes désactivées">
                                 <VolumeX size={12} className="inline" /> Sourdine
                               </span>
                             )}
@@ -954,7 +954,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                           {userCollaborateur?.is_admin && (
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleSourdine(chef.id); }}
-                              className={`p-1.5 rounded transition ${isInSourdine(chef.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                              className={`p-1.5 rounded transition ${isInSourdine(chef.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-white hover:bg-slate-600/50 hover:text-green-400'}`}
                               title={isInSourdine(chef.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
                             >
                               {isInSourdine(chef.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -965,7 +965,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                         {/* Les membres visibles */}
                         {equipe.filter(m => m.actif).map(membre => (
                           <div key={membre.id} className="flex items-center gap-2 pl-8">
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                            <label className="flex items-center gap-2 cursor-pointer text-white hover:text-white flex-1">
                               <input
                                 type="checkbox"
                                 checked={selectedCollaborateurs.includes(membre.id)}
@@ -999,7 +999,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                 </>
                               )}
                               {isInSourdine(membre.id) && (
-                                <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                                <span className="text-xs bg-slate-600/30 text-white px-1.5 py-0.5 rounded" title="Alertes désactivées">
                                   <VolumeX size={12} className="inline" /> Sourdine
                                 </span>
                               )}
@@ -1007,7 +1007,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                             {userCollaborateur?.is_admin && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); toggleSourdine(membre.id); }}
-                                className={`p-1.5 rounded transition ${isInSourdine(membre.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                                className={`p-1.5 rounded transition ${isInSourdine(membre.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-white hover:bg-slate-600/50 hover:text-green-400'}`}
                                 title={isInSourdine(membre.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
                               >
                                 {isInSourdine(membre.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -1030,10 +1030,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                 
                 return (
                   <div className="bg-slate-700 rounded-lg p-3">
-                    <div className="text-slate-400 text-sm mb-2">Autres collaborateurs</div>
+                    <div className="text-white text-sm mb-2">Autres collaborateurs</div>
                     {autonomes.map(collab => (
                       <div key={collab.id} className="flex items-center gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white flex-1">
+                        <label className="flex items-center gap-2 cursor-pointer text-white hover:text-white flex-1">
                           <input
                             type="checkbox"
                             checked={selectedCollaborateurs.includes(collab.id)}
@@ -1067,7 +1067,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                             </>
                           )}
                           {isInSourdine(collab.id) && (
-                            <span className="text-xs bg-slate-600/30 text-slate-400 px-1.5 py-0.5 rounded" title="Alertes désactivées">
+                            <span className="text-xs bg-slate-600/30 text-white px-1.5 py-0.5 rounded" title="Alertes désactivées">
                               <VolumeX size={12} className="inline" /> Sourdine
                             </span>
                           )}
@@ -1075,7 +1075,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                         {userCollaborateur?.is_admin && (
                           <button
                             onClick={(e) => { e.stopPropagation(); toggleSourdine(collab.id); }}
-                            className={`p-1.5 rounded transition ${isInSourdine(collab.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-slate-400 hover:bg-slate-600/50 hover:text-green-400'}`}
+                            className={`p-1.5 rounded transition ${isInSourdine(collab.id) ? 'bg-orange-600/30 text-orange-400 hover:bg-orange-600/50' : 'bg-slate-600/30 text-white hover:bg-slate-600/50 hover:text-green-400'}`}
                             title={isInSourdine(collab.id) ? 'Réactiver les alertes' : 'Mettre en sourdine'}
                           >
                             {isInSourdine(collab.id) ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -1124,7 +1124,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         {viewMode === 'month' && (
           <div className="grid grid-cols-7 gap-1 mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
             {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
-              <div key={day} className="text-center text-slate-400 text-sm font-semibold py-2">{day}</div>
+              <div key={day} className="text-center text-white text-sm font-semibold py-2">{day}</div>
             ))}
             {allDays.map((day, idx) => {
               const dateStr = day ? formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day)) : null;
@@ -1187,7 +1187,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                           </span>
                           <button
                             onClick={() => openDayView(day)}
-                            className="text-slate-400 hover:text-white p-1 hover:bg-slate-600 rounded transition"
+                            className="text-white hover:text-white p-1 hover:bg-slate-600 rounded transition"
                             title="Voir détails"
                           >
                             <Eye size={14} />
@@ -1203,7 +1203,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                 className="flex justify-between text-xs bg-slate-600 px-1 rounded cursor-pointer hover:bg-slate-500"
                                 onClick={() => openDayView(day)}
                               >
-                                <span className="truncate text-slate-300">{collab.nom.split(' ')[0]}</span>
+                                <span className="truncate text-white">{collab.nom.split(' ')[0]}</span>
                                 <span className={total > 8 ? 'text-red-400' : 'text-green-300'}>{total}h</span>
                               </div>
                             );
@@ -1276,7 +1276,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                         }}
                       >
                         <div
-                          className={`text-sm font-bold mb-1 cursor-pointer ${dayTotal > 8 ? 'text-red-400' : 'text-slate-300'}`}
+                          className={`text-sm font-bold mb-1 cursor-pointer ${dayTotal > 8 ? 'text-red-400' : 'text-white'}`}
                           onClick={() => openDayViewFromDate(date)}
                         >
                           {dayTotal > 0 ? `${dayTotal}h` : '-'}
@@ -1298,7 +1298,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                 className={`text-xs px-1 py-0.5 rounded truncate cursor-grab active:cursor-grabbing ${
                                   draggedCharge?.id === charge.id
                                     ? 'bg-blue-500/50 text-blue-200 opacity-50'
-                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                                    : 'bg-slate-600 text-white hover:bg-slate-500'
                                 }`}
                                 title={`${clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu'} - ${charge.heures}h - Glisser pour déplacer`}
                               >
@@ -1306,7 +1306,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                               </div>
                             ))}
                             {dayCharges.length > 4 && (
-                              <div className="text-xs text-slate-500">+{dayCharges.length - 4} autres</div>
+                              <div className="text-xs text-white">+{dayCharges.length - 4} autres</div>
                             )}
                           </div>
                         )}
@@ -1342,12 +1342,12 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                     </div>
                     
                     {dayCharges.length === 0 ? (
-                      <div className="text-slate-400 text-sm italic">Aucune charge planifiée</div>
+                      <div className="text-white text-sm italic">Aucune charge planifiée</div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="text-slate-400 border-b border-slate-600">
+                            <tr className="text-white border-b border-slate-600">
                               <th className="text-left py-2 px-2 w-40">Client</th>
                               <th className="text-center py-2 px-2 w-20">Budgété</th>
                               <th className="text-center py-2 px-2 w-20">Réalisé</th>
@@ -1362,8 +1362,8 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                 <td className="py-2 px-2 text-white">
                                   {clients.find(c => c.id === charge.client_id)?.nom || 'Inconnu'}
                                 </td>
-                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures}h</td>
-                                <td className="py-2 px-2 text-center text-slate-300">{charge.heures_realisees || 0}h</td>
+                                <td className="py-2 px-2 text-center text-white">{charge.heures}h</td>
+                                <td className="py-2 px-2 text-center text-white">{charge.heures_realisees || 0}h</td>
                                 <td className="py-2 px-2 text-center">
                                   <span className={`px-2 py-0.5 rounded text-xs ${
                                     charge.type === 'budgété' ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'
@@ -1371,7 +1371,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                     {charge.type}
                                   </span>
                                 </td>
-                                <td className="py-2 px-2 text-slate-400 whitespace-pre-wrap break-words">
+                                <td className="py-2 px-2 text-white whitespace-pre-wrap break-words">
                                   {charge.detail || '-'}
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -1406,10 +1406,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         )}
 
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
-          <p className="text-slate-400 text-sm">
+          <p className="text-white text-sm">
             Charges : {charges.length} | Collaborateurs filtrés : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
           </p>
-          <p className="text-slate-500 text-xs mt-2">calendrier-zerah v3.1</p>
+          <p className="text-white text-xs mt-2">calendrier-zerah v3.1</p>
         </div>
       </div>
     </div>

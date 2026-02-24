@@ -326,7 +326,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
         {/* Selection de la periode */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Date de debut</label>
+            <label className="block text-sm font-medium text-white mb-1">Date de debut</label>
             <input
               type="date"
               value={dateDebut}
@@ -335,7 +335,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Date de fin</label>
+            <label className="block text-sm font-medium text-white mb-1">Date de fin</label>
             <input
               type="date"
               value={dateFin}
@@ -359,7 +359,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
 
         {/* Tableau des clients TVA */}
         {clientsTVA.length === 0 ? (
-          <div className="text-center py-8 text-slate-400">
+          <div className="text-center py-8 text-white">
             Aucun client avec TVA. Allez dans la page Clients pour activer la TVA sur les clients concernes.
           </div>
         ) : (
@@ -367,7 +367,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-slate-400 border-b border-slate-600">
+                  <tr className="text-white border-b border-slate-600">
                     <th className="text-left py-3 px-2">Client</th>
                     <th className="text-left py-3 px-2" title="Defini dans l'onglet Impots et Taxes">Jour TVA</th>
                     <th className="text-left py-3 px-2">Duree (h)</th>
@@ -421,7 +421,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
                 disabled={isGenerating || !isDataComplete()}
                 className={`px-6 py-3 rounded-lg font-bold transition flex items-center gap-2 ${
                   isGenerating || !isDataComplete()
-                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    ? 'bg-slate-600 text-white cursor-not-allowed'
                     : `${accent.color} text-white ${accent.hover}`
                 }`}
               >
@@ -441,7 +441,7 @@ function RepartitionTVAPage({ clients, collaborateurs, charges, setCharges, getE
 
       {/* Resume */}
       <div className="bg-slate-800/90 backdrop-blur-sm rounded-lg p-4 border border-slate-700">
-        <p className="text-slate-400 text-sm">
+        <p className="text-white text-sm">
           Clients TVA : {clientsTVA.length} | Total heures prevues : {repartitionData.reduce((sum, item) => sum + (item.heures || 0), 0)}h
         </p>
       </div>

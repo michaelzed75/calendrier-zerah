@@ -470,7 +470,7 @@ export default function TestsComptablesPage({
       case 'info':
         return <Info className="text-blue-400" size={18} />;
       default:
-        return <Info className="text-slate-400" size={18} />;
+        return <Info className="text-white" size={18} />;
     }
   }
 
@@ -535,7 +535,7 @@ export default function TestsComptablesPage({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Sélection client avec recherche */}
           <div className="relative">
-            <label className="block text-sm font-medium text-slate-300 mb-1">Client</label>
+            <label className="block text-sm font-medium text-white mb-1">Client</label>
             <input
               type="text"
               value={clientSearch}
@@ -558,7 +558,7 @@ export default function TestsComptablesPage({
                     className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white flex justify-between items-center"
                   >
                     <span>{client.nom}</span>
-                    <span className={client.pennylane_client_api_key ? 'text-green-400' : 'text-slate-500 text-sm'}>
+                    <span className={client.pennylane_client_api_key ? 'text-green-400' : 'text-white text-sm'}>
                       {client.pennylane_client_api_key ? '✓' : '(pas d\'API)'}
                     </span>
                   </div>
@@ -569,7 +569,7 @@ export default function TestsComptablesPage({
 
           {/* Sélection millésime */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Millésime</label>
+            <label className="block text-sm font-medium text-white mb-1">Millésime</label>
             <select
               value={selectedMillesime}
               onChange={(e) => setSelectedMillesime(Number(e.target.value))}
@@ -583,7 +583,7 @@ export default function TestsComptablesPage({
 
           {/* Sélection test */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Test</label>
+            <label className="block text-sm font-medium text-white mb-1">Test</label>
             <select
               value={selectedTestCode}
               onChange={(e) => setSelectedTestCode(e.target.value)}
@@ -602,7 +602,7 @@ export default function TestsComptablesPage({
               disabled={isRunning || !selectedClientId || !selectedTestCode}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition ${
                 isRunning || !selectedClientId || !selectedTestCode
-                  ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                  ? 'bg-slate-600 text-white cursor-not-allowed'
                   : `${accent.color} text-white ${accent.hover}`
               }`}
             >
@@ -622,7 +622,7 @@ export default function TestsComptablesPage({
             {selectedClientId && (
               <button
                 onClick={() => setShowApiKeyModal(true)}
-                className="p-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"
+                className="p-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition"
                 title="Configurer la clé API"
               >
                 <Settings size={18} />
@@ -634,7 +634,7 @@ export default function TestsComptablesPage({
         {/* Description du test sélectionné */}
         {selectedTestCode && (
           <div className="mt-4 pt-4 border-t border-slate-700">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-white">
               {testsDisponibles.find(t => t.code === selectedTestCode)?.description}
             </p>
 
@@ -667,13 +667,13 @@ export default function TestsComptablesPage({
                     />
                   </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-white mt-1">
                   Séparez les préfixes de comptes par des virgules. Ex: PPF = 60701 / 60702, Goodbeer = 6071 / 6072
                 </p>
 
                 {/* Champs adresse pour l'attestation Word */}
                 <div className="mt-3 pt-3 border-t border-slate-600">
-                  <p className="text-xs text-slate-400 mb-2">Coordonnées pour l'attestation Word :</p>
+                  <p className="text-xs text-white mb-2">Coordonnées pour l'attestation Word :</p>
                   <div className="grid grid-cols-3 gap-2">
                     <input
                       type="text"
@@ -719,7 +719,7 @@ export default function TestsComptablesPage({
                         max="31"
                         className="w-16 bg-slate-700 text-white rounded px-2 py-2 border border-slate-600 text-sm text-center"
                       />
-                      <span className="text-slate-400">/</span>
+                      <span className="text-white">/</span>
                       <input
                         type="number"
                         value={moisArreteInput}
@@ -729,7 +729,7 @@ export default function TestsComptablesPage({
                         max="12"
                         className="w-16 bg-slate-700 text-white rounded px-2 py-2 border border-slate-600 text-sm text-center"
                       />
-                      <span className="text-slate-400 text-sm">/ {selectedMillesime}</span>
+                      <span className="text-white text-sm">/ {selectedMillesime}</span>
                     </div>
                   </div>
                   <div className="col-span-2">
@@ -758,7 +758,7 @@ export default function TestsComptablesPage({
                     />
                   </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-white mt-1">
                   La date est calculée avec le millésime sélectionné. Séparez les préfixes par des virgules. Seuls les comptes dont le solde dépasse le seuil seront retenus.
                 </p>
               </div>
@@ -775,7 +775,7 @@ export default function TestsComptablesPage({
               <AlertTriangle size={20} className={accent.text} />
               Résultats du test
               {executionActuelle && (
-                <span className="text-sm font-normal text-slate-400">
+                <span className="text-sm font-normal text-white">
                   ({executionActuelle.nombre_anomalies} anomalie(s))
                 </span>
               )}
@@ -803,7 +803,7 @@ export default function TestsComptablesPage({
               {resultatsActuels.length > 0 && (
                 <button
                   onClick={handleExportResults}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition text-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-white rounded hover:bg-slate-600 transition text-sm"
                 >
                   <Download size={16} />
                   Export anomalies
@@ -815,22 +815,22 @@ export default function TestsComptablesPage({
           {/* Résumé des données analysées */}
           {donneesAnalysees && (
             <div className="bg-slate-700/30 rounded-lg p-4 mb-4 border border-slate-600">
-              <h3 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <h3 className="text-sm font-medium text-white mb-2 flex items-center gap-2">
                 <Info size={16} />
                 Données analysées
               </h3>
               {donneesAnalysees.type === 'fournisseurs' && (
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <span className="text-slate-400">Fournisseurs analysés:</span>
+                    <span className="text-white">Fournisseurs analysés:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Comparaisons effectuées:</span>
+                    <span className="text-white">Comparaisons effectuées:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComparaisons}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Seuil similarité:</span>
+                    <span className="text-white">Seuil similarité:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.seuilSimilarite}%</span>
                   </div>
                 </div>
@@ -838,23 +838,23 @@ export default function TestsComptablesPage({
               {donneesAnalysees.type === 'attestation_achats' && (
                 <div className="grid grid-cols-5 gap-4 text-sm">
                   <div>
-                    <span className="text-slate-400">Écritures analysées:</span>
+                    <span className="text-white">Écritures analysées:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbEcrituresAnalysees}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Fournisseurs:</span>
+                    <span className="text-white">Fournisseurs:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Total Débit:</span>
+                    <span className="text-white">Total Débit:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.totalDebit?.toFixed(2)}€</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Total Crédit:</span>
+                    <span className="text-white">Total Crédit:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.totalCredit?.toFixed(2)}€</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Total HT (solde):</span>
+                    <span className="text-white">Total HT (solde):</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.totalHT?.toFixed(2)}€</span>
                   </div>
                 </div>
@@ -862,27 +862,27 @@ export default function TestsComptablesPage({
               {donneesAnalysees.type === 'double_saisie' && (
                 <div className="grid grid-cols-6 gap-4 text-sm">
                   <div>
-                    <span className="text-slate-400">Factures:</span>
+                    <span className="text-white">Factures:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFactures}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Fournisseurs:</span>
+                    <span className="text-white">Fournisseurs:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbFournisseurs}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Au relevé:</span>
+                    <span className="text-white">Au relevé:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbMarquesReleve || 0}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Alertes:</span>
+                    <span className="text-white">Alertes:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbAvecAlertes || donneesAnalysees.nbAvecDoublons || 0}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Ignorés:</span>
+                    <span className="text-white">Ignorés:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.nbIgnores || 0}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Période:</span>
+                    <span className="text-white">Période:</span>
                     <span className="ml-2 text-white font-medium">{donneesAnalysees.toleranceJours}j</span>
                   </div>
                 </div>
@@ -891,23 +891,23 @@ export default function TestsComptablesPage({
                 <>
                   <div className="grid grid-cols-5 gap-4 text-sm mb-4">
                     <div>
-                      <span className="text-slate-400">Arrêté au:</span>
+                      <span className="text-white">Arrêté au:</span>
                       <span className="ml-2 text-white font-medium">{donneesAnalysees.dateArrete || 'Fin exercice'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400">Seuil:</span>
+                      <span className="text-white">Seuil:</span>
                       <span className="ml-2 text-white font-medium">{donneesAnalysees.seuilSignification?.toFixed(0) || '0'} €</span>
                     </div>
                     <div>
-                      <span className="text-slate-400">Comptes analysés:</span>
+                      <span className="text-white">Comptes analysés:</span>
                       <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComptesAnalyses}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400">Comptes retenus:</span>
+                      <span className="text-white">Comptes retenus:</span>
                       <span className="ml-2 text-white font-medium">{donneesAnalysees.nbComptesRetenus}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400">Total dettes:</span>
+                      <span className="text-white">Total dettes:</span>
                       <span className="ml-2 text-red-400 font-bold">{donneesAnalysees.totalDettes?.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span>
                     </div>
                   </div>
@@ -917,7 +917,7 @@ export default function TestsComptablesPage({
                     <div className="overflow-x-auto mt-2">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-slate-400 border-b border-slate-600">
+                          <tr className="text-white border-b border-slate-600">
                             <th className="text-left py-2 px-3">Catégorie</th>
                             <th className="text-left py-2 px-3">N° Compte</th>
                             <th className="text-left py-2 px-3">Libellé</th>
@@ -932,17 +932,17 @@ export default function TestsComptablesPage({
                             <React.Fragment key={`cat-${catIdx}`}>
                               {cat.comptes.map((c, cIdx) => (
                                 <tr key={`${catIdx}-${cIdx}`} className="border-b border-slate-700/50 hover:bg-slate-700/20">
-                                  <td className="py-1.5 px-3 text-slate-300">{cIdx === 0 ? cat.categorie : ''}</td>
-                                  <td className="py-1.5 px-3 text-slate-400 font-mono text-xs">{c.compteNum}</td>
+                                  <td className="py-1.5 px-3 text-white">{cIdx === 0 ? cat.categorie : ''}</td>
+                                  <td className="py-1.5 px-3 text-white font-mono text-xs">{c.compteNum}</td>
                                   <td className="py-1.5 px-3 text-white">{c.compteLib}</td>
-                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.totalDebit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
-                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.totalCredit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
-                                  <td className="py-1.5 px-3 text-right text-slate-300">{c.solde?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-white">{c.totalDebit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-white">{c.totalCredit?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
+                                  <td className="py-1.5 px-3 text-right text-white">{c.solde?.toLocaleString('fr-FR', {minimumFractionDigits: 2})}</td>
                                   <td className="py-1.5 px-3 text-right text-red-400 font-medium">{c.montantDette > 0 ? c.montantDette.toLocaleString('fr-FR', {minimumFractionDigits: 2}) : '-'}</td>
                                 </tr>
                               ))}
                               <tr key={`subtotal-${catIdx}`} className="border-b border-slate-600 bg-slate-700/30">
-                                <td colSpan={6} className="py-1.5 px-3 text-right text-slate-400 text-xs font-medium">Sous-total {cat.categorie}</td>
+                                <td colSpan={6} className="py-1.5 px-3 text-right text-white text-xs font-medium">Sous-total {cat.categorie}</td>
                                 <td className="py-1.5 px-3 text-right text-red-400 font-bold">{cat.sousTotal?.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</td>
                               </tr>
                             </React.Fragment>
@@ -961,7 +961,7 @@ export default function TestsComptablesPage({
           )}
 
           {resultatsActuels.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
+            <div className="text-center py-8 text-white">
               <CheckCircle size={48} className="mx-auto mb-3 text-green-500" />
               <p>Aucune anomalie détectée !</p>
               {donneesAnalysees && (
@@ -980,9 +980,9 @@ export default function TestsComptablesPage({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         {renderSeveriteBadge(resultat.severite)}
-                        <span className="text-sm text-slate-400">{resultat.type_anomalie}</span>
+                        <span className="text-sm text-white">{resultat.type_anomalie}</span>
                       </div>
-                      <p className="text-slate-300 text-sm">{resultat.commentaire}</p>
+                      <p className="text-white text-sm">{resultat.commentaire}</p>
 
                       {/* Détails spécifiques au type de test */}
                       {resultat.donnees && (
@@ -991,14 +991,14 @@ export default function TestsComptablesPage({
                           {resultat.donnees.compte1 && resultat.donnees.compte2 && (
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
-                                <span className="text-slate-400">Compte 1:</span>
+                                <span className="text-white">Compte 1:</span>
                                 <span className="ml-2 text-white">{resultat.donnees.compte1.numero}</span>
-                                <span className="ml-2 text-slate-400">({resultat.donnees.compte1.libelle})</span>
+                                <span className="ml-2 text-white">({resultat.donnees.compte1.libelle})</span>
                               </div>
                               <div>
-                                <span className="text-slate-400">Compte 2:</span>
+                                <span className="text-white">Compte 2:</span>
                                 <span className="ml-2 text-white">{resultat.donnees.compte2.numero}</span>
-                                <span className="ml-2 text-slate-400">({resultat.donnees.compte2.libelle})</span>
+                                <span className="ml-2 text-white">({resultat.donnees.compte2.libelle})</span>
                               </div>
                             </div>
                           )}
@@ -1007,28 +1007,28 @@ export default function TestsComptablesPage({
                             <div className="space-y-2 text-sm">
                               {/* Boutons sélection */}
                               <div className="flex items-center gap-2 text-xs">
-                                <span className="text-slate-400">Sélection attestation Word :</span>
+                                <span className="text-white">Sélection attestation Word :</span>
                                 <button
                                   onClick={() => setSelectedFournisseursAttestation(new Set(
                                     resultat.donnees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
                                   ))}
-                                  className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                                  className="px-2 py-0.5 bg-slate-700 text-white rounded hover:bg-slate-600 transition"
                                 >
                                   Tout cocher
                                 </button>
                                 <button
                                   onClick={() => setSelectedFournisseursAttestation(new Set())}
-                                  className="px-2 py-0.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                                  className="px-2 py-0.5 bg-slate-700 text-white rounded hover:bg-slate-600 transition"
                                 >
                                   Tout décocher
                                 </button>
-                                <span className="text-slate-500 ml-2">
+                                <span className="text-white ml-2">
                                   {selectedFournisseursAttestation.size}/{resultat.donnees.fournisseurs.length} sélectionné(s)
                                 </span>
                               </div>
                               <div className="border border-slate-600 rounded">
                                 {/* En-tête colonnes */}
-                                <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-slate-700/50 text-xs text-slate-400 font-medium">
+                                <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-slate-700/50 text-xs text-white font-medium">
                                   <div className="col-span-1 text-center">✓</div>
                                   <div className="col-span-3">Fournisseur</div>
                                   <div className="col-span-2 text-right">Nb écritures</div>
@@ -1063,9 +1063,9 @@ export default function TestsComptablesPage({
                                           />
                                         </div>
                                         <div className="col-span-3 text-white truncate" title={f.nom}>{f.nom}</div>
-                                        <div className="col-span-2 text-right text-slate-400">{f.nbEcritures}</div>
-                                        <div className="col-span-2 text-right text-slate-400">{f.totalDebit?.toFixed(2)}€</div>
-                                        <div className="col-span-2 text-right text-slate-400">{f.totalCredit?.toFixed(2)}€</div>
+                                        <div className="col-span-2 text-right text-white">{f.nbEcritures}</div>
+                                        <div className="col-span-2 text-right text-white">{f.totalDebit?.toFixed(2)}€</div>
+                                        <div className="col-span-2 text-right text-white">{f.totalCredit?.toFixed(2)}€</div>
                                         <div className={`col-span-2 text-right font-medium ${f.montantHT < 0 ? 'text-red-400' : 'text-white'}`}>{f.montantHT?.toFixed(2)}€</div>
                                       </div>
                                     );
@@ -1077,8 +1077,8 @@ export default function TestsComptablesPage({
                                 <div className="bg-slate-600/70 rounded px-3 py-2 flex justify-between items-center font-bold">
                                   <span className="text-white">TOTAL GÉNÉRAL ({resultat.donnees.totalGeneral.nbFournisseurs} fournisseurs)</span>
                                   <div className="flex gap-6">
-                                    <span className="text-slate-300">Débit: {resultat.donnees.totalGeneral.totalDebit?.toFixed(2)}€</span>
-                                    <span className="text-slate-300">Crédit: {resultat.donnees.totalGeneral.totalCredit?.toFixed(2)}€</span>
+                                    <span className="text-white">Débit: {resultat.donnees.totalGeneral.totalDebit?.toFixed(2)}€</span>
+                                    <span className="text-white">Crédit: {resultat.donnees.totalGeneral.totalCredit?.toFixed(2)}€</span>
                                     <span className="text-white">HT: {resultat.donnees.totalGeneral.totalHT?.toFixed(2)}€</span>
                                   </div>
                                 </div>
@@ -1089,7 +1089,7 @@ export default function TestsComptablesPage({
                           {resultat.type_anomalie !== 'attestation_achats_resume' && resultat.donnees.fournisseurs && (
                             <div className="space-y-1 text-sm">
                               {/* En-tête */}
-                              <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-slate-400 font-medium">
+                              <div className="flex items-center gap-3 p-2 bg-slate-700/50 rounded text-xs text-white font-medium">
                                 <div className="w-14 text-center">Relevé</div>
                                 <div className="w-10 text-center">Masq.</div>
                                 <div className="w-48">Fournisseur</div>
@@ -1121,7 +1121,7 @@ export default function TestsComptablesPage({
                                     <div className="w-10 flex justify-center">
                                       <button
                                         onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', true)}
-                                        className="p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-600 rounded transition"
+                                        className="p-1 text-white hover:text-white hover:bg-slate-600 rounded transition"
                                         title="Masquer ce fournisseur de l'analyse"
                                       >
                                         <EyeOff size={14} />
@@ -1138,7 +1138,7 @@ export default function TestsComptablesPage({
                                           <Lightbulb size={14} className="text-yellow-400 flex-shrink-0" title="Doublons détectés - envisagez de marquer ce fournisseur au relevé" />
                                         )}
                                       </div>
-                                      <span className="text-slate-500 text-xs">{fournisseur.nbFactures} facture(s)</span>
+                                      <span className="text-white text-xs">{fournisseur.nbFactures} facture(s)</span>
                                     </div>
 
                                     {/* Calendrier ou Alertes */}
@@ -1148,12 +1148,12 @@ export default function TestsComptablesPage({
                                         <div className="flex gap-0.5">
                                           {fournisseur.calendrierMois.map((moisInfo) => {
                                             const moisNom = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][parseInt(moisInfo.mois.split('-')[1]) - 1];
-                                            let bgColor = 'bg-slate-600/50 text-slate-500'; // Futur = grisé
+                                            let bgColor = 'bg-slate-600/50 text-white'; // Futur = grisé
                                             let title = `${moisInfo.mois} - Futur`;
                                             let isClickable = false;
 
                                             if (moisInfo.estMoisActuel) {
-                                              bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-slate-300';
+                                              bgColor = moisInfo.nbFactures > 0 ? 'bg-blue-500 text-white' : 'bg-slate-500 text-white';
                                               title = `${moisInfo.mois} - Mois en cours (${moisInfo.nbFactures} fact.)`;
                                               if (moisInfo.nbFactures > 0) isClickable = true;
                                             } else if (moisInfo.estPasse) {
@@ -1260,7 +1260,7 @@ export default function TestsComptablesPage({
                                                       {alerte.factures[1]?.date?.substring(5)} : {alerte.factures[1]?.montant}€
                                                     </button>
                                                     {alerte.ecartJours && (
-                                                      <span className="text-slate-400 text-xs ml-1">({alerte.ecartJours}j)</span>
+                                                      <span className="text-white text-xs ml-1">({alerte.ecartJours}j)</span>
                                                     )}
                                                   </div>
                                                 )}
@@ -1279,7 +1279,7 @@ export default function TestsComptablesPage({
                               </div>
 
                               {/* Légende pour le calendrier */}
-                              <div className="flex gap-4 pt-3 mt-2 border-t border-slate-700 text-xs text-slate-400">
+                              <div className="flex gap-4 pt-3 mt-2 border-t border-slate-700 text-xs text-white">
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500"></span> OK</span>
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500"></span> Manquant</span>
                                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500"></span> Doublon</span>
@@ -1292,7 +1292,7 @@ export default function TestsComptablesPage({
                                 <div className="mt-4 pt-3 border-t border-slate-700">
                                   <button
                                     onClick={() => setShowIgnored(!showIgnored)}
-                                    className="flex items-center gap-2 text-slate-400 hover:text-slate-300 transition text-xs"
+                                    className="flex items-center gap-2 text-white hover:text-white transition text-xs"
                                   >
                                     {showIgnored ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                     <EyeOff size={14} />
@@ -1304,13 +1304,13 @@ export default function TestsComptablesPage({
                                       {resultat.donnees.fournisseurs
                                         .filter(f => f.isIgnore || fournisseursIgnores.has(String(f.supplierId)))
                                         .map((fournisseur) => (
-                                        <div key={fournisseur.supplierId} className="flex items-center gap-3 p-2 rounded bg-slate-700/20 text-slate-500">
+                                        <div key={fournisseur.supplierId} className="flex items-center gap-3 p-2 rounded bg-slate-700/20 text-white">
                                           <EyeOff size={14} className="flex-shrink-0" />
                                           <span className="flex-1 truncate">{fournisseur.nom}</span>
                                           <span className="text-xs">{fournisseur.nbFactures} fact.</span>
                                           <button
                                             onClick={() => toggleFournisseurFlag(fournisseur.supplierId, fournisseur.nom, 'ignore', false)}
-                                            className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded text-xs transition"
+                                            className="flex items-center gap-1 px-2 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs transition"
                                             title="Restaurer ce fournisseur dans l'analyse"
                                           >
                                             <Eye size={12} />
@@ -1327,14 +1327,14 @@ export default function TestsComptablesPage({
                           {resultat.donnees.ecritureFacture && resultat.donnees.ecritureBanque && (
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
-                                <span className="text-slate-400">Facture:</span>
+                                <span className="text-white">Facture:</span>
                                 <span className="ml-2 text-white">{resultat.donnees.ecritureFacture.montant}€</span>
-                                <span className="ml-2 text-slate-400">({resultat.donnees.ecritureFacture.date})</span>
+                                <span className="ml-2 text-white">({resultat.donnees.ecritureFacture.date})</span>
                               </div>
                               <div>
-                                <span className="text-slate-400">Banque:</span>
+                                <span className="text-white">Banque:</span>
                                 <span className="ml-2 text-white">{resultat.donnees.ecritureBanque.montant}€</span>
-                                <span className="ml-2 text-slate-400">({resultat.donnees.ecritureBanque.date})</span>
+                                <span className="ml-2 text-white">({resultat.donnees.ecritureBanque.date})</span>
                               </div>
                             </div>
                           )}
@@ -1359,7 +1359,7 @@ export default function TestsComptablesPage({
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <History size={20} className={accent.text} />
               Historique des tests
-              <span className="text-sm font-normal text-slate-400">({historique.length})</span>
+              <span className="text-sm font-normal text-white">({historique.length})</span>
             </h2>
             {showHistory ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </button>
@@ -1367,13 +1367,13 @@ export default function TestsComptablesPage({
           {showHistory && (
             <div className="mt-4 space-y-2">
               {historique.length === 0 ? (
-                <p className="text-slate-400 text-center py-4">Aucun test exécuté pour ce client</p>
+                <p className="text-white text-center py-4">Aucun test exécuté pour ce client</p>
               ) : (
                 <>
                   <div className="flex justify-end mb-2">
                     <button
                       onClick={() => exportHistorique({ executions: historique, client: selectedClient })}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition text-sm"
+                      className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 text-white rounded hover:bg-slate-600 transition text-sm"
                     >
                       <Download size={16} />
                       Export historique
@@ -1396,9 +1396,9 @@ export default function TestsComptablesPage({
                             {exec.statut}
                           </span>
                           <span className="text-white">{exec.test_code}</span>
-                          <span className="text-slate-400">Millésime {exec.millesime}</span>
+                          <span className="text-white">Millésime {exec.millesime}</span>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-slate-400">
+                        <div className="flex items-center gap-4 text-sm text-white">
                           <span>{exec.nombre_anomalies} anomalie(s)</span>
                           <span>{new Date(exec.date_execution).toLocaleDateString('fr-FR')}</span>
                         </div>
@@ -1418,17 +1418,17 @@ export default function TestsComptablesPage({
           <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">Configuration API Pennylane</h3>
-              <button onClick={() => setShowApiKeyModal(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowApiKeyModal(false)} className="text-white hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
-            <p className="text-slate-400 text-sm mb-4">
+            <p className="text-white text-sm mb-4">
               Configurez la clé API Pennylane pour le client <strong className="text-white">{selectedClient.nom}</strong>
             </p>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-300 mb-1">Clé API Pennylane</label>
+              <label className="block text-sm font-medium text-white mb-1">Clé API Pennylane</label>
               <input
                 type="password"
                 value={apiKeyInput}
@@ -1455,7 +1455,7 @@ export default function TestsComptablesPage({
             <div className="flex gap-3">
               <button
                 onClick={() => setShowApiKeyModal(false)}
-                className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                className="flex-1 px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 transition"
               >
                 Annuler
               </button>
@@ -1464,7 +1464,7 @@ export default function TestsComptablesPage({
                 disabled={testingConnection || !apiKeyInput.trim()}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded transition ${
                   testingConnection || !apiKeyInput.trim()
-                    ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                    ? 'bg-slate-600 text-white cursor-not-allowed'
                     : `${accent.color} text-white ${accent.hover}`
                 }`}
               >

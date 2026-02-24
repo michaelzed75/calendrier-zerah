@@ -319,12 +319,12 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     }, [value]);
 
     if (isSaving) {
-      return <div className="px-2 py-1 text-slate-400 text-xs">...</div>;
+      return <div className="px-2 py-1 text-white text-xs">...</div>;
     }
 
     if (disabled) {
       return (
-        <div className={`px-2 py-1 rounded text-xs min-h-[24px] text-slate-500 bg-slate-800 cursor-not-allowed ${className}`}>
+        <div className={`px-2 py-1 rounded text-xs min-h-[24px] text-white bg-slate-800 cursor-not-allowed ${className}`}>
           -
         </div>
       );
@@ -355,7 +355,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     return (
       <div
         onClick={() => setEditingCell(cellKey)}
-        className={`px-2 py-1 cursor-pointer hover:bg-slate-600 rounded text-xs min-h-[24px] ${value ? 'text-white' : 'text-slate-500'} ${className}`}
+        className={`px-2 py-1 cursor-pointer hover:bg-slate-600 rounded text-xs min-h-[24px] ${value ? 'text-white' : 'text-white'} ${className}`}
       >
         {value || placeholder || '-'}
       </div>
@@ -368,7 +368,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     const isSaving = saving[cellKey];
 
     if (isSaving) {
-      return <div className="px-2 py-1 text-slate-400 text-xs">...</div>;
+      return <div className="px-2 py-1 text-white text-xs">...</div>;
     }
 
     return (
@@ -378,7 +378,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         disabled={disabled}
         className={`w-full text-xs px-1 py-1 rounded border focus:outline-none ${
           disabled
-            ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+            ? 'bg-slate-800 text-white border-slate-700 cursor-not-allowed'
             : 'bg-slate-700 text-white border-slate-600 focus:border-pink-500'
         }`}
       >
@@ -396,7 +396,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     const isSaving = saving[cellKey];
 
     if (isSaving) {
-      return <div className="px-2 py-1 text-slate-400 text-xs text-center">...</div>;
+      return <div className="px-2 py-1 text-white text-xs text-center">...</div>;
     }
 
     return (
@@ -629,7 +629,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                 <span className="hidden md:inline">Export suivi</span>
               </button>
               <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-400">Année fiscale:</label>
+                <label className="text-sm text-white">Année fiscale:</label>
                 <select
                   value={anneeFiscale}
                   onChange={(e) => handleAnneeFiscaleChange(parseInt(e.target.value))}
@@ -641,7 +641,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                   ))}
                 </select>
                 {copyingData && (
-                  <span className="text-xs text-slate-400 animate-pulse">Copie des données...</span>
+                  <span className="text-xs text-white animate-pulse">Copie des données...</span>
                 )}
               </div>
             </div>
@@ -651,7 +651,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
           <div className="flex flex-col md:flex-row gap-3">
             {/* Recherche par nom */}
             <div className="relative flex-1 max-w-md">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
               <input
                 type="text"
                 value={recherche}
@@ -662,7 +662,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               {recherche && (
                 <button
                   onClick={() => setRecherche('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white hover:text-white"
                 >
                   <X size={14} />
                 </button>
@@ -672,7 +672,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
             {/* Filtre par chef de mission (admin uniquement) */}
             {userCollaborateur?.is_admin && (
               <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-400 whitespace-nowrap">Chef de mission:</label>
+                <label className="text-sm text-white whitespace-nowrap">Chef de mission:</label>
                 <select
                   value={filtreChefMission}
                   onChange={(e) => setFiltreChefMission(e.target.value)}
@@ -688,7 +688,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
             )}
 
             {/* Compteur de résultats */}
-            <div className="flex items-center text-sm text-slate-400">
+            <div className="flex items-center text-sm text-white">
               {mesClients.length} dossier{mesClients.length > 1 ? 's' : ''}
             </div>
           </div>
@@ -699,7 +699,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
           <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
             <table className="w-full text-sm table-fixed">
               <thead className="sticky top-0 z-10 bg-slate-800">
-                <tr className="text-slate-400 text-xs">
+                <tr className="text-white text-xs">
                   <th
                     className="text-left py-3 px-2 border-b border-slate-700 sticky left-0 bg-slate-800 w-[200px] cursor-pointer hover:text-white transition"
                     onClick={() => handleTriClick('nom')}
@@ -748,7 +748,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               <tbody>
                 {mesClients.length === 0 ? (
                   <tr>
-                    <td colSpan="15" className="text-center py-8 text-slate-400">
+                    <td colSpan="15" className="text-center py-8 text-white">
                       {recherche ? 'Aucun dossier trouvé' : 'Aucun dossier'}
                     </td>
                   </tr>
@@ -913,7 +913,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
         </div>
 
         {/* Légende */}
-        <div className="p-4 border-t border-slate-700 text-xs text-slate-400">
+        <div className="p-4 border-t border-slate-700 text-xs text-white">
           <p className="mb-2"><strong>Légende:</strong></p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             <span>• <strong>Mois clôt.:</strong> Mois de clôture (pour calcul IS Solde, Liasse et CA12)</span>
@@ -940,17 +940,17 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
               <h3 className="text-lg font-bold text-white">Export du suivi des échéances</h3>
               <button
                 onClick={() => setShowExportModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-white hover:text-white"
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="mb-4 text-slate-300 text-sm">
+            <div className="mb-4 text-white text-sm">
               <p className="mb-2">Exporter la liste de toutes les échéances pour l'année {anneeFiscale}.</p>
-              <p className="text-slate-400 text-xs">Le fichier CSV contiendra: Client, Type, Date, Montant, Statut (Fait/À faire), Fait par, Date/heure.</p>
+              <p className="text-white text-xs">Le fichier CSV contiendra: Client, Type, Date, Montant, Statut (Fait/À faire), Fait par, Date/heure.</p>
             </div>
             <div className="mb-4 p-3 bg-slate-700/50 rounded-lg space-y-1">
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-white">
                 <strong>{getEcheancesStats().total}</strong> échéance(s) au total
               </p>
               <p className="text-sm text-emerald-400">

@@ -592,7 +592,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                 <Lock size={12} /> {nbLocked} ligne{nbLocked > 1 ? 's' : ''} verrouillée{nbLocked > 1 ? 's' : ''}
               </span>
             )}
-            <span className="text-xs text-slate-300">{nbAxesActifs} / {AXES_CONFIGURABLES.length} actif{nbAxesActifs > 1 ? 's' : ''}</span>
+            <span className="text-xs text-white">{nbAxesActifs} / {AXES_CONFIGURABLES.length} actif{nbAxesActifs > 1 ? 's' : ''}</span>
           </div>
         </div>
 
@@ -618,7 +618,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                     onChange={() => toggleAxe(key)}
                     className="rounded"
                   />
-                  <span className={`text-sm ${param.actif ? 'text-white font-semibold' : 'text-slate-300 font-medium'}`}>
+                  <span className={`text-sm ${param.actif ? 'text-white font-semibold' : 'text-white font-medium'}`}>
                     {def.label}
                   </span>
                 </label>
@@ -635,7 +635,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                 )}
 
                 {param.actif && def.modes.length === 1 && (
-                  <span className="text-xs text-slate-400 w-14 text-center">
+                  <span className="text-xs text-white w-14 text-center">
                     {def.modes[0] === 'montant' ? 'EUR' : '%'}
                   </span>
                 )}
@@ -650,14 +650,14 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                       placeholder="0"
                       className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-sm text-center text-white"
                     />
-                    <span className="text-xs text-slate-400 w-12">
+                    <span className="text-xs text-white w-12">
                       {param.mode === 'pourcentage' ? '%' : key === 'social_bulletin' ? '€/bull.' : '€'}
                     </span>
                   </div>
                 )}
 
                 <div className="ml-auto text-right">
-                  <span className="text-xs text-slate-400">{fmt(axeTotaux?.ancien || 0)} €/an</span>
+                  <span className="text-xs text-white">{fmt(axeTotaux?.ancien || 0)} €/an</span>
                   {param.actif && axeTotaux?.delta > 0 && (
                     <span className="text-xs text-emerald-400 ml-2">+{fmt(axeTotaux.delta)} €/an</span>
                   )}
@@ -667,7 +667,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
           })}
         </div>
 
-        <p className="text-xs text-slate-400 mt-2 italic">
+        <p className="text-xs text-white mt-2 italic">
           Les accessoires social (coffre-fort, publi-postage, entrées/sorties) suivent automatiquement le prix au bulletin.
         </p>
       </div>
@@ -688,7 +688,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
 
         {silaePeriodesDisponibles.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Silae :</span>
+            <span className="text-xs text-white">Silae :</span>
             <select
               value={silaePeriode}
               onChange={async (e) => {
@@ -709,7 +709,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
         )}
 
         {silaeResult && (
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-white">
             {silaeResult.inserted !== undefined && (
               <>
                 <Check size={12} className="inline text-emerald-400" /> {silaeResult.inserted} importés
@@ -742,8 +742,8 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
         <div className="ml-auto flex items-center gap-3">
           {totaux.global.delta > 0 && (
             <div className="text-right">
-              <span className="text-[10px] text-slate-500 block text-right">Impact annuel HT {silaeData?.size > 0 ? '(prod. Silae)' : ''}</span>
-              <span className="text-xs text-slate-400" title={silaeData?.size > 0 ? 'Estimé production réelle (quantités Silae pour le social)' : 'Basé sur les montants Pennylane'}>{fmt(totaux.global.ancien)} →</span>
+              <span className="text-[10px] text-white block text-right">Impact annuel HT {silaeData?.size > 0 ? '(prod. Silae)' : ''}</span>
+              <span className="text-xs text-white" title={silaeData?.size > 0 ? 'Estimé production réelle (quantités Silae pour le social)' : 'Basé sur les montants Pennylane'}>{fmt(totaux.global.ancien)} →</span>
               <span className="text-sm font-bold text-blue-400 ml-1">{fmt(totaux.global.nouveau)} €</span>
               <span className="text-xs text-emerald-400 ml-2">+{fmt(totaux.global.delta)} €/an (+{fmtDec(totaux.global.deltaPct)}%)</span>
             </div>
@@ -769,7 +769,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
             placeholder="Rechercher un client..."
             className="px-3 py-1.5 bg-slate-700 border border-slate-600 rounded-lg w-56 text-sm text-white placeholder-slate-400"
           />
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-white">
             {lignesAffichees.length} ligne{lignesAffichees.length > 1 ? 's' : ''} modifiée{lignesAffichees.length > 1 ? 's' : ''}
             {' '}— {totaux.global.nbClients} client{totaux.global.nbClients > 1 ? 's' : ''}
           </span>
@@ -784,7 +784,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
             {nbLocked > 0 && (
               <button
                 onClick={unlockAllVisible}
-                className="px-2.5 py-1 bg-slate-700/60 hover:bg-slate-600/60 text-slate-300 rounded text-xs flex items-center gap-1.5 transition-colors"
+                className="px-2.5 py-1 bg-slate-700/60 hover:bg-slate-600/60 text-white rounded text-xs flex items-center gap-1.5 transition-colors"
                 title="Déverrouiller toutes les lignes affichées"
               >
                 <Unlock size={12} /> Tout déverrouiller
@@ -796,7 +796,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
 
       {/* === Table des lignes modifiées === */}
       {lignesModifiees.length === 0 ? (
-        <div className="text-center py-12 text-slate-500">
+        <div className="text-center py-12 text-white">
           <p className="text-lg mb-1">Aucune augmentation configurée</p>
           <p className="text-sm">Cochez une catégorie ci-dessus et indiquez un % ou un montant pour voir les résultats.</p>
         </div>
@@ -823,17 +823,17 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                   return (
                     <th
                       key={col.key}
-                      className={`px-3 py-2 text-${col.align} text-xs font-medium text-slate-300 cursor-pointer hover:text-white select-none`}
+                      className={`px-3 py-2 text-${col.align} text-xs font-medium text-white cursor-pointer hover:text-white select-none`}
                       onClick={() => handleSort(col.key)}
                     >
                       <span className="inline-flex items-center gap-1">
                         {col.label}
-                        <SortIcon size={10} className={isActive ? 'text-blue-400' : 'text-slate-500 opacity-50'} />
+                        <SortIcon size={10} className={isActive ? 'text-blue-400' : 'text-white opacity-50'} />
                       </span>
                     </th>
                   );
                 })}
-                <th className="px-3 py-2 text-center text-xs font-medium text-slate-300" title="Verrouiller pour conserver même après changement de paramètres">
+                <th className="px-3 py-2 text-center text-xs font-medium text-white" title="Verrouiller pour conserver même après changement de paramètres">
                   <Lock size={12} className="inline" />
                 </th>
               </tr>
@@ -854,17 +854,17 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                       {ligne.client_nom}
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${axeColors[ligne.axe] || 'bg-slate-700 text-slate-300'}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${axeColors[ligne.axe] || 'bg-slate-700 text-white'}`}>
                         {AXE_DEFINITIONS[ligne.axe]?.label || ligne.axe}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-sm text-slate-300 max-w-[250px]" title={ligne.description ? `${ligne.label} — ${ligne.description}` : ligne.label}>
+                    <td className="px-3 py-2 text-sm text-white max-w-[250px]" title={ligne.description ? `${ligne.label} — ${ligne.description}` : ligne.label}>
                       <div className="truncate">{ligne.label}</div>
                       {ligne.description && (
-                        <div className="text-[10px] text-slate-500 truncate">{ligne.description}</div>
+                        <div className="text-[10px] text-white truncate">{ligne.description}</div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-sm text-center text-slate-400">
+                    <td className="px-3 py-2 text-sm text-center text-white">
                       {ligne.quantite}
                       {ligne.quantite_silae !== null && ligne.quantite_silae !== ligne.quantite && (
                         <div className="text-[10px] text-orange-400" title="Quantité Silae (production réelle)">
@@ -873,11 +873,11 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <span className="text-[10px] text-slate-500" title={`×${ligne.coeff_annualisation}/an`}>
+                      <span className="text-[10px] text-white" title={`×${ligne.coeff_annualisation}/an`}>
                         {fmtFrequence(ligne.frequence, ligne.intervalle)}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-sm text-right text-slate-400">{fmtDec(ligne.ancien_prix_unitaire_ht)} €</td>
+                    <td className="px-3 py-2 text-sm text-right text-white">{fmtDec(ligne.ancien_prix_unitaire_ht)} €</td>
                     <td className="px-3 py-2 text-sm text-right">
                       {ligne.axe === 'accessoires_social' ? (
                         // Accessoires : non modifiables, suivent le bulletin
@@ -899,7 +899,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                         </>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-sm text-right text-slate-400">{fmtDec(ligne.ancien_montant_ht)} €</td>
+                    <td className="px-3 py-2 text-sm text-right text-white">{fmtDec(ligne.ancien_montant_ht)} €</td>
                     <td className="px-3 py-2 text-sm text-right">
                       {ligne.axe === 'accessoires_social' ? (
                         <span className="text-blue-400/60 text-xs italic">
@@ -927,12 +927,12 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                         </div>
                       )}
                       {ligne.coeff_annualisation > 1 && ligne.delta_ht !== 0 && (
-                        <div className="text-[10px] text-slate-500" title="Delta annualisé">
+                        <div className="text-[10px] text-white" title="Delta annualisé">
                           ×{ligne.coeff_annualisation} = {fmtDec(ligne.delta_ht * ligne.coeff_annualisation)} €/an
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-sm text-right text-slate-400">
+                    <td className="px-3 py-2 text-sm text-right text-white">
                       +{fmtDec(ligne.delta_pourcentage)}%
                     </td>
                     <td className="px-3 py-2 text-center">
@@ -947,7 +947,7 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
                         className={`p-1 rounded transition-colors ${
                           isLocked
                             ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-900/30'
-                            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-600/50'
+                            : 'text-white hover:text-white hover:bg-slate-600/50'
                         }`}
                         title={isLocked ? 'Déverrouiller cette ligne' : 'Verrouiller cette augmentation'}
                       >

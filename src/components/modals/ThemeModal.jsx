@@ -81,7 +81,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
           </h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700 transition"
+            className="text-white hover:text-white p-2 rounded-lg hover:bg-slate-700 transition"
           >
             <X size={24} />
           </button>
@@ -94,7 +94,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
             className={`flex-1 px-6 py-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'gradients'
                 ? 'text-purple-400 border-b-2 border-purple-400 bg-slate-700/50'
-                : 'text-slate-400 hover:text-white'
+                : 'text-white hover:text-white'
             }`}
           >
             <Palette size={18} />
@@ -105,7 +105,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
             className={`flex-1 px-6 py-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
               activeTab === 'photos'
                 ? 'text-purple-400 border-b-2 border-purple-400 bg-slate-700/50'
-                : 'text-slate-400 hover:text-white'
+                : 'text-white hover:text-white'
             }`}
           >
             <Image size={18} />
@@ -141,7 +141,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
                     </button>
                   ))}
                 </div>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-white text-sm mt-2">
                   Couleur actuelle : <span className={currentAccent.text}>{currentAccent.name}</span>
                 </p>
               </div>
@@ -188,7 +188,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       selectedCategory === category.id
                         ? `${currentAccent.color} text-white`
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                        : 'bg-slate-700 text-white hover:bg-slate-600'
                     }`}
                   >
                     {category.name}
@@ -197,7 +197,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
                 {selectedCategory && (
                   <button
                     onClick={refreshPhotos}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 transition flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-white hover:bg-slate-600 transition flex items-center gap-2"
                     disabled={loadingPhotos}
                   >
                     <RefreshCw size={16} className={loadingPhotos ? 'animate-spin' : ''} />
@@ -208,14 +208,14 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
 
               {/* Photos */}
               {!selectedCategory && (
-                <div className="text-center text-slate-400 py-12">
+                <div className="text-center text-white py-12">
                   <Image size={48} className="mx-auto mb-4 opacity-50" />
                   <p>Sélectionnez une catégorie pour voir les photos</p>
                 </div>
               )}
 
               {loadingPhotos && (
-                <div className="text-center text-slate-400 py-12">
+                <div className="text-center text-white py-12">
                   <RefreshCw size={32} className="mx-auto mb-4 animate-spin" />
                   <p>Chargement des photos...</p>
                 </div>
@@ -253,7 +253,7 @@ function ThemeModal({ onClose, backgroundTheme, setBackgroundTheme, accentColor,
               )}
 
               {selectedCategory && !loadingPhotos && unsplashPhotos.length === 0 && (
-                <div className="text-center text-slate-400 py-12">
+                <div className="text-center text-white py-12">
                   <p>Aucune photo trouvée</p>
                 </div>
               )}

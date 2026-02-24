@@ -499,7 +499,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-white mb-2">Gestion des Clients</h2>
-            <p className="text-slate-400">Gérez vos clients et assignez un chef de mission</p>
+            <p className="text-white">Gérez vos clients et assignez un chef de mission</p>
           </div>
           <div className="flex gap-2">
             {canSync && (
@@ -563,7 +563,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-700 text-slate-300">
+              <tr className="bg-slate-700 text-white">
                 <th className="text-left py-3 px-4">Nom</th>
                 <th className="text-center py-3 px-2">Type</th>
                 <th className="text-left py-3 px-4">SIREN</th>
@@ -583,7 +583,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     <td className="py-3 px-4">
                       <span className="text-white font-medium">{client.nom}</span>
                       {client.code_pennylane && (
-                        <div className="text-slate-500 text-xs">{client.code_pennylane}</div>
+                        <div className="text-white text-xs">{client.code_pennylane}</div>
                       )}
                     </td>
                     <td className="py-3 px-2 text-center">
@@ -596,17 +596,17 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                           {client.type_personne}
                         </span>
                       ) : (
-                        <span className="text-slate-500 text-xs">-</span>
+                        <span className="text-white text-xs">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
                       {client.siren ? (
-                        <span className="text-slate-300 text-sm font-mono">{client.siren}</span>
+                        <span className="text-white text-sm font-mono">{client.siren}</span>
                       ) : (
-                        <span className="text-slate-500 text-sm">-</span>
+                        <span className="text-white text-sm">-</span>
                       )}
                       {client.siret_complement && (
-                        <div className="text-slate-500 text-xs font-mono">NIC {client.siret_complement}</div>
+                        <div className="text-white text-xs font-mono">NIC {client.siret_complement}</div>
                       )}
                     </td>
                     <td className="py-3 px-4">
@@ -617,7 +617,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                           {client.cabinet}
                         </span>
                       ) : (
-                        <span className="text-slate-500 text-sm">-</span>
+                        <span className="text-white text-sm">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
@@ -638,7 +638,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                           {getChargesCount(client.id)}
                         </span>
                       ) : (
-                        <span className="text-slate-500">0</span>
+                        <span className="text-white">0</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -647,7 +647,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                         className={`p-1 rounded transition ${
                           client.pennylane_client_api_key
                             ? 'text-green-400 hover:bg-green-900/30'
-                            : 'text-slate-500 hover:bg-slate-700'
+                            : 'text-white hover:bg-slate-700'
                         }`}
                         title={client.pennylane_client_api_key ? 'Clé API configurée' : 'Configurer la clé API'}
                       >
@@ -657,7 +657,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => handleToggleActif(client.id)}
-                        className={`p-1 rounded transition ${client.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-slate-500 hover:bg-slate-700'}`}
+                        className={`p-1 rounded transition ${client.actif ? 'text-green-400 hover:bg-green-900/30' : 'text-white hover:bg-slate-700'}`}
                       >
                         <Check size={18} />
                       </button>
@@ -698,7 +698,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         </div>
 
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
-          <p className="text-slate-400 text-sm">
+          <p className="text-white text-sm">
             Affichés : {filteredClients.length} | Total : {clients.length} clients | Actifs : {clients.filter(c => c.actif).length}
           </p>
         </div>
@@ -740,19 +740,19 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                 </h3>
                 <button
                   onClick={() => { setApiKeyModalClient(null); setApiKeyInput(''); setApiKeyStatus('idle'); setApiKeyError(''); }}
-                  className="text-slate-400 hover:text-white"
+                  className="text-white hover:text-white"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              <p className="text-slate-400 text-sm mb-4">
+              <p className="text-white text-sm mb-4">
                 Configurez la clé API Pennylane pour le client <strong className="text-white">{apiKeyModalClient.nom}</strong>.
                 Cette clé permet d'accéder aux données comptables (FEC, factures...) pour les tests.
               </p>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-300 mb-1">Clé API</label>
+                <label className="block text-sm font-medium text-white mb-1">Clé API</label>
                 <div className="flex gap-2">
                   <input
                     type="password"
@@ -770,7 +770,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     disabled={testingApiKey || !apiKeyInput.trim()}
                     className={`px-3 py-2 rounded flex items-center gap-2 transition ${
                       testingApiKey || !apiKeyInput.trim()
-                        ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                        ? 'bg-slate-600 text-white cursor-not-allowed'
                         : 'bg-slate-600 text-white hover:bg-slate-500'
                     }`}
                     title="Tester la connexion"
@@ -786,7 +786,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-white mt-1">
                   Laissez vide pour supprimer la clé. Cliquez sur l'icône wifi pour tester.
                 </p>
               </div>
@@ -821,7 +821,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
               <div className="flex gap-3">
                 <button
                   onClick={() => { setApiKeyModalClient(null); setApiKeyInput(''); setApiKeyStatus('idle'); setApiKeyError(''); }}
-                  className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition"
+                  className="flex-1 px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 transition"
                 >
                   Annuler
                 </button>
@@ -830,7 +830,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                   disabled={savingApiKey || testingApiKey}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded transition ${
                     savingApiKey || testingApiKey
-                      ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                      ? 'bg-slate-600 text-white cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
                 >

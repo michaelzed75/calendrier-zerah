@@ -750,7 +750,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
   // Icône de tri
   const SortIcon = ({ column }) => {
-    if (sortEcarts.column !== column) return <ChevronDown size={14} className="text-slate-500" />;
+    if (sortEcarts.column !== column) return <ChevronDown size={14} className="text-white" />;
     return sortEcarts.direction === 'desc'
       ? <ChevronDown size={14} className="text-pink-400" />
       : <ChevronUp size={14} className="text-pink-400" />;
@@ -773,7 +773,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       <div className="p-6 max-w-7xl mx-auto">
         <div className="bg-slate-800/80 backdrop-blur-sm rounded-xl p-12 shadow-xl border border-slate-700 text-center">
           <div className="animate-spin w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-slate-300 text-lg">Chargement des données...</p>
+          <p className="text-white text-lg">Chargement des données...</p>
         </div>
       </div>
     );
@@ -789,12 +789,12 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               Temps Réels & Analyse des Écarts
               {saving && <span className="text-sm font-normal text-yellow-400 animate-pulse ml-2">(Sauvegarde...)</span>}
             </h2>
-            <p className="text-slate-400 mt-1">Import des temps Pennylane et comparaison avec les temps budgétés</p>
+            <p className="text-white mt-1">Import des temps Pennylane et comparaison avec les temps budgétés</p>
           </div>
 
           {tempsReels.length > 0 && (
             <div className="text-right">
-              <div className="text-sm text-slate-400">Temps réels importés</div>
+              <div className="text-sm text-white">Temps réels importés</div>
               <div className="text-2xl font-bold text-green-400">{tempsReels.length} entrées</div>
             </div>
           )}
@@ -805,7 +805,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           <button
             onClick={() => setActiveTab('mapping')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'mapping' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              activeTab === 'mapping' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
             }`}
           >
             <Link2 size={18} />
@@ -819,7 +819,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           <button
             onClick={() => setActiveTab('import')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'import' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              activeTab === 'import' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
             }`}
           >
             <Upload size={18} />
@@ -828,7 +828,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           <button
             onClick={() => setActiveTab('ecarts')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'ecarts' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              activeTab === 'ecarts' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
             }`}
           >
             <BarChart3 size={18} />
@@ -837,7 +837,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           <button
             onClick={() => setActiveTab('journal')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-              activeTab === 'journal' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              activeTab === 'journal' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
             }`}
           >
             <FileText size={18} />
@@ -877,7 +877,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               </div>
 
               {uniquePennylaneCollabs.length === 0 ? (
-                <p className="text-slate-400 text-center py-4">
+                <p className="text-white text-center py-4">
                   Importez d'abord un fichier Excel pour voir les collaborateurs à mapper
                 </p>
               ) : (
@@ -901,14 +901,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
                           {pennylane}
                         </div>
-                        <ArrowUpDown size={16} className="text-slate-400" />
+                        <ArrowUpDown size={16} className="text-white" />
                         <select
                           value={mappingCollaborateurs[pennylane] || ''}
                           onChange={(e) => saveMappingCollaborateur(pennylane, e.target.value ? parseInt(e.target.value) : null)}
                           className={`w-48 px-3 py-1.5 rounded-lg text-sm ${
                             isMapped
                               ? 'bg-green-600/30 border-green-500 text-white'
-                              : 'bg-slate-700 border-slate-600 text-slate-300'
+                              : 'bg-slate-700 border-slate-600 text-white'
                           } border`}
                         >
                           <option value="">-- Non mappé --</option>
@@ -947,7 +947,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               </div>
 
               {uniquePennylaneClients.length === 0 ? (
-                <p className="text-slate-400 text-center py-4">
+                <p className="text-white text-center py-4">
                   Importez d'abord un fichier Excel pour voir les clients à mapper
                 </p>
               ) : (
@@ -971,14 +971,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         <div className={`flex-1 text-sm truncate ${isMapped ? 'text-green-200' : 'text-white'}`} title={pennylane}>
                           {pennylane}
                         </div>
-                        <ArrowUpDown size={16} className="text-slate-400" />
+                        <ArrowUpDown size={16} className="text-white" />
                         <select
                           value={mappingClients[pennylane] || ''}
                           onChange={(e) => saveMappingClient(pennylane, e.target.value ? parseInt(e.target.value) : null)}
                           className={`w-64 px-3 py-1.5 rounded-lg text-sm ${
                             isMapped
                               ? 'bg-green-600/30 border-green-500 text-white'
-                              : 'bg-slate-700 border-slate-600 text-slate-300'
+                              : 'bg-slate-700 border-slate-600 text-white'
                           } border`}
                         >
                           <option value="">-- Non mappé --</option>
@@ -1003,7 +1003,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               <Check className="text-green-400 flex-shrink-0 mt-0.5" size={24} />
               <div>
                 <p className="text-green-400 font-medium mb-1">Mode Fusion Intelligente</p>
-                <p className="text-slate-300 text-sm">
+                <p className="text-white text-sm">
                   Les temps importés seront ajoutés ou mis à jour. Les données existantes non présentes dans le fichier ne seront jamais supprimées.
                   Le cabinet est automatiquement déterminé par le client.
                 </p>
@@ -1012,9 +1012,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
             {/* Zone d'upload */}
             <div className="border-2 border-dashed rounded-xl p-8 text-center transition border-slate-600 hover:border-pink-500">
-              <Upload size={48} className="mx-auto text-slate-400 mb-4" />
+              <Upload size={48} className="mx-auto text-white mb-4" />
               <p className="text-white text-lg mb-2">Importez votre fichier Excel Pennylane</p>
-              <p className="text-slate-400 text-sm mb-4">
+              <p className="text-white text-sm mb-4">
                 Format attendu: Collaborateur, Client, Date, Durée Facturée, etc.
               </p>
               <label className={`inline-flex items-center gap-2 px-6 py-3 ${accent.color} ${accent.hover} text-white rounded-lg cursor-pointer transition`}>
@@ -1036,19 +1036,19 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-slate-600/50 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-white">{importStats.totalLignes}</div>
-                    <div className="text-sm text-slate-400">Lignes</div>
+                    <div className="text-sm text-white">Lignes</div>
                   </div>
                   <div className="bg-slate-600/50 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-blue-400">{importStats.collaborateurs}</div>
-                    <div className="text-sm text-slate-400">Collaborateurs</div>
+                    <div className="text-sm text-white">Collaborateurs</div>
                   </div>
                   <div className="bg-slate-600/50 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-purple-400">{importStats.clients}</div>
-                    <div className="text-sm text-slate-400">Clients</div>
+                    <div className="text-sm text-white">Clients</div>
                   </div>
                   <div className="bg-slate-600/50 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-green-400">{importStats.totalHeures}h</div>
-                    <div className="text-sm text-slate-400">Heures totales</div>
+                    <div className="text-sm text-white">Heures totales</div>
                   </div>
                 </div>
 
@@ -1058,7 +1058,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     <AlertCircle className="text-amber-400" size={24} />
                     <div>
                       <p className="text-amber-400 font-medium">Correspondances manquantes</p>
-                      <p className="text-slate-300 text-sm">
+                      <p className="text-white text-sm">
                         {mappingCollabsManquants} collaborateur(s) et {mappingClientsManquants} client(s) non mappés.
                         Allez dans l'onglet "Correspondances" pour les configurer.
                       </p>
@@ -1088,12 +1088,12 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                   <table className="w-full text-sm">
                     <thead className="bg-slate-600/50 sticky top-0">
                       <tr>
-                        <th className="px-3 py-2 text-left text-slate-300">Collaborateur</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Client</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Date</th>
-                        <th className="px-3 py-2 text-right text-slate-300">Heures</th>
-                        <th className="px-3 py-2 text-left text-slate-300">Activité</th>
-                        <th className="px-3 py-2 text-center text-slate-300">Statut</th>
+                        <th className="px-3 py-2 text-left text-white">Collaborateur</th>
+                        <th className="px-3 py-2 text-left text-white">Client</th>
+                        <th className="px-3 py-2 text-left text-white">Date</th>
+                        <th className="px-3 py-2 text-right text-white">Heures</th>
+                        <th className="px-3 py-2 text-left text-white">Activité</th>
+                        <th className="px-3 py-2 text-center text-white">Statut</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1106,9 +1106,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                           <tr key={idx} className={`border-t border-slate-600 ${isComplete ? '' : 'bg-red-500/10'}`}>
                             <td className="px-3 py-2 text-white">{row.collaborateurPennylane}</td>
                             <td className="px-3 py-2 text-white">{row.clientPennylane}</td>
-                            <td className="px-3 py-2 text-slate-300">{row.date}</td>
+                            <td className="px-3 py-2 text-white">{row.date}</td>
                             <td className="px-3 py-2 text-right text-green-400">{row.dureeHeures}h</td>
-                            <td className="px-3 py-2 text-slate-400 truncate max-w-xs">{row.activite}</td>
+                            <td className="px-3 py-2 text-white truncate max-w-xs">{row.activite}</td>
                             <td className="px-3 py-2 text-center">
                               {isComplete ? (
                                 <Check size={16} className="text-green-400 mx-auto" />
@@ -1122,7 +1122,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     </tbody>
                   </table>
                   {importedData.length > 50 && (
-                    <p className="text-center text-slate-400 py-2">
+                    <p className="text-center text-white py-2">
                       ... et {importedData.length - 50} autres lignes
                     </p>
                   )}
@@ -1139,7 +1139,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             <div className="bg-slate-700/50 rounded-lg p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Collaborateur</label>
+                  <label className="block text-sm text-white mb-1">Collaborateur</label>
                   <select
                     value={filtreCollaborateur}
                     onChange={(e) => setFiltreCollaborateur(e.target.value)}
@@ -1153,7 +1153,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Client</label>
+                  <label className="block text-sm text-white mb-1">Client</label>
                   <select
                     value={filtreClient}
                     onChange={(e) => setFiltreClient(e.target.value)}
@@ -1167,7 +1167,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Du</label>
+                  <label className="block text-sm text-white mb-1">Du</label>
                   <input
                     type="date"
                     value={dateDebut}
@@ -1177,7 +1177,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Au</label>
+                  <label className="block text-sm text-white mb-1">Au</label>
                   <input
                     type="date"
                     value={dateFin}
@@ -1187,9 +1187,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 </div>
 
                 <div className="flex-1 min-w-[200px]">
-                  <label className="block text-sm text-slate-400 mb-1">Rechercher</label>
+                  <label className="block text-sm text-white mb-1">Rechercher</label>
                   <div className="relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
                     <input
                       type="text"
                       value={searchEcarts}
@@ -1200,7 +1200,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     {searchEcarts && (
                       <button
                         onClick={() => setSearchEcarts('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white hover:text-white"
                       >
                         <X size={16} />
                       </button>
@@ -1214,32 +1214,32 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-blue-500/20 border border-blue-500 rounded-lg p-4 text-center">
                 <div className="text-3xl font-bold text-blue-400">{Math.round(totaux.budgetees * 10) / 10}h</div>
-                <div className="text-sm text-slate-300">Heures budgétées</div>
+                <div className="text-sm text-white">Heures budgétées</div>
               </div>
               <div className="bg-green-500/20 border border-green-500 rounded-lg p-4 text-center">
                 <div className="text-3xl font-bold text-green-400">{Math.round(totaux.reelles * 10) / 10}h</div>
-                <div className="text-sm text-slate-300">Heures réelles</div>
+                <div className="text-sm text-white">Heures réelles</div>
               </div>
               <div className={`${totaux.ecart > 0 ? 'bg-red-500/20 border-red-500' : 'bg-emerald-500/20 border-emerald-500'} border rounded-lg p-4 text-center`}>
                 <div className={`text-3xl font-bold ${totaux.ecart > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                   {totaux.ecart > 0 ? '+' : ''}{Math.round(totaux.ecart * 10) / 10}h
                 </div>
-                <div className="text-sm text-slate-300">Écart total</div>
+                <div className="text-sm text-white">Écart total</div>
               </div>
               <div className={`${totaux.ecart > 0 ? 'bg-red-500/20 border-red-500' : 'bg-emerald-500/20 border-emerald-500'} border rounded-lg p-4 text-center`}>
                 <div className={`text-3xl font-bold ${totaux.ecart > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                   {totaux.budgetees > 0 ? (totaux.ecart > 0 ? '+' : '') + Math.round((totaux.ecart / totaux.budgetees) * 100) : 0}%
                 </div>
-                <div className="text-sm text-slate-300">Variation</div>
+                <div className="text-sm text-white">Variation</div>
               </div>
             </div>
 
             {/* Tableau des écarts */}
             {ecarts.length === 0 ? (
               <div className="text-center py-12">
-                <BarChart3 size={48} className="mx-auto text-slate-500 mb-4" />
-                <p className="text-slate-400">Aucune donnée à afficher pour cette période</p>
-                <p className="text-slate-500 text-sm mt-2">Importez des temps réels ou ajustez les filtres</p>
+                <BarChart3 size={48} className="mx-auto text-white mb-4" />
+                <p className="text-white">Aucune donnée à afficher pour cette période</p>
+                <p className="text-white text-sm mt-2">Importez des temps réels ou ajustez les filtres</p>
               </div>
             ) : (
               <div className="bg-slate-700/50 rounded-lg overflow-hidden">
@@ -1249,7 +1249,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       <tr>
                         <th
                           onClick={() => handleSort('cabinet')}
-                          className="px-2 py-3 text-center text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-2 py-3 text-center text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                           title="Cabinet (ZG = Zerah, AU = Audit Up)"
                         >
                           <div className="flex items-center justify-center gap-1">
@@ -1259,7 +1259,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('collaborateur')}
-                          className="px-4 py-3 text-left text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-left text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center gap-1">
                             Collaborateur
@@ -1268,7 +1268,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('client')}
-                          className="px-4 py-3 text-left text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-left text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center gap-1">
                             Client
@@ -1277,7 +1277,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('budgetees')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center justify-end gap-1">
                             Budgété
@@ -1286,7 +1286,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('reelles')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center justify-end gap-1">
                             Réel
@@ -1295,7 +1295,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('ecart')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center justify-end gap-1">
                             Écart
@@ -1304,14 +1304,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                         </th>
                         <th
                           onClick={() => handleSort('ecartPourcent')}
-                          className="px-4 py-3 text-right text-slate-300 font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
+                          className="px-4 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-500/30 transition select-none"
                         >
                           <div className="flex items-center justify-end gap-1">
                             %
                             <SortIcon column="ecartPourcent" />
                           </div>
                         </th>
-                        <th className="px-4 py-3 text-left text-slate-300 font-medium">
+                        <th className="px-4 py-3 text-left text-white font-medium">
                           Détail travail
                         </th>
                       </tr>
@@ -1319,20 +1319,20 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     <tbody>
                       {ecarts.map((e, idx) => (
                         <tr key={idx} className="border-t border-slate-600 hover:bg-slate-600/30">
-                          <td className={`px-2 py-3 text-center font-medium ${e.cabinet === 'ZG' ? 'text-purple-400' : e.cabinet === 'AU' ? 'text-cyan-400' : 'text-slate-500'}`}>
+                          <td className={`px-2 py-3 text-center font-medium ${e.cabinet === 'ZG' ? 'text-purple-400' : e.cabinet === 'AU' ? 'text-cyan-400' : 'text-white'}`}>
                             {e.cabinet}
                           </td>
                           <td className="px-4 py-3 text-white">{e.collaborateurNom}</td>
                           <td className="px-4 py-3 text-white">{e.clientNom}</td>
                           <td className="px-4 py-3 text-right text-blue-400">{Math.round(e.heuresBudgetees * 10) / 10}h</td>
                           <td className="px-4 py-3 text-right text-green-400">{Math.round(e.heuresReelles * 10) / 10}h</td>
-                          <td className={`px-4 py-3 text-right font-medium ${e.ecart > 0 ? 'text-red-400' : e.ecart < 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          <td className={`px-4 py-3 text-right font-medium ${e.ecart > 0 ? 'text-red-400' : e.ecart < 0 ? 'text-emerald-400' : 'text-white'}`}>
                             {e.ecart > 0 ? '+' : ''}{e.ecart}h
                           </td>
-                          <td className={`px-4 py-3 text-right ${e.ecartPourcent > 20 ? 'text-red-400' : e.ecartPourcent < -20 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          <td className={`px-4 py-3 text-right ${e.ecartPourcent > 20 ? 'text-red-400' : e.ecartPourcent < -20 ? 'text-emerald-400' : 'text-white'}`}>
                             {e.ecartPourcent > 0 ? '+' : ''}{e.ecartPourcent}%
                           </td>
-                          <td className="px-4 py-3 text-slate-300 text-sm max-w-md truncate" title={e.detailTravail}>
+                          <td className="px-4 py-3 text-white text-sm max-w-md truncate" title={e.detailTravail}>
                             {e.detailTravail || '-'}
                           </td>
                         </tr>
@@ -1385,9 +1385,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
             {journalModifications.length === 0 ? (
               <div className="text-center py-12">
-                <FileText size={48} className="mx-auto text-slate-500 mb-4" />
-                <p className="text-slate-400">Aucune modification enregistrée</p>
-                <p className="text-slate-500 text-sm mt-2">Les modifications apparaîtront ici après chaque import</p>
+                <FileText size={48} className="mx-auto text-white mb-4" />
+                <p className="text-white">Aucune modification enregistrée</p>
+                <p className="text-white text-sm mt-2">Les modifications apparaîtront ici après chaque import</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -1415,7 +1415,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                               minute: '2-digit'
                             })}
                           </div>
-                          <div className="text-slate-400 text-sm">
+                          <div className="text-white text-sm">
                             Période: {periodeDebut} → {periodeFin}
                           </div>
                         </div>
@@ -1462,7 +1462,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                     <tr key={sIdx} className="border-t border-red-500/20">
                                       <td className="px-3 py-2 text-white">{s.collaborateur}</td>
                                       <td className="px-3 py-2 text-white">{s.client}</td>
-                                      <td className="px-3 py-2 text-slate-300">{s.date}</td>
+                                      <td className="px-3 py-2 text-white">{s.date}</td>
                                       <td className="px-3 py-2 text-right text-red-400">-{s.heures}h</td>
                                     </tr>
                                   ))}
@@ -1496,8 +1496,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                     <tr key={mIdx} className="border-t border-amber-500/20">
                                       <td className="px-3 py-2 text-white">{m.collaborateur}</td>
                                       <td className="px-3 py-2 text-white">{m.client}</td>
-                                      <td className="px-3 py-2 text-slate-300">{m.date}</td>
-                                      <td className="px-3 py-2 text-right text-slate-400">{m.anciennesHeures}h</td>
+                                      <td className="px-3 py-2 text-white">{m.date}</td>
+                                      <td className="px-3 py-2 text-right text-white">{m.anciennesHeures}h</td>
                                       <td className="px-3 py-2 text-right text-white">{m.nouvellesHeures}h</td>
                                       <td className={`px-3 py-2 text-right font-medium ${m.ecart > 0 ? 'text-red-400' : 'text-green-400'}`}>
                                         {m.ecart > 0 ? '+' : ''}{m.ecart}h
@@ -1533,7 +1533,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                                       <tr key={aIdx} className="border-t border-green-500/20">
                                         <td className="px-3 py-2 text-white">{a.collaborateur}</td>
                                         <td className="px-3 py-2 text-white">{a.client}</td>
-                                        <td className="px-3 py-2 text-slate-300">{a.date}</td>
+                                        <td className="px-3 py-2 text-white">{a.date}</td>
                                         <td className="px-3 py-2 text-right text-green-400">+{a.heures}h</td>
                                       </tr>
                                     ))}

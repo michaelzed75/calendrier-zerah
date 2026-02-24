@@ -56,3 +56,6 @@ export { exportAugmentationExcel } from './exportAugmentation.js';
 // Diagnostic
 export { genererDiagnostic } from './diagnosticHonoraires.js';
 export { exportDiagnosticExcel } from './exportDiagnostic.js';
+
+// Audit
+export { auditAbonnements } from './auditHonoraires.js';

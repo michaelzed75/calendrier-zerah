@@ -366,7 +366,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('calendar')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Calendar size={18} />
@@ -375,7 +375,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('collaborateurs')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Users size={18} />
@@ -384,7 +384,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('clients')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Building2 size={18} />
@@ -394,7 +394,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('impots')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <FileText size={18} />
@@ -405,7 +405,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('tva')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Receipt size={18} />
@@ -416,7 +416,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('temps-reels')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Clock size={18} />
@@ -426,7 +426,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('tests-comptables')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <ClipboardCheck size={18} />
@@ -436,7 +436,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('honoraires')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Euro size={18} />
@@ -447,7 +447,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('salaires')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <DollarSign size={18} />
@@ -456,7 +456,7 @@ export default function App() {
             )}
             <button
               onClick={() => setShowThemeModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-600 transition"
               title="Personnaliser le fond"
             >
               <Palette size={18} />
@@ -486,7 +486,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('calendar'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Calendar size={18} />
@@ -495,7 +495,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('collaborateurs'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Users size={18} />
@@ -504,7 +504,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('clients'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Building2 size={18} />
@@ -514,7 +514,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <FileText size={18} />
@@ -525,7 +525,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Receipt size={18} />
@@ -536,7 +536,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('temps-reels'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Clock size={18} />
@@ -546,7 +546,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('tests-comptables'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <ClipboardCheck size={18} />
@@ -556,7 +556,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('honoraires'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Euro size={18} />
@@ -567,7 +567,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('salaires'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-slate-300'
+                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <DollarSign size={18} />
@@ -576,7 +576,7 @@ export default function App() {
             )}
             <button
               onClick={() => { setShowThemeModal(true); setShowMobileMenu(false); }}
-              className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-slate-300 transition"
+              className="flex items-center gap-2 w-full px-4 py-2 rounded-lg bg-slate-700 text-white transition"
             >
               <Palette size={18} />
               Personnaliser

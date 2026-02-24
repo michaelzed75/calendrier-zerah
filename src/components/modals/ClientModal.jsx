@@ -105,7 +105,7 @@ function ClientModal({ client, onSave, onClose }) {
           <h3 className="text-xl font-bold text-white">
             {client ? 'Modifier le client' : 'Ajouter un client'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className="text-white hover:text-white">
             <X size={24} />
           </button>
         </div>
@@ -113,7 +113,7 @@ function ClientModal({ client, onSave, onClose }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Type Personne - PM ou PP */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Type *</label>
+            <label className="block text-sm font-medium text-white mb-2">Type *</label>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -121,7 +121,7 @@ function ClientModal({ client, onSave, onClose }) {
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition font-medium ${
                   typePersonne === 'PM'
                     ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                    : 'border-slate-600 bg-slate-700 text-slate-400 hover:border-slate-500'
+                    : 'border-slate-600 bg-slate-700 text-white hover:border-slate-500'
                 }`}
               >
                 <Building2 size={20} />
@@ -137,8 +137,8 @@ function ClientModal({ client, onSave, onClose }) {
                   typePersonne === 'PP'
                     ? 'border-purple-500 bg-purple-500/20 text-purple-300'
                     : siren.trim()
-                      ? 'border-slate-700 bg-slate-800 text-slate-600 cursor-not-allowed'
-                      : 'border-slate-600 bg-slate-700 text-slate-400 hover:border-slate-500'
+                      ? 'border-slate-700 bg-slate-800 text-white cursor-not-allowed'
+                      : 'border-slate-600 bg-slate-700 text-white hover:border-slate-500'
                 }`}
                 disabled={!!siren.trim()}
                 title={siren.trim() ? 'SIREN renseigné → obligatoirement PM' : ''}
@@ -155,7 +155,7 @@ function ClientModal({ client, onSave, onClose }) {
 
           {/* Nom */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Nom *</label>
+            <label className="block text-sm font-medium text-white mb-1">Nom *</label>
             <input
               type="text"
               value={nom}
@@ -168,7 +168,7 @@ function ClientModal({ client, onSave, onClose }) {
 
           {/* SIREN */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-white mb-1">
               SIREN {typePersonne === 'PM' ? '*' : ''}
             </label>
             <input
@@ -184,17 +184,17 @@ function ClientModal({ client, onSave, onClose }) {
               <p className="text-blue-400 text-xs mt-1">SIREN renseigné → type forcé en PM</p>
             )}
             {typePersonne === 'PP' && !siren.trim() && (
-              <p className="text-slate-500 text-xs mt-1">Facultatif pour les personnes physiques</p>
+              <p className="text-white text-xs mt-1">Facultatif pour les personnes physiques</p>
             )}
           </div>
 
           {/* SIRET Complement (NIC) */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-white mb-1">
               Complément SIRET (NIC)
             </label>
             <div className="flex items-center gap-2">
-              <span className="text-slate-500 text-sm font-mono">{siren || '?????????'}</span>
+              <span className="text-white text-sm font-mono">{siren || '?????????'}</span>
               <input
                 type="text"
                 value={siretComplement}
@@ -207,12 +207,12 @@ function ClientModal({ client, onSave, onClose }) {
               />
             </div>
             {errors.siretComplement && <p className="text-red-400 text-xs mt-1">{errors.siretComplement}</p>}
-            <p className="text-slate-500 text-xs mt-1">Facultatif — 5 chiffres NIC pour différencier les établissements</p>
+            <p className="text-white text-xs mt-1">Facultatif — 5 chiffres NIC pour différencier les établissements</p>
           </div>
 
           {/* Code Pennylane */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Code Pennylane</label>
+            <label className="block text-sm font-medium text-white mb-1">Code Pennylane</label>
             <input
               type="text"
               value={codePennylane}
@@ -220,13 +220,13 @@ function ClientModal({ client, onSave, onClose }) {
               placeholder="Pour future intégration API"
               className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 focus:outline-none focus:border-blue-500"
             />
-            <p className="text-slate-500 text-xs mt-1">Optionnel</p>
+            <p className="text-white text-xs mt-1">Optionnel</p>
           </div>
 
           {/* SIRET calculé */}
           {siren && siretComplement && (
             <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
-              <span className="text-slate-400 text-sm">SIRET complet : </span>
+              <span className="text-white text-sm">SIRET complet : </span>
               <span className="text-white font-mono font-semibold">{siren}{siretComplement}</span>
             </div>
           )}
