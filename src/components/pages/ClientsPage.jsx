@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
 import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
+import { getAllCustomers, setCompanyId } from '../../utils/honoraires/pennylaneCustomersApi.js';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -44,12 +45,13 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Peut synchroniser : admin ou chef de mission
   const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
 
-  // Synchronisation Pennylane via API serverless
+  // Synchronisation Pennylane via API serverless + enrichissement emails v2
   const handleSyncPennylane = async () => {
     setSyncing(true);
     setSyncMessage(null);
 
     try {
+      // Étape 1 : Sync firm/v1 (dossiers, SIREN, adresse)
       const response = await fetch('/api/sync-pennylane', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -61,13 +63,70 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         throw new Error(result.error || 'Erreur de synchronisation');
       }
 
-      // Recharger les clients
+      // Étape 2 : Enrichissement emails via API v2/customers
+      let emailsUpdated = 0;
+      try {
+        // Lire les clés API depuis pennylane_api_keys
+        const { data: apiKeys } = await supabase
+          .from('pennylane_api_keys')
+          .select('cabinet, api_key, company_id');
+
+        if (apiKeys && apiKeys.length > 0) {
+          // Charger les clients actuels (après sync firm)
+          const { data: currentClients } = await supabase
+            .from('clients')
+            .select('id, siren, email, actif')
+            .eq('actif', true);
+
+          // Index par SIREN pour matching rapide
+          const clientsBySiren = {};
+          for (const c of (currentClients || [])) {
+            if (c.siren) {
+              clientsBySiren[c.siren] = c;
+            }
+          }
+
+          // Pour chaque cabinet, récupérer les customers v2
+          for (const keyRow of apiKeys) {
+            if (!keyRow.api_key) continue;
+            try {
+              if (keyRow.company_id) {
+                setCompanyId(keyRow.company_id);
+              }
+              const customers = await getAllCustomers(keyRow.api_key);
+
+              for (const customer of customers) {
+                const email = (customer.emails && customer.emails[0]) || null;
+                if (!email || !customer.reg_no) continue;
+
+                // Match par SIREN (clé universelle)
+                const client = clientsBySiren[customer.reg_no];
+                if (client && client.email !== email) {
+                  await supabase
+                    .from('clients')
+                    .update({ email })
+                    .eq('id', client.id);
+                  emailsUpdated++;
+                }
+              }
+            } catch (err) {
+              console.error(`Erreur enrichissement emails ${keyRow.cabinet}:`, err.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Erreur enrichissement emails:', err.message);
+      }
+
+      // Recharger les clients (avec emails enrichis)
       const { data: newClients } = await supabase.from('clients').select('*').order('id');
       if (newClients) setClients(newClients);
 
+      const emailMsg = emailsUpdated > 0 ? ` ${emailsUpdated} emails enrichis.` : '';
+      const cabinetsMsg = result.cabinets_ok ? ` Cabinets : ${result.cabinets_ok.join(', ')}.` : '';
       setSyncMessage({
         type: 'success',
-        text: `Sync terminée ! ${result.total} dossiers Pennylane. ${result.imported} nouveaux, ${result.updated} mis à jour, ${result.deactivated} désactivés.`
+        text: `Sync terminée ! ${result.total} dossiers Pennylane. ${result.imported} nouveaux, ${result.updated} mis à jour.${emailMsg}${cabinetsMsg}`
       });
     } catch (err) {
       console.error('Erreur sync:', err);
@@ -469,10 +528,38 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     .sort((a, b) => {
       let valA, valB;
       switch (sortField) {
+        case 'type':
+          valA = (a.type_personne || '').toLowerCase();
+          valB = (b.type_personne || '').toLowerCase();
+          break;
+        case 'siren':
+          valA = a.siren || '';
+          valB = b.siren || '';
+          break;
         case 'email':
           valA = (a.email || '').toLowerCase();
           valB = (b.email || '').toLowerCase();
           break;
+        case 'cabinet':
+          valA = (a.cabinet || '').toLowerCase();
+          valB = (b.cabinet || '').toLowerCase();
+          break;
+        case 'chef':
+          valA = (getChefName(a.chef_mission_id) || '').toLowerCase();
+          valB = (getChefName(b.chef_mission_id) || '').toLowerCase();
+          break;
+        case 'charges':
+          valA = getChargesCount(a.id);
+          valB = getChargesCount(b.id);
+          return sortDirection === 'asc' ? valA - valB : valB - valA;
+        case 'api':
+          valA = a.pennylane_client_api_key ? 1 : 0;
+          valB = b.pennylane_client_api_key ? 1 : 0;
+          return sortDirection === 'asc' ? valA - valB : valB - valA;
+        case 'actif':
+          valA = a.actif ? 1 : 0;
+          valB = b.actif ? 1 : 0;
+          return sortDirection === 'asc' ? valA - valB : valB - valA;
         case 'nom':
         default:
           valA = (a.nom || '').toLowerCase();
@@ -595,25 +682,28 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
           <table className="w-full">
             <thead>
               <tr className="bg-slate-700 text-white">
-                <th className="text-left py-3 px-4 cursor-pointer select-none hover:bg-slate-600/50 transition" onClick={() => handleSort('nom')}>
-                  <span className="flex items-center gap-1">
-                    Nom
-                    {sortField === 'nom' && (sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
-                  </span>
-                </th>
-                <th className="text-center py-3 px-2">Type</th>
-                <th className="text-left py-3 px-4">SIREN</th>
-                <th className="text-left py-3 px-4 cursor-pointer select-none hover:bg-slate-600/50 transition" onClick={() => handleSort('email')}>
-                  <span className="flex items-center gap-1">
-                    Email
-                    {sortField === 'email' && (sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
-                  </span>
-                </th>
-                <th className="text-left py-3 px-4">Cabinet</th>
-                <th className="text-left py-3 px-4">Chef de mission</th>
-                <th className="text-center py-3 px-4">Charges</th>
-                <th className="text-center py-3 px-4">API</th>
-                <th className="text-center py-3 px-4">Actif</th>
+                {[
+                  { key: 'nom', label: 'Nom', align: 'text-left', px: 'px-4' },
+                  { key: 'type', label: 'Type', align: 'text-center', px: 'px-2' },
+                  { key: 'siren', label: 'SIREN', align: 'text-left', px: 'px-4' },
+                  { key: 'email', label: 'Email', align: 'text-left', px: 'px-4' },
+                  { key: 'cabinet', label: 'Cabinet', align: 'text-left', px: 'px-4' },
+                  { key: 'chef', label: 'Chef de mission', align: 'text-left', px: 'px-4' },
+                  { key: 'charges', label: 'Charges', align: 'text-center', px: 'px-4' },
+                  { key: 'api', label: 'API', align: 'text-center', px: 'px-4' },
+                  { key: 'actif', label: 'Actif', align: 'text-center', px: 'px-4' },
+                ].map(col => (
+                  <th
+                    key={col.key}
+                    className={`${col.align} py-3 ${col.px} cursor-pointer select-none hover:bg-slate-600/50 transition`}
+                    onClick={() => handleSort(col.key)}
+                  >
+                    <span className={`flex items-center gap-1 ${col.align === 'text-center' ? 'justify-center' : ''}`}>
+                      {col.label}
+                      {sortField === col.key && (sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                    </span>
+                  </th>
+                ))}
                 <th className="text-center py-3 px-4">Actions</th>
               </tr>
             </thead>

@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 
   try {
     const allDossiers = [];
-    const pennylaneIds = [];
+    const syncedCabinets = []; // Cabinets qui ont réussi le sync
 
     // Recuperer les dossiers des deux cabinets
     for (const [key, cabinet] of Object.entries(CABINETS)) {
@@ -93,9 +93,11 @@ export default async function handler(req, res) {
             dossier.email = firmEmail;
           }
           allDossiers.push(dossier);
-          pennylaneIds.push({ id: c.id, cabinet: cabinet.name });
         });
+        // Ce cabinet a réussi → on peut désactiver ses clients manquants
+        syncedCabinets.push(cabinet.name);
       } catch (err) {
+        // Cabinet en erreur → on ne désactivera PAS ses clients
         console.error(`Erreur sync ${cabinet.name}:`, err.message);
       }
     }
@@ -109,7 +111,6 @@ export default async function handler(req, res) {
 
     let imported = 0;
     let updated = 0;
-    let deactivated = 0;
 
     // Importer/mettre a jour les dossiers
     // Stratégie : match par pennylane_id+cabinet → fallback par SIREN → sinon insert
@@ -155,29 +156,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // Soft delete : desactiver les clients qui ne sont plus dans Pennylane
-    const { data: clientsWithPennylane } = await supabase
-      .from('clients')
-      .select('id, pennylane_id, cabinet, actif')
-      .not('pennylane_id', 'is', null)
-      .not('cabinet', 'is', null);
-
-    for (const client of clientsWithPennylane || []) {
-      const stillExists = pennylaneIds.some(
-        p => p.id === client.pennylane_id && p.cabinet === client.cabinet
-      );
-      if (!stillExists && client.actif) {
-        await supabase.from('clients').update({ actif: false }).eq('id', client.id);
-        deactivated++;
-      }
-    }
+    // Pas de soft delete automatique : la désactivation est gérée manuellement par l'utilisateur
 
     return res.status(200).json({
       success: true,
       imported,
       updated,
-      deactivated,
-      total: allDossiers.length
+      deactivated: 0,
+      total: allDossiers.length,
+      cabinets_ok: syncedCabinets
     });
 
   } catch (err) {
