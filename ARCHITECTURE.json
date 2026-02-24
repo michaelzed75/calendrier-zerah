@@ -119,18 +119,18 @@
         "modals_used": ["CollaborateurModal"]
       },
       "ClientsPage.jsx": {
-        "lines": 750,
-        "role": "Gestion des clients",
+        "lines": 800,
+        "role": "Gestion des clients — SIREN clé universelle",
         "typing": "@ts-check + JSDoc",
         "features": [
           "Liste des clients avec filtres (cabinet, recherche)",
-          "Ajout/modification de client",
-          "Synchronisation avec Pennylane API",
-          "Fusion de clients (mapping Pennylane)",
+          "Colonnes: Nom, Type (PM/PP badge), SIREN (monospace), NIC, Cabinet, Chef, Charges, API, Actif",
+          "Ajout/modification de client avec PM/PP + SIREN + siret_complement",
+          "Synchronisation avec Pennylane API (sync-pennylane.js)",
+          "Fusion complète de clients (9 tables FK transférées, gestion doublons UNIQUE)",
           "Assignation chef de mission",
-          "Distinction cabinet Zerah / Audit Up",
           "Configuration clé API Pennylane par client",
-          "Test de connexion API avant sauvegarde (validation automatique)"
+          "Export Excel avec colonnes Type, SIREN, SIRET (NIC)"
         ],
         "props": [
           "clients", "setClients", "charges", "setCharges",
@@ -291,14 +291,22 @@
         "fields": ["nom", "email", "couleur", "actif", "est_chef_mission", "is_admin", "chefs assignés"]
       },
       "ClientModal.jsx": {
-        "role": "Formulaire client",
+        "role": "Formulaire client avec enforcement PM/PP + SIREN",
         "typing": "@ts-check + JSDoc",
-        "fields": ["nom", "cabinet", "actif", "chef_mission_id"]
+        "fields": ["nom", "type_personne (PM/PP)", "siren", "siret_complement", "code_pennylane"],
+        "business_rules": [
+          "SIREN saisi → auto-force type_personne = PM",
+          "Bouton PP désactivé quand SIREN présent",
+          "effectiveType = siren.trim() ? 'PM' : typePersonne"
+        ]
       },
       "MergeClientModal.jsx": {
-        "role": "Fusion de clients",
+        "role": "Fusion complète de clients (transfert de TOUTES les données liées)",
         "typing": "@ts-check + JSDoc",
-        "purpose": "Lier un client Pennylane à un client existant (met à jour pennylane_id)"
+        "transfers": ["charges", "abonnements", "honoraires_historique", "effectifs_silae", "fournisseurs_releve", "temps_reels"],
+        "handles_unique": ["silae_productions (UNIQUE client_id+periode)", "temps_reels (UNIQUE collaborateur_id+client_id+date+cabinet)"],
+        "deletes": ["silae_mapping", "tests_comptables_executions"],
+        "visibility": "Bouton fusion uniquement pour clients sans cabinet (!client.cabinet)"
       },
       "AddChargeModal.jsx": {
         "role": "Ajout de charge",
@@ -414,16 +422,43 @@
             "role": "Service de synchronisation honoraires",
             "exports": [
               "syncCustomersAndSubscriptions(supabase, apiKey, cabinet, onProgress) - Sync complète",
-              "getHonorairesResume(supabase, clientId) - Résumé des honoraires"
+              "getHonorairesResume(supabase, clientId, options) - Résumé des honoraires (option includeStopped)"
             ],
             "matching_strategy": [
               "1. Par pennylane_customer_id existant (UUID)",
-              "2. Par nom normalisé (exact)",
-              "3. Par nom sans suffixes juridiques (SARL, SAS, etc.)",
-              "4. Par nom normalisé (contient)",
-              "5. Par nom sans suffixes (contient)",
+              "2. Par SIREN (reg_no) — CLÉ UNIVERSELLE",
+              "3. Par nom normalisé (exact)",
+              "4. Par nom sans suffixes juridiques (SARL, SAS, etc.)",
+              "5. Par nom normalisé (contient)",
+              "6. Par nom sans suffixes (contient)",
               "IMPORTANT: Seuls les customers avec abonnements sont matchés (évite doublons)"
+            ],
+            "select_query": "id, nom, pennylane_customer_id, code_silae, cabinet, siren"
+          },
+          "silaeService.js": {
+            "role": "Import Excel Silae et matching SIREN",
+            "exports": [
+              "importSilaeData(supabase, excelBuffer, cabinet, onProgress) - Parse Excel Silae"
+            ],
+            "matching_strategy": [
+              "1. Par mapping BDD (silae_mapping table)",
+              "2. Par SIREN (colonne C Excel = client.siren) — CLÉ UNIVERSELLE",
+              "3. Par code_silae",
+              "4. Par nom exact",
+              "5. Par nom partiel"
             ]
+          },
+          "classificationAxes.js": {
+            "role": "Classification des abonnements en axes métier",
+            "exports": ["classifySubscription(label) - Retourne l'axe (comptabilité, social, juridique, support)"]
+          },
+          "calculsAugmentation.js": {
+            "role": "Calculs d'augmentation tarifaire des abonnements",
+            "exports": ["calculerAugmentation(abonnements, pourcentage) - Calcul nouveau tarif"]
+          },
+          "exportAugmentation.js": {
+            "role": "Export Excel des augmentations tarifaires",
+            "exports": ["exportAugmentationExcel(data) - Génère fichier XLSX"]
           }
         }
       },
@@ -602,18 +637,30 @@
       "note": "Un collaborateur peut avoir plusieurs chefs, un chef peut avoir plusieurs collaborateurs"
     },
     "clients": {
-      "description": "Clients du cabinet (entreprises)",
+      "description": "Clients du cabinet — SIREN = CLÉ UNIVERSELLE de matching",
+      "business_rule": "RÈGLE MÉTIER ABSOLUE : si SIREN renseigné → TOUJOURS type_personne = PM",
       "fields": {
         "id": "SERIAL PRIMARY KEY",
         "nom": "TEXT NOT NULL",
         "actif": "BOOLEAN DEFAULT true",
         "cabinet": "TEXT ('Zerah Fiduciaire' ou 'Audit Up')",
         "chef_mission_id": "INTEGER REFERENCES collaborateurs(id)",
-        "pennylane_id": "TEXT (ID du client dans Pennylane - DEPRECATED)",
-        "pennylane_customer_id": "TEXT (UUID Pennylane = external_reference de l'API v2)",
+        "type_personne": "TEXT CHECK (PM ou PP) — PM=Personne Morale, PP=Personne Physique",
+        "siren": "TEXT (9 chiffres — CLÉ UNIVERSELLE de matching entre Pennylane, Silae, etc.)",
+        "siret_complement": "TEXT (NIC 5 chiffres — SIRET = SIREN + NIC pour distinguer les établissements)",
+        "pennylane_id": "INTEGER (ID dossier firm/v1/companies)",
+        "pennylane_customer_id": "TEXT (UUID v2/customers = external_reference)",
+        "code_pennylane": "TEXT (code dossier Pennylane ex: CHQOTMLUDT)",
         "code_silae": "TEXT (code client Silae pour mapping social)",
+        "pennylane_client_api_key": "TEXT (clé API Pennylane du client pour tests comptables)",
         "mode_facturation_social": "TEXT ('forfait' ou 'reel')"
-      }
+      },
+      "indexes": {
+        "idx_clients_unique_siren_nic": "UNIQUE(siren, COALESCE(siret_complement, '')) WHERE siren IS NOT NULL AND actif = true",
+        "idx_clients_siren": "INDEX ON siren WHERE siren IS NOT NULL",
+        "idx_clients_pennylane": "UNIQUE(pennylane_id, cabinet) WHERE pennylane_id IS NOT NULL"
+      },
+      "stats_2026_02": "166 clients actifs, 165 PM + 1 PP (MICHEL MALRIC), 0 SIREN partagé (sauf RELAIS CHRISTINE/SAINT JAMES = SIRET différents)"
     },
     "charges": {
       "description": "Charges de travail planifiées et réalisées",
@@ -759,6 +806,10 @@
     "text_primary": "text-white",
     "text_secondary": "text-slate-300 ou text-slate-400"
   },
+    "migrations": {
+      "006_type_personne_siret.sql": "Ajout colonnes type_personne (PM/PP) + siret_complement sur clients",
+      "007_unique_siren.sql": "UNIQUE INDEX sur (siren, COALESCE(siret_complement, '')) WHERE actif=true"
+    },
   "known_issues_and_todos": [
     "Pas de gestion d'erreurs centralisée",
     "Les jours fériés sont codés en dur (2025-2027)",
@@ -773,6 +824,18 @@
       "headers_required": ["X-Pennylane-Api-Key"],
       "query_params": ["endpoint", "...autres params transmis à Pennylane"],
       "target_api": "https://app.pennylane.com/api/external/v2"
+    },
+    "sync-pennylane.js": {
+      "role": "Sync dossiers Pennylane firm/v1/companies → table clients",
+      "endpoint": "/api/sync-pennylane",
+      "method": "POST",
+      "env_vars": ["PENNYLANE_AUDIT_UP_TOKEN", "PENNYLANE_ZERAH_FIDUCIAIRE_TOKEN", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"],
+      "matching_strategy": [
+        "1. Match par pennylane_id + cabinet (identifiant technique)",
+        "2. Fallback par SIREN → TOUT client actif avec ce SIREN (pas seulement sans pennylane_id)",
+        "3. Sinon insert nouveau client"
+      ],
+      "anti_doublon": "Fallback SIREN élargi empêche la création de doublons même si le client existe via une autre source"
     }
   },
   "database_tables_honoraires": {
@@ -1003,6 +1066,26 @@
       "Champs adresse client (localStorage) pour en-tête attestation Word",
       "Retrait logique TVA/TTC (non nécessaire)",
       "Dépendance docx ajoutée pour génération Word côté navigateur"
+    ],
+    "2026-01": [
+      "Module honoraires complet: syncHonoraires, silaeService, classificationAxes, calculsAugmentation, exportAugmentation",
+      "Réconciliation CA: fix doublons abonnements arrêtés (3.4M→2.2M), 123/127 clients ISO au centime",
+      "SIREN clé universelle: matching SIREN dans syncHonoraires, silaeService, sync-pennylane",
+      "Remplissage SIREN: 168/168 clients (100%)",
+      "type_personne PM/PP sur tous les clients (migration 006)",
+      "Split mega-client LM en 5 entités distinctes (SCI LM, MAGP AUTEUIL, LMK INVEST, MICHEL MALRIC, FERIA CAFE)",
+      "ClientModal.jsx: formulaire complet PM/PP + SIREN + NIC avec auto-force PM",
+      "ClientsPage.jsx: colonnes Type/SIREN/NIC, export Excel enrichi",
+      "Ajout silaeService.js avec matching SIREN",
+      "Ajout SilaeMappingModal.jsx avec recherche SIREN"
+    ],
+    "2026-02": [
+      "Fusion clients complète: transfert 9 tables FK (charges, abonnements, temps_reels, silae_productions...)",
+      "Gestion doublons UNIQUE dans fusion (silae_productions par période, temps_reels par collab+date)",
+      "Fusion de 6 paires de doublons SIREN (PP GESLIN, CHEZ RIBE POUVERIN, BALLU, FRANCE FORMALITES, MAGP AUTEUIL, PFA ASSOCIES)",
+      "Migration 007: UNIQUE INDEX sur (siren, siret_complement) pour clients actifs",
+      "sync-pennylane.js: fallback SIREN élargi à tous clients actifs pour anti-doublon",
+      "MergeClientModal enrichi: message confirmation complet, liste cibles élargie"
     ]
   }
 }
