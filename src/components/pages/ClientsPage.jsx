@@ -653,14 +653,16 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex justify-center gap-1">
-                        {/* Bouton Fusionner - disponible pour tous les clients */}
-                        <button
-                          onClick={() => setMergingClient(client)}
-                          className="text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 p-1 rounded transition"
-                          title="Fusionner vers un autre client"
-                        >
-                          <Download size={16} className="rotate-90" />
-                        </button>
+                        {/* Bouton Fusionner - seulement pour clients créés manuellement (sans cabinet) */}
+                        {!client.cabinet && (
+                          <button
+                            onClick={() => setMergingClient(client)}
+                            className="text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 p-1 rounded transition"
+                            title="Fusionner vers un autre client"
+                          >
+                            <Download size={16} className="rotate-90" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setEditingClient(client)}
                           className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
