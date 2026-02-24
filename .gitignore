@@ -5,3 +5,22 @@ dist
 .env.*.local
 *.log
 .DS_Store
+
+# Scripts temporaires d'analyse/migration
+tmp_*.cjs
+test_*.cjs
+analyze_*.cjs
+
+# Dossiers de travail temporaires
+xxx/
+nul
+supabase/.temp/
+
+# Fichiers de données client (Excel, etc.)
+communication claude user/
+
+# Artefacts divers
+C*tmpcheck*.js
+
+# Claude local settings
+.claude/settings.local.json

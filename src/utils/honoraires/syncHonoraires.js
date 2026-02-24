@@ -76,14 +76,15 @@ function removeJuridicalSuffixes(name) {
 
 /**
  * Match un customer Pennylane avec un client local
- * Stratégie de matching :
+ * Stratégie de matching (SIREN = clé universelle prioritaire) :
  * 1. Par pennylane_customer_id existant (= external_reference UUID)
- * 2. Par nom normalisé (exact)
- * 3. Par nom sans suffixes juridiques (exact)
- * 4. Par nom normalisé (contient)
- * 5. Par nom sans suffixes (contient)
+ * 2. Par SIREN (reg_no Pennylane = siren client) — CLÉ UNIVERSELLE
+ * 3. Par nom normalisé (exact)
+ * 4. Par nom sans suffixes juridiques (exact)
+ * 5. Par nom normalisé (contient)
+ * 6. Par nom sans suffixes (contient)
  *
- * @param {Object} customer - Customer Pennylane
+ * @param {Object} customer - Customer Pennylane (avec reg_no = SIREN)
  * @param {Client[]} clients - Liste des clients locaux
  * @returns {Client|null} Client matché ou null
  */
@@ -96,28 +97,39 @@ function matchCustomerToClient(customer, clients) {
     if (matchByUUID) return matchByUUID;
   }
 
-  // 2. Match par nom normalisé (exact)
+  // 2. Match par SIREN (CLÉ UNIVERSELLE) — reg_no de Pennylane = SIREN du client
+  if (customer.reg_no) {
+    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
+      const matchBySiren = clients.find(
+        c => c.siren && c.siren === sirenClean
+      );
+      if (matchBySiren) return matchBySiren;
+    }
+  }
+
+  // 3. Match par nom normalisé (exact)
   const customerNameNorm = normalizeString(customer.name);
   const matchByNameExact = clients.find(
     c => normalizeString(c.nom) === customerNameNorm
   );
   if (matchByNameExact) return matchByNameExact;
 
-  // 3. Match par nom sans suffixes juridiques (exact)
+  // 4. Match par nom sans suffixes juridiques (exact)
   const customerNameClean = removeJuridicalSuffixes(normalizeString(customer.name));
   const matchByNameClean = clients.find(
     c => removeJuridicalSuffixes(normalizeString(c.nom)) === customerNameClean
   );
   if (matchByNameClean) return matchByNameClean;
 
-  // 4. Match par nom normalisé (le client contient le nom du customer ou inversement)
+  // 5. Match par nom normalisé (le client contient le nom du customer ou inversement)
   const matchByNamePartial = clients.find(c => {
     const clientNameNorm = normalizeString(c.nom);
     return clientNameNorm.includes(customerNameNorm) || customerNameNorm.includes(clientNameNorm);
   });
   if (matchByNamePartial) return matchByNamePartial;
 
-  // 5. Match par nom sans suffixes (contient)
+  // 6. Match par nom sans suffixes (contient)
   const matchByNameCleanPartial = clients.find(c => {
     const clientNameClean = removeJuridicalSuffixes(normalizeString(c.nom));
     return clientNameClean.includes(customerNameClean) || customerNameClean.includes(clientNameClean);
@@ -195,7 +207,7 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
     report('init', 'Récupération des clients locaux...');
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
-      .select('id, nom, pennylane_customer_id, code_silae, cabinet')
+      .select('id, nom, pennylane_customer_id, code_silae, cabinet, siren')
       .eq('actif', true);
 
     if (clientsError) {
@@ -402,31 +414,48 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
  * Récupère un résumé des honoraires par client
  * @param {Object} supabase - Client Supabase
  * @param {number} [clientId] - ID client optionnel (tous si non spécifié)
+ * @param {Object} [options] - Options de filtrage
+ * @param {boolean} [options.includesStopped=false] - Inclure les abonnements stopped/finished
  * @returns {Promise<Object[]>} Résumé des honoraires
  */
-export async function getHonorairesResume(supabase, clientId = null) {
+export async function getHonorairesResume(supabase, clientId = null, options = {}) {
+  const { includeStopped = false } = options;
+
   let query = supabase
     .from('abonnements')
     .select(`
       id,
+      pennylane_subscription_id,
       label,
       status,
       frequence,
       intervalle,
+      jour_facturation,
+      date_debut,
+      mode_finalisation,
+      conditions_paiement,
+      moyen_paiement,
       total_ttc,
       total_ht,
       client_id,
-      clients (id, nom, cabinet),
+      clients (id, nom, cabinet, mode_facturation_social, pennylane_customer_id),
       abonnements_lignes (
         id,
         label,
         famille,
+        quantite,
         montant_ttc,
-        montant_ht
+        montant_ht,
+        taux_tva,
+        description
       )
     `);
-  // Note: le filtrage par status est fait côté UI dans HonorairesPage
-  // pour permettre de voir tous les abonnements (in_progress, not_started, stopped)
+
+  // Par défaut, exclure les abonnements stopped/finished pour éviter de gonfler les totaux.
+  // Les stopped sont d'anciens abonnements remplacés — les compter double le CA.
+  if (!includeStopped) {
+    query = query.in('status', ['in_progress', 'not_started']);
+  }
 
   if (clientId) {
     query = query.eq('client_id', clientId);

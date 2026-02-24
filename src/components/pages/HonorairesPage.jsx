@@ -1,9 +1,10 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { syncCustomersAndSubscriptions, getHonorairesResume, testConnection } from '../../utils/honoraires';
+import AugmentationPanel from '../honoraires/AugmentationPanel';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -33,6 +34,9 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [honoraires, setHonoraires] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Onglets
+  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation'
 
   // Filtres
   const [filterCabinet, setFilterCabinet] = useState('tous');
@@ -318,6 +322,46 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           )}
         </div>
       </div>
+
+      {/* Onglets */}
+      <div className="flex gap-1 border-b border-gray-200 mb-6">
+        <button
+          onClick={() => setActiveTab('vue')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition text-sm font-medium ${
+            activeTab === 'vue'
+              ? 'bg-white border border-b-white border-gray-200 text-gray-900 -mb-px'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <BarChart3 size={16} />
+          Vue par client
+        </button>
+        <button
+          onClick={() => setActiveTab('augmentation')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition text-sm font-medium ${
+            activeTab === 'augmentation'
+              ? 'bg-white border border-b-white border-gray-200 text-gray-900 -mb-px'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <TrendingUp size={16} />
+          Augmentation
+        </button>
+      </div>
+
+      {/* Contenu onglet Augmentation */}
+      {activeTab === 'augmentation' && (
+        <AugmentationPanel
+          honoraires={honoraires}
+          clients={clients}
+          accent={accent}
+          filterCabinet={filterCabinet}
+          filterStatus={filterStatus}
+        />
+      )}
+
+      {/* Contenu onglet Vue (existant) */}
+      {activeTab === 'vue' && (<>
 
       {/* Input clé API */}
       {showApiKeyInput && (
@@ -708,6 +752,8 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           </div>
         </div>
       )}
+
+      </>)}
     </div>
   );
 }
