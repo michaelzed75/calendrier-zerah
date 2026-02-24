@@ -65,13 +65,20 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
       // Étape 2 : Enrichissement emails via API v2/customers
       let emailsUpdated = 0;
+      let emailDebug = '';
       try {
         // Lire les clés API depuis pennylane_api_keys
-        const { data: apiKeys } = await supabase
+        const { data: apiKeys, error: apiKeysError } = await supabase
           .from('pennylane_api_keys')
           .select('cabinet, api_key, company_id');
 
-        if (apiKeys && apiKeys.length > 0) {
+        if (apiKeysError) {
+          emailDebug = ` [Email: erreur lecture clés API: ${apiKeysError.message}]`;
+        } else if (!apiKeys || apiKeys.length === 0) {
+          emailDebug = ' [Email: aucune clé API configurée dans pennylane_api_keys]';
+        } else {
+          emailDebug = ` [Email: ${apiKeys.length} clé(s) API trouvée(s)]`;
+
           // Charger les clients actuels (après sync firm)
           const { data: currentClients } = await supabase
             .from('clients')
@@ -85,36 +92,53 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
               clientsBySiren[c.siren] = c;
             }
           }
+          const nbClientsSiren = Object.keys(clientsBySiren).length;
 
           // Pour chaque cabinet, récupérer les customers v2
           for (const keyRow of apiKeys) {
-            if (!keyRow.api_key) continue;
+            if (!keyRow.api_key) {
+              emailDebug += ` [${keyRow.cabinet}: pas de clé API]`;
+              continue;
+            }
             try {
               if (keyRow.company_id) {
                 setCompanyId(keyRow.company_id);
+              } else {
+                emailDebug += ` [${keyRow.cabinet}: pas de company_id]`;
               }
               const customers = await getAllCustomers(keyRow.api_key);
+              let withEmail = 0;
+              let withSiren = 0;
+              let matched = 0;
 
               for (const customer of customers) {
                 const email = (customer.emails && customer.emails[0]) || null;
+                if (email) withEmail++;
+                if (customer.reg_no) withSiren++;
                 if (!email || !customer.reg_no) continue;
 
                 // Match par SIREN (clé universelle)
                 const client = clientsBySiren[customer.reg_no];
-                if (client && client.email !== email) {
-                  await supabase
-                    .from('clients')
-                    .update({ email })
-                    .eq('id', client.id);
-                  emailsUpdated++;
+                if (client) {
+                  matched++;
+                  if (client.email !== email) {
+                    await supabase
+                      .from('clients')
+                      .update({ email })
+                      .eq('id', client.id);
+                    emailsUpdated++;
+                  }
                 }
               }
+              emailDebug += ` [${keyRow.cabinet}: ${customers.length} customers, ${withEmail} emails, ${withSiren} SIREN, ${matched} matchés, ${emailsUpdated} mis à jour]`;
             } catch (err) {
+              emailDebug += ` [${keyRow.cabinet}: ERREUR ${err.message}]`;
               console.error(`Erreur enrichissement emails ${keyRow.cabinet}:`, err.message);
             }
           }
         }
       } catch (err) {
+        emailDebug = ` [Email: ERREUR ${err.message}]`;
         console.error('Erreur enrichissement emails:', err.message);
       }
 
@@ -122,11 +146,10 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       const { data: newClients } = await supabase.from('clients').select('*').order('id');
       if (newClients) setClients(newClients);
 
-      const emailMsg = emailsUpdated > 0 ? ` ${emailsUpdated} emails enrichis.` : '';
       const cabinetsMsg = result.cabinets_ok ? ` Cabinets : ${result.cabinets_ok.join(', ')}.` : '';
       setSyncMessage({
         type: 'success',
-        text: `Sync terminée ! ${result.total} dossiers Pennylane. ${result.imported} nouveaux, ${result.updated} mis à jour.${emailMsg}${cabinetsMsg}`
+        text: `Sync terminée ! ${result.total} dossiers. ${result.imported} nouveaux, ${result.updated} mis à jour. ${emailsUpdated} emails enrichis.${cabinetsMsg}${emailDebug}`
       });
     } catch (err) {
       console.error('Erreur sync:', err);
