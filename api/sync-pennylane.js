@@ -76,7 +76,7 @@ export default async function handler(req, res) {
       try {
         const companies = await getAllCompanies(key);
         companies.forEach(c => {
-          allDossiers.push({
+          const dossier = {
             nom: c.name,
             code_pennylane: c.external_id || c.client_code || String(c.id),
             pennylane_id: c.id,
@@ -86,7 +86,13 @@ export default async function handler(req, res) {
             ville: c.city || null,
             code_postal: c.postal_code || null,
             actif: true
-          });
+          };
+          // Capturer l'email si disponible dans l'API firm
+          const firmEmail = c.email || (c.emails && c.emails[0]) || null;
+          if (firmEmail) {
+            dossier.email = firmEmail;
+          }
+          allDossiers.push(dossier);
           pennylaneIds.push({ id: c.id, cabinet: cabinet.name });
         });
       } catch (err) {
