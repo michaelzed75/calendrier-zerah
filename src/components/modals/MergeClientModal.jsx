@@ -17,7 +17,9 @@ import { X } from 'lucide-react';
  */
 
 /**
- * Modal de fusion de clients (transfert des charges vers un autre client)
+ * Modal de fusion de clients (transfert de TOUTES les données vers un autre client)
+ * Transfère : charges, abonnements, honoraires_historique, effectifs_silae,
+ * silae_productions, fournisseurs_releve. Supprime : silae_mapping, tests_comptables.
  * @param {MergeClientModalProps} props
  * @returns {JSX.Element}
  */
@@ -25,9 +27,9 @@ function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) 
   const [selectedTargetId, setSelectedTargetId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Clients Pennylane disponibles pour la fusion (actifs, avec cabinet)
+  // Clients disponibles pour la fusion (actifs, différents du source)
   const pennylaneClients = clients.filter(c =>
-    c.cabinet && c.actif && c.id !== sourceClient.id
+    c.actif && c.id !== sourceClient.id
   );
 
   const filteredClients = [...pennylaneClients]
@@ -43,7 +45,11 @@ function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) 
       return;
     }
     const targetClient = clients.find(c => c.id === parseInt(selectedTargetId));
-    if (confirm(`Fusionner "${sourceClient.nom}" vers "${targetClient.nom}" ?\n\n${sourceChargesCount} charge(s) seront transférées.\nLe client "${sourceClient.nom}" sera supprimé.`)) {
+    if (confirm(
+      `Fusionner "${sourceClient.nom}" vers "${targetClient.nom}" ?\n\n` +
+      `Toutes les données liées (charges, abonnements, productions Silae, historique...) seront transférées.\n` +
+      `Le client "${sourceClient.nom}" sera supprimé définitivement.`
+    )) {
       onMerge(sourceClient.id, parseInt(selectedTargetId));
     }
   };
@@ -70,7 +76,7 @@ function MergeClientModal({ sourceClient, clients, charges, onMerge, onClose }) 
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-slate-300 mb-2">
-            Fusionner vers (client Pennylane)
+            Fusionner vers (client cible)
           </label>
           <input
             type="text"

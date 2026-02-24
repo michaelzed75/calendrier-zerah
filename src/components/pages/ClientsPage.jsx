@@ -75,23 +75,82 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     setSyncing(false);
   };
 
-  // Fusionner un client sans cabinet vers un client Pennylane
+  // Fusionner un client vers un autre (transfert de TOUTES les données liées)
   const handleMergeClient = async (sourceId, targetId) => {
     try {
-      // Transférer toutes les charges du client source vers le client cible
-      const { error: chargesError } = await supabase
+      // 1. Transférer les charges
+      const { error: e1 } = await supabase
         .from('charges')
         .update({ client_id: targetId })
         .eq('client_id', sourceId);
+      if (e1) throw e1;
 
-      if (chargesError) throw chargesError;
+      // 2. Transférer les abonnements
+      const { error: e2 } = await supabase
+        .from('abonnements')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+      if (e2) throw e2;
 
-      // Supprimer le client source (sans cabinet)
+      // 3. Transférer honoraires_historique
+      const { error: e3 } = await supabase
+        .from('honoraires_historique')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+      if (e3) throw e3;
+
+      // 4. Transférer effectifs_silae
+      const { error: e4 } = await supabase
+        .from('effectifs_silae')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+      if (e4) throw e4;
+
+      // 5. Transférer fournisseurs_releve
+      const { error: e5 } = await supabase
+        .from('fournisseurs_releve')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+      if (e5) throw e5;
+
+      // 6. silae_productions : UNIQUE(client_id, periode) → supprimer doublons, transférer le reste
+      const { data: sourceProds } = await supabase
+        .from('silae_productions')
+        .select('id, periode')
+        .eq('client_id', sourceId);
+      const { data: targetProds } = await supabase
+        .from('silae_productions')
+        .select('periode')
+        .eq('client_id', targetId);
+      const targetPeriodes = new Set((targetProds || []).map(p => p.periode));
+
+      for (const prod of (sourceProds || [])) {
+        if (targetPeriodes.has(prod.periode)) {
+          // Doublon : le target a déjà cette période, supprimer celle du source
+          await supabase.from('silae_productions').delete().eq('id', prod.id);
+        } else {
+          await supabase.from('silae_productions').update({ client_id: targetId }).eq('id', prod.id);
+        }
+      }
+
+      // 7. silae_mapping : supprimer les entrées du source (le target a ses propres mappings)
+      await supabase.from('silae_mapping').delete().eq('client_id', sourceId);
+
+      // 8. tests_comptables : supprimer (données éphémères, cascade vers resultats)
+      await supabase.from('tests_comptables_executions').delete().eq('client_id', sourceId);
+
+      // 9. Transférer temps_reels
+      const { error: e9 } = await supabase
+        .from('temps_reels')
+        .update({ client_id: targetId })
+        .eq('client_id', sourceId);
+      if (e9) throw e9;
+
+      // 10. Supprimer le client source
       const { error: deleteError } = await supabase
         .from('clients')
         .delete()
         .eq('id', sourceId);
-
       if (deleteError) throw deleteError;
 
       // Mettre à jour le state local
@@ -100,10 +159,10 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
         c.client_id === sourceId ? { ...c, client_id: targetId } : c
       ));
 
-      alert('Fusion réussie ! Les charges ont été transférées.');
+      alert('Fusion réussie ! Toutes les données ont été transférées.');
     } catch (err) {
       console.error('Erreur fusion:', err);
-      alert('Erreur lors de la fusion');
+      alert('Erreur lors de la fusion : ' + (err.message || err));
     }
     setMergingClient(null);
   };
@@ -594,16 +653,14 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex justify-center gap-1">
-                        {/* Bouton Fusionner - seulement pour clients sans cabinet */}
-                        {!client.cabinet && (
-                          <button
-                            onClick={() => setMergingClient(client)}
-                            className="text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 p-1 rounded transition"
-                            title="Fusionner avec un client Pennylane"
-                          >
-                            <Download size={16} className="rotate-90" />
-                          </button>
-                        )}
+                        {/* Bouton Fusionner - disponible pour tous les clients */}
+                        <button
+                          onClick={() => setMergingClient(client)}
+                          className="text-orange-400 hover:text-orange-300 hover:bg-orange-900/30 p-1 rounded transition"
+                          title="Fusionner vers un autre client"
+                        >
+                          <Download size={16} className="rotate-90" />
+                        </button>
                         <button
                           onClick={() => setEditingClient(client)}
                           className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 p-1 rounded transition"
