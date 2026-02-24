@@ -47,21 +47,20 @@ export const getEquipeOf = (chefId, collaborateurChefs, collaborateurs) => {
  * @returns {Client[]} Liste des clients accessibles
  */
 export const getAccessibleClients = (collaborateur, clients, collaborateurChefs, collaborateurs) => {
-  // Clients actifs seulement
-  const activeClients = clients.filter(c => c.actif);
-
+  // Inclut les clients inactifs pour permettre la saisie de temps
+  // (les clients partis ont encore des bilans en cours)
   if (!collaborateur) {
-    return activeClients;
+    return clients;
   }
 
-  // Admin voit tous les clients actifs
+  // Admin voit tous les clients
   if (collaborateur.is_admin) {
-    return activeClients;
+    return clients;
   }
 
-  // Chef de mission voit ses propres clients
+  // Chef de mission voit ses propres clients + clients sans chef assigné
   if (collaborateur.est_chef_mission) {
-    return activeClients.filter(c =>
+    return clients.filter(c =>
       c.chef_mission_id === collaborateur.id || !c.chef_mission_id
     );
   }
@@ -69,7 +68,7 @@ export const getAccessibleClients = (collaborateur, clients, collaborateurChefs,
   // Collaborateur voit les clients de ses chefs + clients sans chef assigné
   const chefs = getChefsOf(collaborateur.id, collaborateurChefs, collaborateurs);
   const chefIds = chefs.map(c => c.id);
-  return activeClients.filter(c =>
+  return clients.filter(c =>
     !c.chef_mission_id || chefIds.includes(c.chef_mission_id)
   );
 };

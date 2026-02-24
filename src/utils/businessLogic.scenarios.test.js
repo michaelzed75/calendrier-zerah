@@ -141,36 +141,38 @@ describe('Scénarios métier - Cabinet comptable', () => {
   });
 
   describe('Scénario 2: Accès aux clients selon le rôle', () => {
-    it('Admin voit tous les clients actifs (7 clients)', () => {
+    it('Admin voit tous les clients y compris inactifs (8 clients)', () => {
       const accessibles = getAccessibleClients(cabinet.admin, clients, liaisons, allCollaborateurs);
-      // 8 clients - 1 inactif = 7 actifs
-      expect(accessibles).toHaveLength(7);
-      expect(accessibles.find(c => c.nom === 'Ancien Client Fermé')).toBeUndefined();
+      // 7 actifs + 1 inactif = 8 total
+      expect(accessibles).toHaveLength(8);
+      expect(accessibles.find(c => c.nom === 'Ancien Client Fermé')).toBeDefined();
     });
 
-    it('Sophie (chef audit) voit ses clients + clients sans chef (4 clients)', () => {
+    it('Sophie (chef audit) voit ses clients + clients sans chef + inactifs (5 clients)', () => {
       const accessibles = getAccessibleClients(cabinet.chefAudit, clients, liaisons, allCollaborateurs);
-      expect(accessibles).toHaveLength(4);
+      // Client A (chef 2) + StartUp (chef 2) + Nouveau + Prospect + Ancien Client Fermé (chef 2) = 5
+      expect(accessibles).toHaveLength(5);
       expect(accessibles.map(c => c.nom)).toContain('TechCorp SA');
       expect(accessibles.map(c => c.nom)).toContain('StartUp Innovation');
       expect(accessibles.map(c => c.nom)).toContain('Nouveau Client');
       expect(accessibles.map(c => c.nom)).toContain('Prospect en cours');
+      expect(accessibles.map(c => c.nom)).toContain('Ancien Client Fermé');
       // Ne voit pas les clients de Pierre
       expect(accessibles.map(c => c.nom)).not.toContain('Restaurant Le Gourmet');
     });
 
-    it('Marie (équipe audit) voit les clients de Sophie + sans chef (4 clients)', () => {
+    it('Marie (équipe audit) voit les clients de Sophie + sans chef (5 clients)', () => {
       const accessibles = getAccessibleClients(cabinet.collabAudit1, clients, liaisons, allCollaborateurs);
-      expect(accessibles).toHaveLength(4);
+      // 4 actifs + 1 inactif (chef 2) = 5
+      expect(accessibles).toHaveLength(5);
       expect(accessibles.map(c => c.nom)).toContain('TechCorp SA');
       expect(accessibles.map(c => c.nom)).not.toContain('Restaurant Le Gourmet');
     });
 
-    it('Claire (multi-équipes) voit les clients des 2 chefs + sans chef (6 clients actifs sauf orphelin)', () => {
+    it('Claire (multi-équipes) voit les clients des 2 chefs + sans chef (7 clients)', () => {
       const accessibles = getAccessibleClients(cabinet.collabMulti, clients, liaisons, allCollaborateurs);
-      // Voit clients Sophie (2) + clients Pierre (2) + sans chef (2) = 6
-      // Mais pas le client de l'ancien chef inactif
-      expect(accessibles).toHaveLength(6);
+      // Voit clients Sophie (2) + clients Pierre (2) + sans chef (2) + inactif (chef 2) = 7
+      expect(accessibles).toHaveLength(7);
       expect(accessibles.map(c => c.nom)).toContain('TechCorp SA');
       expect(accessibles.map(c => c.nom)).toContain('Restaurant Le Gourmet');
     });
@@ -256,9 +258,11 @@ describe('Scénarios métier - Cabinet comptable', () => {
       expect(equipe).toHaveLength(0);
     });
 
-    it('Client inactif n\'est jamais accessible', () => {
+    it('Client inactif est accessible (pour saisie temps bilans en cours)', () => {
       const adminClients = getAccessibleClients(cabinet.admin, clients, liaisons, allCollaborateurs);
-      expect(adminClients.find(c => c.nom === 'Ancien Client Fermé')).toBeUndefined();
+      const ancien = adminClients.find(c => c.nom === 'Ancien Client Fermé');
+      expect(ancien).toBeDefined();
+      expect(ancien.actif).toBe(false);
     });
 
     it('Charge avec collaborateur_id inexistant est gérée', () => {

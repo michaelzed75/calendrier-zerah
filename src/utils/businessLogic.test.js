@@ -82,43 +82,45 @@ describe('businessLogic', () => {
   });
 
   describe('getAccessibleClients', () => {
-    it('admin voit tous les clients actifs', () => {
+    it('admin voit tous les clients (actifs et inactifs)', () => {
       const admin = mockCollaborateurs[0];
       const clients = getAccessibleClients(admin, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients).toHaveLength(3); // 3 actifs
-      expect(clients.every(c => c.actif)).toBe(true);
+      expect(clients).toHaveLength(4); // 3 actifs + 1 inactif
     });
 
-    it('chef de mission voit ses clients + clients sans chef', () => {
+    it('chef de mission voit ses clients + clients sans chef (y compris inactifs)', () => {
       const chef = mockCollaborateurs[1]; // Chef Mission (id: 2)
       const clients = getAccessibleClients(chef, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients).toHaveLength(2); // Client A (chef 2) + Client C (sans chef)
+      expect(clients).toHaveLength(3); // Client A (chef 2) + Client C (sans chef) + Client Inactif (chef 2)
       expect(clients.map(c => c.nom)).toContain('Client A');
       expect(clients.map(c => c.nom)).toContain('Client C');
+      expect(clients.map(c => c.nom)).toContain('Client Inactif');
     });
 
     it('collaborateur voit les clients de ses chefs + clients sans chef', () => {
       const collab = mockCollaborateurs[2]; // Collab Un (id: 3, chefs: 2 et 5)
       const clients = getAccessibleClients(collab, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients).toHaveLength(3); // Client A (chef 2) + Client B (chef 5) + Client C (sans chef)
+      expect(clients).toHaveLength(4); // Client A (chef 2) + Client B (chef 5) + Client C (sans chef) + Inactif (chef 2)
     });
 
     it('collaborateur avec un seul chef voit moins de clients', () => {
       const collab = mockCollaborateurs[3]; // Collab Deux (id: 4, chef: 2 seulement)
       const clients = getAccessibleClients(collab, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients).toHaveLength(2); // Client A (chef 2) + Client C (sans chef)
+      expect(clients).toHaveLength(3); // Client A (chef 2) + Client C (sans chef) + Inactif (chef 2)
       expect(clients.map(c => c.nom)).not.toContain('Client B');
     });
 
-    it('retourne tous les clients actifs si collaborateur null', () => {
+    it('retourne tous les clients si collaborateur null', () => {
       const clients = getAccessibleClients(null, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients).toHaveLength(3);
+      expect(clients).toHaveLength(4);
     });
 
-    it('n\'inclut jamais les clients inactifs', () => {
+    it('inclut les clients inactifs (pour saisie de temps sur bilans en cours)', () => {
       const admin = mockCollaborateurs[0];
       const clients = getAccessibleClients(admin, mockClients, mockCollaborateurChefs, mockCollaborateurs);
-      expect(clients.find(c => c.nom === 'Client Inactif')).toBeUndefined();
+      const inactif = clients.find(c => c.nom === 'Client Inactif');
+      expect(inactif).toBeDefined();
+      expect(inactif.actif).toBe(false);
     });
   });
 

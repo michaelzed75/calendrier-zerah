@@ -10,7 +10,7 @@
     "backend": "Supabase (PostgreSQL + Auth + Edge Functions)",
     "export": "xlsx (SheetJS) pour export Excel, docx pour export Word",
     "deployment": "Vercel (auto-deploy depuis GitHub)",
-    "api_externe": "Pennylane API (synchronisation clients)",
+    "api_externe": "Pennylane API (synchronisation clients et abonnements, X-Company-Id par cabinet)",
     "typing": "JSDoc + @ts-check (typage progressif sans TypeScript)",
     "testing": "Vitest + React Testing Library"
   },
@@ -169,21 +169,24 @@
         "access": "Clients avec clé API Pennylane configurée"
       },
       "HonorairesPage.jsx": {
-        "lines": 715,
+        "lines": 780,
         "role": "Gestion des honoraires et abonnements Pennylane",
         "typing": "@ts-check + JSDoc",
         "features": [
-          "Synchronisation abonnements Pennylane (billing_subscriptions)",
-          "Matching intelligent customers/clients (UUID puis nom)",
+          "Synchronisation abonnements Pennylane avec prévisualisation (SyncPreviewModal)",
+          "Matching intelligent customers/clients (UUID → SIREN → nom)",
           "Filtrage doublons: seuls les customers avec abonnements sont matchés",
           "Vue par client avec totaux par famille (compta, social, juridique, support)",
           "Calcul montant mensuel (conversion annuel/mensuel)",
+          "Exclusion des clients inactifs du calcul CA HT",
           "Détail des lignes de facturation par abonnement",
           "Liste clients actifs sans abonnement avec distinction:",
           "  - 'PL sans abo': client lié à Pennylane mais sans abonnement",
           "  - 'Pas dans PL': client non lié à Pennylane",
           "Filtres: cabinet, statut abonnement, recherche nom",
-          "Totaux agrégés: comptabilité, social, juridique, support"
+          "Totaux agrégés: comptabilité, social, juridique, support",
+          "Badge 'En construction' sur onglet Vue par client",
+          "Feedback sync (progression, résultat, erreur) visible depuis tous les onglets"
         ],
         "props": [
           "clients", "setClients", "collaborateurs", "accent", "userCollaborateur"
@@ -311,17 +314,41 @@
       "AddChargeModal.jsx": {
         "role": "Ajout de charge",
         "typing": "@ts-check + JSDoc",
-        "fields": ["collaborateur", "client", "date", "heures", "type (budgété/réalisé)", "detail"]
+        "fields": ["collaborateur", "client", "date", "heures", "type (budgété/réalisé)", "detail"],
+        "features": ["Tri actifs en premier, badge orange 'inactif' sur clients désactivés"]
       },
       "EditChargeModal.jsx": {
         "role": "Modification de charge",
         "typing": "@ts-check + JSDoc",
-        "features": ["Modification heures/detail", "Suppression", "Ajout heures réalisées"]
+        "features": ["Modification heures/detail", "Suppression", "Ajout heures réalisées", "Tri actifs en premier, badge orange 'inactif'"]
       },
       "ExportModal.jsx": {
         "role": "Export Excel",
         "typing": "@ts-check + JSDoc",
         "features": ["Sélection date début/fin", "Export format xlsx"]
+      }
+    },
+    "src/components/honoraires/": {
+      "SyncPreviewModal.jsx": {
+        "role": "Modal de prévisualisation du rapport de synchronisation Pennylane",
+        "typing": "@ts-check + JSDoc",
+        "features": [
+          "Barre résumé: matchés, non matchés, nouveaux abos, variations prix, delta HT",
+          "Sections dépliables: matching clients, non matchés, abonnements, variations prix, anomalies",
+          "Détection clients inactifs avec abonnements actifs (anomalie error)",
+          "Highlight rouge pour variations prix > 20%",
+          "Boutons Accepter (vert) / Annuler (gris)",
+          "Style dark theme: bg-slate-900, border-slate-700"
+        ]
+      },
+      "AugmentationPanel.jsx": {
+        "role": "Panneau d'analyse des augmentations tarifaires",
+        "typing": "@ts-check + JSDoc",
+        "features": [
+          "Calcul augmentation par client et par famille",
+          "Exclusion des clients inactifs du calcul CA HT",
+          "Export Excel des augmentations"
+        ]
       }
     },
     "src/utils/": {
@@ -407,22 +434,50 @@
       "honoraires/": {
         "description": "Module de gestion des honoraires et abonnements Pennylane",
         "files": {
-          "index.js": "Export centralisé: syncCustomersAndSubscriptions, getHonorairesResume, testConnection",
+          "index.js": "Export centralisé: syncCustomersAndSubscriptions, getHonorairesResume, testConnection, previewSync, commitSync",
           "pennylaneCustomersApi.js": {
             "role": "Client API Pennylane v2 pour customers et abonnements",
             "exports": [
-              "fetchAllCustomers(apiKey) - Récupère tous les customers (pagination)",
-              "fetchAllSubscriptions(apiKey) - Récupère tous les abonnements",
-              "fetchAllDataForSync(apiKey, onProgress) - Récupère customers + abonnements",
-              "getSubscriptionInvoiceLines(apiKey, subscriptionId) - Lignes de facturation",
+              "fetchAllCustomers(apiKey, companyId?) - Récupère tous les customers (pagination, X-Company-Id optionnel)",
+              "fetchAllSubscriptions(apiKey, companyId?) - Récupère tous les abonnements (X-Company-Id optionnel)",
+              "fetchAllDataForSync(apiKey, onProgress, companyId?) - Récupère customers + abonnements",
+              "getSubscriptionInvoiceLines(apiKey, subscriptionId, companyId?) - Lignes de facturation",
               "testConnection(apiKey) - Test de validité de la clé API"
-            ]
+            ],
+            "x_company_id": "Header X-Company-Id passé au proxy pour isoler les données par cabinet Pennylane"
+          },
+          "syncPreview.js": {
+            "role": "Prévisualisation et commit sync Pennylane (preview → modal → commit)",
+            "exports": [
+              "previewSync(supabase, apiKey, cabinet, onProgress) - Preview diff complet sans écrire en base",
+              "commitSync(supabase, report, cabinet, onProgress) - Applique les changements du preview + historique prix"
+            ],
+            "matching_strategy": [
+              "1. Par pennylane_customer_id (UUID)",
+              "2. Par SIREN (reg_no) — CLÉ UNIVERSELLE",
+              "3. Par nom normalisé (exact)",
+              "4. Par nom sans suffixes juridiques",
+              "5. Par nom normalisé (contient/partiel)",
+              "6. Par nom sans suffixes (contient/partiel)",
+              "Chaque match retourne un level pour diagnostic (uuid/siren/name_exact/name_clean/name_partial/name_clean_partial)"
+            ],
+            "anomaly_detection": [
+              "Variation prix > 20%",
+              "Changement de cabinet",
+              "Clients inactifs avec abonnements actifs",
+              "Matches faibles (name_partial, name_clean_partial)"
+            ],
+            "tests": "syncPreview.test.js (27 tests)"
           },
           "syncHonoraires.js": {
-            "role": "Service de synchronisation honoraires",
+            "role": "Service de synchronisation honoraires (legacy, utilisé par commitSync)",
             "exports": [
               "syncCustomersAndSubscriptions(supabase, apiKey, cabinet, onProgress) - Sync complète",
-              "getHonorairesResume(supabase, clientId, options) - Résumé des honoraires (option includeStopped)"
+              "getHonorairesResume(supabase, clientId, options) - Résumé des honoraires (option includeStopped)",
+              "normalizeString(str) - Normalise une chaîne pour comparaison",
+              "removeJuridicalSuffixes(name) - Supprime suffixes juridiques",
+              "matchCustomerToClient(customer, clients) - Match customer vers client local",
+              "getFamilleFromLabel(label, produits) - Détermine la famille d'un produit"
             ],
             "matching_strategy": [
               "1. Par pennylane_customer_id existant (UUID)",
@@ -603,6 +658,10 @@
         "tests": 27,
         "coverage": "normalizeString, removeJuridicalSuffixes, matchCustomerToClient, getFamilleFromLabel, filtrage customers sans abonnement, cas réels doublons cabinet"
       },
+      "src/utils/honoraires/syncPreview.test.js": {
+        "tests": 27,
+        "coverage": "matchCustomerToClientWithLevel (UUID/SIREN/nom/nettoyé/partiel), séparation actifs/inactifs, detectInactiveWithSubscriptions, génération anomalies, détection matches faibles"
+      },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
         "coverage": "Métadonnées test, doublons classiques (montant récent > ancien, tolérance jours), doublons relevé (2+ factures/mois), extraction nom fournisseur, statistiques, filtrage factures invalides"
@@ -612,7 +671,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 226
+    "total_tests": 365
   },
   "database_tables": {
     "collaborateurs": {
@@ -660,7 +719,8 @@
         "idx_clients_siren": "INDEX ON siren WHERE siren IS NOT NULL",
         "idx_clients_pennylane": "UNIQUE(pennylane_id, cabinet) WHERE pennylane_id IS NOT NULL"
       },
-      "stats_2026_02": "166 clients actifs, 165 PM + 1 PP (MICHEL MALRIC), 0 SIREN partagé (sauf RELAIS CHRISTINE/SAINT JAMES = SIRET différents)"
+      "stats_2026_02": "166 clients actifs, 165 PM + 1 PP (MICHEL MALRIC), 0 SIREN partagé (sauf RELAIS CHRISTINE/SAINT JAMES = SIRET différents)",
+      "inactive_clients_behavior": "Inclus dans getAccessibleClients (saisie temps bilans), exclus du CA HT honoraires (HonorairesPage + AugmentationPanel)"
     },
     "charges": {
       "description": "Charges de travail planifiées et réalisées",
@@ -740,7 +800,7 @@
     "note": "Ces fonctions sont définies dans App.jsx et utilisent les fonctions de businessLogic.js",
     "getChefsOf(collaborateurId)": "Retourne la liste des chefs d'un collaborateur",
     "getEquipeOf(chefId)": "Retourne la liste des membres de l'équipe d'un chef",
-    "getAccessibleClients(collaborateur)": "Retourne les clients accessibles selon le rôle",
+    "getAccessibleClients(collaborateur)": "Retourne les clients accessibles selon le rôle (inclut les inactifs pour saisie temps)",
     "loadAllData()": "Charge toutes les données depuis Supabase",
     "loadUserCollaborateur(email)": "Charge le collaborateur lié à l'utilisateur connecté"
   },
@@ -822,6 +882,7 @@
       "endpoint": "/api/pennylane-proxy",
       "method": "GET/POST",
       "headers_required": ["X-Pennylane-Api-Key"],
+      "headers_optional": ["X-Company-Id (isolation par cabinet Pennylane)"],
       "query_params": ["endpoint", "...autres params transmis à Pennylane"],
       "target_api": "https://app.pennylane.com/api/external/v2"
     },
@@ -1085,7 +1146,21 @@
       "Fusion de 6 paires de doublons SIREN (PP GESLIN, CHEZ RIBE POUVERIN, BALLU, FRANCE FORMALITES, MAGP AUTEUIL, PFA ASSOCIES)",
       "Migration 007: UNIQUE INDEX sur (siren, siret_complement) pour clients actifs",
       "sync-pennylane.js: fallback SIREN élargi à tous clients actifs pour anti-doublon",
-      "MergeClientModal enrichi: message confirmation complet, liste cibles élargie"
+      "MergeClientModal enrichi: message confirmation complet, liste cibles élargie",
+      "Sync Pennylane avec prévisualisation: previewSync (diff sans écriture) + commitSync (applique + historique prix)",
+      "SyncPreviewModal: rapport détaillé matching, abonnements, variations prix, anomalies avec accept/reject",
+      "Support X-Company-Id dans pennylaneCustomersApi.js pour isolation par cabinet Pennylane",
+      "Matching intelligent avec niveaux: uuid → siren → name_exact → name_clean → name_partial → name_clean_partial",
+      "Détection anomalies: variations prix > 20%, clients inactifs avec abonnements actifs, matches faibles",
+      "Gestion clients inactifs: accessibles pour saisie temps, exclus du calcul CA HT honoraires",
+      "Badge orange 'inactif' dans dropdowns clients (AddCharge, EditCharge, TempsReels)",
+      "Feedback sync déplacé hors conditionnel d'onglet (visible depuis tous les onglets)",
+      "Badge 'En construction' sur onglet Vue par client",
+      "Exclusion clients inactifs dans AugmentationPanel.jsx",
+      "businessLogic.js: getAccessibleClients inclut les clients inactifs (aligné avec App.jsx)",
+      "Ajout syncPreview.test.js (27 tests matching/anomalies/inactifs)",
+      "Mise à jour businessLogic.test.js et scenarios.test.js pour clients inactifs",
+      "Total tests: 226 → 365"
     ]
   }
 }
