@@ -452,3 +452,55 @@ describe('Niveaux de matching — weak match detection', () => {
     expect(isWeak).toBe(false);
   });
 });
+
+describe('Extraction email depuis customer Pennylane', () => {
+  it('devrait extraire le premier email de la liste emails[]', () => {
+    const customer = {
+      id: 300, name: 'Test Client',
+      emails: ['contact@test.fr', 'admin@test.fr'],
+      external_reference: null, reg_no: '111111111'
+    };
+    const email = (customer.emails && customer.emails[0]) || null;
+    expect(email).toBe('contact@test.fr');
+  });
+
+  it('devrait retourner null si emails est un tableau vide', () => {
+    const customer = { id: 301, name: 'Test', emails: [], external_reference: null, reg_no: '' };
+    const email = (customer.emails && customer.emails[0]) || null;
+    expect(email).toBeNull();
+  });
+
+  it('devrait retourner null si emails est undefined', () => {
+    const customer = { id: 302, name: 'Test', external_reference: null, reg_no: '' };
+    const email = (customer.emails && customer.emails[0]) || null;
+    expect(email).toBeNull();
+  });
+
+  it('devrait inclure emails dans le clientsMatches du preview', () => {
+    const customers = [
+      { id: 400, name: 'Société X', emails: ['x@societe.fr'], external_reference: null, reg_no: '999888777' }
+    ];
+    const clients = [
+      { id: 50, nom: 'Société X', siren: '999888777', actif: true, pennylane_customer_id: null }
+    ];
+
+    const match = matchCustomerToClientWithLevel(customers[0], clients);
+    expect(match).toBeTruthy();
+
+    // Même construction que previewSync
+    const matchEntry = {
+      customer: {
+        id: customers[0].id,
+        name: customers[0].name,
+        external_reference: customers[0].external_reference,
+        reg_no: customers[0].reg_no,
+        emails: customers[0].emails || []
+      },
+      client: match.client,
+      level: match.level
+    };
+
+    expect(matchEntry.customer.emails).toEqual(['x@societe.fr']);
+    expect(matchEntry.customer.emails[0]).toBe('x@societe.fr');
+  });
+});

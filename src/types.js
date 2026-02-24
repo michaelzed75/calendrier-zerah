@@ -46,6 +46,7 @@
  * @property {string|null} code_pennylane - Code Pennylane
  * @property {string|null} code_silae - Code dossier Silae
  * @property {string|null} pennylane_client_api_key - Clé API Pennylane du client
+ * @property {string|null} email - Email de contact (synchronisé depuis Pennylane)
  */
 
 /**

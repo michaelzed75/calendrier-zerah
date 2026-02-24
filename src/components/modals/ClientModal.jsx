@@ -223,6 +223,17 @@ function ClientModal({ client, onSave, onClose }) {
             <p className="text-white text-xs mt-1">Optionnel</p>
           </div>
 
+          {/* Email (lecture seule, synchronisé depuis Pennylane) */}
+          {client && client.email && (
+            <div>
+              <label className="block text-sm font-medium text-white mb-1">Email (Pennylane)</label>
+              <div className="w-full bg-slate-700/50 text-white rounded px-3 py-2 border border-slate-600">
+                {client.email}
+              </div>
+              <p className="text-white text-xs mt-1">Synchronisé depuis Pennylane (lecture seule)</p>
+            </div>
+          )}
+
           {/* SIRET calculé */}
           {siren && siretComplement && (
             <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">

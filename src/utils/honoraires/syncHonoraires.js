@@ -262,6 +262,11 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
         if (cabinet) {
           updateData.cabinet = cabinet;
         }
+        // Synchroniser l'email du customer Pennylane (premier email)
+        const email = (customer.emails && customer.emails[0]) || null;
+        if (email) {
+          updateData.email = email;
+        }
         const { error: updateError } = await supabase
           .from('clients')
           .update(updateData)

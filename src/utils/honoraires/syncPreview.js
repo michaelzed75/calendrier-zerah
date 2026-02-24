@@ -169,7 +169,7 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
         ? { ancien: matchResult.client.cabinet, nouveau: cabinet }
         : null;
       clientsMatches.push({
-        customer: { id: customer.id, name: customer.name, external_reference: customer.external_reference, reg_no: customer.reg_no },
+        customer: { id: customer.id, name: customer.name, external_reference: customer.external_reference, reg_no: customer.reg_no, emails: customer.emails || [] },
         client: matchResult.client,
         level: matchResult.level,
         levelLabel: MATCH_LEVEL_LABELS[matchResult.level] || matchResult.level,
@@ -575,6 +575,11 @@ export async function commitSync(supabase, previewReport, cabinet, onProgress = 
       };
       if (cabinet) {
         updateData.cabinet = cabinet;
+      }
+      // Synchroniser l'email du customer Pennylane (premier email)
+      const email = match.customer.emails?.[0] || null;
+      if (email) {
+        updateData.email = email;
       }
       const { error: updateError } = await supabase
         .from('clients')

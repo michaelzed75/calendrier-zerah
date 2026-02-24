@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal } from '../modals';
@@ -25,6 +25,8 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [mergingClient, setMergingClient] = useState(null);
   const [filterCabinet, setFilterCabinet] = useState('tous');
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState('nom');
+  const [sortDirection, setSortDirection] = useState('asc');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
 
@@ -445,14 +447,41 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   // Obtenir les cabinets uniques
   const cabinets = [...new Set(clients.filter(c => c.cabinet).map(c => c.cabinet))];
 
-  // Filtrer et trier les clients (tri alphabétique par défaut)
+  // Handler de tri cliquable
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Filtrer et trier les clients
   const filteredClients = [...clients]
     .filter(client => {
       const matchesCabinet = filterCabinet === 'tous' || client.cabinet === filterCabinet || (filterCabinet === 'autres' && !client.cabinet);
-      const matchesSearch = client.nom.toLowerCase().includes(searchTerm.toLowerCase());
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = client.nom.toLowerCase().includes(term)
+        || (client.email && client.email.toLowerCase().includes(term));
       return matchesCabinet && matchesSearch;
     })
-    .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    .sort((a, b) => {
+      let valA, valB;
+      switch (sortField) {
+        case 'email':
+          valA = (a.email || '').toLowerCase();
+          valB = (b.email || '').toLowerCase();
+          break;
+        case 'nom':
+        default:
+          valA = (a.nom || '').toLowerCase();
+          valB = (b.nom || '').toLowerCase();
+          break;
+      }
+      const cmp = valA.localeCompare(valB, 'fr');
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
 
   // Export Excel
   const handleExportExcel = () => {
@@ -462,6 +491,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       'Type': client.type_personne || '',
       'SIREN': client.siren || '',
       'SIRET (NIC)': client.siret_complement || '',
+      'Email': client.email || '',
       'Cabinet': client.cabinet || '',
       'Pennylane Customer ID': client.pennylane_customer_id || '',
       'Code Pennylane': client.code_pennylane || '',
@@ -481,6 +511,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       { wch: 5 },  // Type
       { wch: 12 }, // SIREN
       { wch: 8 },  // SIRET NIC
+      { wch: 30 }, // Email
       { wch: 15 }, // Cabinet
       { wch: 38 }, // Pennylane Customer ID
       { wch: 15 }, // Code Pennylane
@@ -564,9 +595,20 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
           <table className="w-full">
             <thead>
               <tr className="bg-slate-700 text-white">
-                <th className="text-left py-3 px-4">Nom</th>
+                <th className="text-left py-3 px-4 cursor-pointer select-none hover:bg-slate-600/50 transition" onClick={() => handleSort('nom')}>
+                  <span className="flex items-center gap-1">
+                    Nom
+                    {sortField === 'nom' && (sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                  </span>
+                </th>
                 <th className="text-center py-3 px-2">Type</th>
                 <th className="text-left py-3 px-4">SIREN</th>
+                <th className="text-left py-3 px-4 cursor-pointer select-none hover:bg-slate-600/50 transition" onClick={() => handleSort('email')}>
+                  <span className="flex items-center gap-1">
+                    Email
+                    {sortField === 'email' && (sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+                  </span>
+                </th>
                 <th className="text-left py-3 px-4">Cabinet</th>
                 <th className="text-left py-3 px-4">Chef de mission</th>
                 <th className="text-center py-3 px-4">Charges</th>
@@ -607,6 +649,19 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       )}
                       {client.siret_complement && (
                         <div className="text-white text-xs font-mono">NIC {client.siret_complement}</div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {client.email ? (
+                        <a
+                          href={`mailto:${client.email}`}
+                          className="text-blue-400 hover:text-blue-300 text-sm truncate block max-w-[200px]"
+                          title={client.email}
+                        >
+                          {client.email}
+                        </a>
+                      ) : (
+                        <span className="text-white text-sm">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
