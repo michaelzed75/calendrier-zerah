@@ -3,8 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
-import { syncCustomersAndSubscriptions, getHonorairesResume, testConnection, auditAbonnements } from '../../utils/honoraires';
+import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, previewSync, commitSync } from '../../utils/honoraires';
 import AugmentationPanel from '../honoraires/AugmentationPanel';
+import SyncPreviewModal from '../honoraires/SyncPreviewModal';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -48,12 +49,96 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [expandedClient, setExpandedClient] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Clé API (temporaire pour test - à déplacer vers settings)
+  // Clés API Pennylane (persistées en base Supabase)
   const [apiKey, setApiKey] = useState('');
-  const [apiCabinet, setApiCabinet] = useState(''); // Cabinet associé à la clé API
+  const [apiCompanyId, setApiCompanyId] = useState('');
+  const [apiCabinet, setApiCabinet] = useState('');
+  const [apiKeysMap, setApiKeysMap] = useState({}); // { cabinet: { api_key, company_id } }
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+
+  // Charger les clés API depuis Supabase au montage
+  useEffect(() => {
+    const loadApiKeys = async () => {
+      try {
+        const { data, error: loadErr } = await supabase.from('pennylane_api_keys').select('cabinet, api_key, company_id');
+        if (loadErr) {
+          console.error('Erreur chargement clés API (RLS?):', loadErr);
+          return;
+        }
+        if (data && data.length > 0) {
+          const map = {};
+          for (const row of data) {
+            map[row.cabinet] = { api_key: row.api_key, company_id: row.company_id || '' };
+          }
+          setApiKeysMap(map);
+          // Auto-sélectionner le premier cabinet trouvé
+          const firstCabinet = data[0].cabinet;
+          setApiCabinet(firstCabinet);
+          setApiKey(map[firstCabinet].api_key);
+          setApiCompanyId(map[firstCabinet].company_id || '');
+          // Configurer le company_id pour les appels API
+          if (map[firstCabinet].company_id) {
+            setCompanyId(map[firstCabinet].company_id);
+          }
+          console.log(`[HonorairesPage] ${data.length} clé(s) API chargée(s) depuis Supabase`);
+        } else {
+          console.log('[HonorairesPage] Aucune clé API enregistrée');
+        }
+      } catch (err) {
+        console.error('Erreur chargement clés API:', err);
+      }
+    };
+    loadApiKeys();
+  }, []);
+
+  // Quand on change de cabinet, charger la clé et company_id associés
+  useEffect(() => {
+    if (apiCabinet && apiKeysMap[apiCabinet]) {
+      setApiKey(apiKeysMap[apiCabinet].api_key);
+      setApiCompanyId(apiKeysMap[apiCabinet].company_id || '');
+      if (apiKeysMap[apiCabinet].company_id) {
+        setCompanyId(apiKeysMap[apiCabinet].company_id);
+      }
+    } else if (apiCabinet && !apiKeysMap[apiCabinet]) {
+      setApiKey('');
+      setApiCompanyId('');
+    }
+  }, [apiCabinet, apiKeysMap]);
+
+  // Sauvegarder la clé API en base
+  const saveApiKey = async () => {
+    if (!apiKey || !apiCabinet || !apiCompanyId) {
+      setError('Veuillez remplir le cabinet, la clé API et le Company ID');
+      return;
+    }
+    setSavingApiKey(true);
+    try {
+      const { error } = await supabase
+        .from('pennylane_api_keys')
+        .upsert({
+          cabinet: apiCabinet,
+          api_key: apiKey,
+          company_id: apiCompanyId,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'cabinet' });
+      if (error) throw error;
+      setApiKeysMap(prev => ({ ...prev, [apiCabinet]: { api_key: apiKey, company_id: apiCompanyId } }));
+      // Configurer le company_id pour les appels API
+      setCompanyId(apiCompanyId);
+    } catch (err) {
+      console.error('Erreur sauvegarde clé API:', err);
+      setError('Erreur sauvegarde clé API: ' + err.message);
+    }
+    setSavingApiKey(false);
+  };
+
+  // Preview sync
+  const [previewReport, setPreviewReport] = useState(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [committing, setCommitting] = useState(false);
 
   // Droits
   const canSync = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
@@ -85,16 +170,39 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
    * Teste la connexion API
    */
   const handleTestConnection = async () => {
-    if (!apiKey) return;
+    const trimmedKey = apiKey?.trim();
+    const trimmedCompanyId = apiCompanyId?.trim();
+    if (!trimmedKey) {
+      setError('Veuillez entrer une clé API valide');
+      return;
+    }
+    if (!trimmedCompanyId) {
+      setError('Veuillez entrer le Company ID Pennylane');
+      return;
+    }
+
+    // Configurer le company_id pour l'appel test
+    setCompanyId(trimmedCompanyId);
 
     setTestingConnection(true);
     setConnectionStatus(null);
+    setError(null);
 
-    const result = await testConnection(apiKey);
-    setConnectionStatus(result.success ? 'success' : 'error');
+    try {
+      console.log('[HonorairesPage] Test connexion API Pennylane (company_id:', trimmedCompanyId, ')...');
+      const result = await testConnection(trimmedKey);
+      setConnectionStatus(result.success ? 'success' : 'error');
 
-    if (!result.success) {
-      setError(result.error);
+      if (!result.success) {
+        console.error('[HonorairesPage] Test échoué:', result.error);
+        setError('Test API échoué : ' + result.error);
+      } else {
+        console.log('[HonorairesPage] Test réussi');
+      }
+    } catch (err) {
+      console.error('[HonorairesPage] Erreur inattendue test connexion:', err);
+      setConnectionStatus('error');
+      setError('Erreur inattendue : ' + err.message);
     }
 
     setTestingConnection(false);
@@ -118,7 +226,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     setError(null);
 
     try {
-      const result = await syncCustomersAndSubscriptions(
+      const report = await previewSync(
         supabase,
         apiKey,
         apiCabinet,
@@ -127,7 +235,34 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
         }
       );
 
+      setPreviewReport(report);
+      setShowPreviewModal(true);
+
+    } catch (err) {
+      console.error('Erreur preview sync:', err);
+      setError(err.message);
+    }
+
+    setSyncing(false);
+  };
+
+  const handleCommitSync = async () => {
+    if (!previewReport) return;
+
+    setCommitting(true);
+    setError(null);
+
+    try {
+      const result = await commitSync(
+        supabase,
+        previewReport,
+        apiCabinet,
+        (progress) => setSyncProgress(progress)
+      );
+
       setSyncResult(result);
+      setShowPreviewModal(false);
+      setPreviewReport(null);
 
       // Recharger les clients et honoraires
       const { data: newClients } = await supabase.from('clients').select('*').order('nom');
@@ -136,11 +271,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
       await loadHonoraires();
 
     } catch (err) {
-      console.error('Erreur sync:', err);
+      console.error('Erreur commit sync:', err);
       setError(err.message);
     }
 
-    setSyncing(false);
+    setCommitting(false);
+  };
+
+  const handleCancelSync = () => {
+    setShowPreviewModal(false);
+    setPreviewReport(null);
   };
 
   /**
@@ -379,6 +519,180 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           Audit
         </button>
       </div>
+
+      {/* === Sync feedback UI (visible sur TOUS les onglets) === */}
+
+      {/* Input clé API */}
+      {showApiKeyInput && (
+        <div className="mb-6 p-4 bg-slate-700 rounded-lg border border-slate-600">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                Cabinet
+              </label>
+              <select
+                value={apiCabinet}
+                onChange={(e) => setApiCabinet(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Sélectionner...</option>
+                <option value="Zerah Fiduciaire">Zerah Fiduciaire</option>
+                <option value="Audit Up">Audit Up</option>
+              </select>
+              <p className="mt-1 text-xs text-white">
+                Cabinet associé à la clé
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                Company ID Pennylane
+              </label>
+              <input
+                type="text"
+                value={apiCompanyId}
+                onChange={(e) => setApiCompanyId(e.target.value)}
+                placeholder="Ex: 12345"
+                className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="mt-1 text-xs text-white">
+                Visible dans Pennylane → Paramètres → API
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                Clé API Pennylane v2
+              </label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Entrez votre clé API..."
+                className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-4">
+            <button
+              onClick={handleTestConnection}
+              disabled={!apiKey || !apiCompanyId || testingConnection}
+              className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 disabled:opacity-50"
+            >
+              {testingConnection ? <Loader2 size={16} className="animate-spin" /> : 'Tester'}
+            </button>
+            <button
+              onClick={saveApiKey}
+              disabled={!apiKey || !apiCabinet || !apiCompanyId || savingApiKey}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 disabled:opacity-50 flex items-center gap-1"
+            >
+              {savingApiKey ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              Enregistrer
+            </button>
+            {connectionStatus === 'success' && (
+              <span className="text-white text-sm flex items-center gap-1">
+                <CheckCircle size={14} className="text-green-400" /> Connexion réussie
+              </span>
+            )}
+            {connectionStatus === 'error' && (
+              <span className="text-white text-sm flex items-center gap-1">
+                <AlertCircle size={14} className="text-red-400" /> Connexion échouée
+              </span>
+            )}
+            {apiCabinet && apiKeysMap[apiCabinet] && (
+              <span className="text-white text-sm flex items-center gap-1">
+                <CheckCircle size={14} className="text-green-400" /> Config enregistrée pour {apiCabinet}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Progression sync */}
+      {syncing && syncProgress && (
+        <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-800">
+          <div className="flex items-center gap-2">
+            <Loader2 size={16} className="animate-spin text-white" />
+            <span className="text-white">{syncProgress.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Résultat sync */}
+      {syncResult && (
+        <div className={`mb-6 p-4 rounded-lg border ${syncResult.errors.length > 0 ? 'bg-yellow-900/30 border-yellow-800' : 'bg-green-900/30 border-green-800'}`}>
+          <h3 className="font-medium mb-2 text-white">Résultat de la synchronisation</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-white">Customers matchés:</span>
+              <span className="ml-2 font-medium text-white">{syncResult.customersMatched}</span>
+            </div>
+            <div>
+              <span className="text-white">Non matchés:</span>
+              <span className="ml-2 font-medium text-white">{syncResult.customersNotMatched}</span>
+            </div>
+            <div>
+              <span className="text-white">Abonnements créés:</span>
+              <span className="ml-2 font-medium text-white">{syncResult.abonnementsCreated}</span>
+            </div>
+            <div>
+              <span className="text-white">Abonnements MAJ:</span>
+              <span className="ml-2 font-medium text-white">{syncResult.abonnementsUpdated}</span>
+            </div>
+          </div>
+          {syncResult.historiquePrixCreated > 0 && (
+            <p className="mt-2 text-xs text-white">
+              {syncResult.historiquePrixCreated} variation(s) de prix enregistrée(s) dans l'historique
+            </p>
+          )}
+          {syncResult.unmatchedCustomers?.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-white">
+                {syncResult.unmatchedCustomers.length} customers non matchés (avec abonnements)
+              </summary>
+              <p className="mt-1 text-xs text-white">Ces customers ont des abonnements mais ne correspondent à aucun client local</p>
+              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
+                {syncResult.unmatchedCustomers.map(c => (
+                  <li key={c.id}>{c.name} ({c.external_reference || 'pas de ref'})</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {syncResult.customersNoSubscription?.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-white">
+                {syncResult.customersNoSubscription.length} customers ignorés (sans abonnement)
+              </summary>
+              <p className="mt-1 text-xs text-white">Ces customers existent dans Pennylane mais n'ont pas d'abonnement actif</p>
+              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
+                {syncResult.customersNoSubscription.map(c => (
+                  <li key={c.id}>{c.name}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {syncResult.errors?.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-white">
+                {syncResult.errors.length} erreurs
+              </summary>
+              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
+                {syncResult.errors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
+      {/* Erreur */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-900/30 rounded-lg border border-red-800 text-white">
+          <AlertCircle size={16} className="inline mr-2" />
+          {error}
+        </div>
+      )}
+
+      {/* === Fin sync feedback UI === */}
 
       {/* Contenu onglet Augmentation */}
       {activeTab === 'augmentation' && (
@@ -646,142 +960,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
       {/* Contenu onglet Vue (existant) */}
       {activeTab === 'vue' && (<>
 
-      {/* Input clé API */}
-      {showApiKeyInput && (
-        <div className="mb-6 p-4 bg-slate-700 rounded-lg border border-slate-600">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Cabinet
-              </label>
-              <select
-                value={apiCabinet}
-                onChange={(e) => setApiCabinet(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Sélectionner le cabinet...</option>
-                <option value="Zerah Fiduciaire">Zerah Fiduciaire</option>
-                <option value="Audit Up">Audit Up</option>
-              </select>
-              <p className="mt-1 text-xs text-white">
-                Les clients synchronisés seront associés à ce cabinet
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Clé API Pennylane v2
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Entrez votre clé API Pennylane..."
-                  className="flex-1 px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <button
-                  onClick={handleTestConnection}
-                  disabled={!apiKey || testingConnection}
-                  className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 disabled:opacity-50"
-                >
-                  {testingConnection ? <Loader2 size={16} className="animate-spin" /> : 'Tester'}
-                </button>
-              </div>
-              {connectionStatus === 'success' && (
-                <p className="mt-2 text-white text-sm flex items-center gap-1">
-                  <CheckCircle size={14} /> Connexion réussie
-                </p>
-              )}
-              {connectionStatus === 'error' && (
-                <p className="mt-2 text-white text-sm flex items-center gap-1">
-                  <AlertCircle size={14} /> Connexion échouée
-                </p>
-              )}
-            </div>
-          </div>
+      {/* Badge en construction */}
+      <div className="mb-6 p-4 bg-orange-900/30 rounded-lg border border-orange-800 flex items-center gap-3">
+        <span className="text-2xl">🚧</span>
+        <div>
+          <p className="font-medium text-white">Page en construction</p>
+          <p className="text-sm text-white">
+            Utilisez l'onglet <span className="font-semibold">Augmentation</span> pour l'analyse complète des honoraires.
+          </p>
         </div>
-      )}
-
-      {/* Progression sync */}
-      {syncing && syncProgress && (
-        <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-800">
-          <div className="flex items-center gap-2">
-            <Loader2 size={16} className="animate-spin text-white" />
-            <span className="text-white">{syncProgress.message}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Résultat sync */}
-      {syncResult && (
-        <div className={`mb-6 p-4 rounded-lg border ${syncResult.errors.length > 0 ? 'bg-yellow-900/30 border-yellow-800' : 'bg-green-900/30 border-green-800'}`}>
-          <h3 className="font-medium mb-2">Résultat de la synchronisation</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-white">Customers matchés:</span>
-              <span className="ml-2 font-medium">{syncResult.customersMatched}</span>
-            </div>
-            <div>
-              <span className="text-white">Non matchés:</span>
-              <span className="ml-2 font-medium text-white">{syncResult.customersNotMatched}</span>
-            </div>
-            <div>
-              <span className="text-white">Abonnements créés:</span>
-              <span className="ml-2 font-medium text-white">{syncResult.abonnementsCreated}</span>
-            </div>
-            <div>
-              <span className="text-white">Abonnements MAJ:</span>
-              <span className="ml-2 font-medium">{syncResult.abonnementsUpdated}</span>
-            </div>
-          </div>
-          {syncResult.unmatchedCustomers.length > 0 && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm text-white">
-                {syncResult.unmatchedCustomers.length} customers non matchés (avec abonnements)
-              </summary>
-              <p className="mt-1 text-xs text-white">Ces customers ont des abonnements mais ne correspondent à aucun client local</p>
-              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
-                {syncResult.unmatchedCustomers.map(c => (
-                  <li key={c.id}>{c.name} ({c.external_reference || 'pas de ref'})</li>
-                ))}
-              </ul>
-            </details>
-          )}
-          {syncResult.customersNoSubscription?.length > 0 && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm text-white">
-                {syncResult.customersNoSubscription.length} customers ignorés (sans abonnement)
-              </summary>
-              <p className="mt-1 text-xs text-white">Ces customers existent dans Pennylane mais n'ont pas d'abonnement actif</p>
-              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
-                {syncResult.customersNoSubscription.map(c => (
-                  <li key={c.id}>{c.name}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-          {syncResult.errors.length > 0 && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm text-white">
-                {syncResult.errors.length} erreurs
-              </summary>
-              <ul className="mt-2 text-sm text-white max-h-40 overflow-y-auto">
-                {syncResult.errors.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-
-      {/* Erreur */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-900/30 rounded-lg border border-red-800 text-white">
-          <AlertCircle size={16} className="inline mr-2" />
-          {error}
-        </div>
-      )}
+      </div>
 
       {/* Filtres */}
       <div className="mb-6 flex flex-wrap gap-4">
@@ -1037,6 +1225,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
       )}
 
       </>)}
+
+      {/* Modal de prévisualisation sync */}
+      {showPreviewModal && previewReport && (
+        <SyncPreviewModal
+          report={previewReport}
+          onAccept={handleCommitSync}
+          onCancel={handleCancelSync}
+          accepting={committing}
+        />
+      )}
     </div>
   );
 }

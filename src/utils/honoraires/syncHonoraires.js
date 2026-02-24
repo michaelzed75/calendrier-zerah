@@ -22,7 +22,7 @@ import { fetchAllDataForSync, getSubscriptionInvoiceLines } from './pennylaneCus
  * @param {string} str - Chaîne à normaliser
  * @returns {string} Chaîne normalisée
  */
-function normalizeString(str) {
+export function normalizeString(str) {
   if (!str) return '';
   return str
     .toLowerCase()
@@ -58,7 +58,7 @@ function normalizeString(str) {
  * @param {string} name - Nom à nettoyer (déjà normalisé, sans espaces)
  * @returns {string} Nom sans suffixes juridiques
  */
-function removeJuridicalSuffixes(name) {
+export function removeJuridicalSuffixes(name) {
   const suffixes = [
     'sarl', 'sas', 'sa', 'eurl', 'sasu', 'sci', 'snc', 'scp', 'selarl',
     'earl', 'gaec', 'gie', 'scop', 'scm', 'sep', 'scea', 'gfa',
@@ -88,7 +88,7 @@ function removeJuridicalSuffixes(name) {
  * @param {Client[]} clients - Liste des clients locaux
  * @returns {Client|null} Client matché ou null
  */
-function matchCustomerToClient(customer, clients) {
+export function matchCustomerToClient(customer, clients) {
   // 1. Match par pennylane_customer_id existant (= external_reference UUID)
   if (customer.external_reference) {
     const matchByUUID = clients.find(
@@ -145,7 +145,7 @@ function matchCustomerToClient(customer, clients) {
  * @param {Object[]} produitsFacturation - Liste des produits avec leur famille
  * @returns {string} Famille ('comptabilite', 'social', 'juridique', 'support')
  */
-function getFamilleFromLabel(label, produitsFacturation) {
+export function getFamilleFromLabel(label, produitsFacturation) {
   if (!label) return 'support';
 
   // Chercher dans la table produits_facturation

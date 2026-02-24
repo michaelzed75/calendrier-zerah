@@ -27,6 +27,11 @@ export default defineConfig({
             if (apiKey) {
               proxyReq.setHeader('Authorization', `Bearer ${apiKey}`);
             }
+            // Transférer le Company ID (requis par l'API Pennylane v2)
+            const companyId = req.headers['x-company-id'];
+            if (companyId) {
+              proxyReq.setHeader('X-Company-Id', companyId);
+            }
             proxyReq.setHeader('Accept', 'application/json');
           });
         }

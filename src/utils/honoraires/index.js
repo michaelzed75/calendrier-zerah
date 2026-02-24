@@ -13,14 +13,25 @@ export {
   getSubscriptionInvoiceLines,
   getSubscriptionWithLines,
   testConnection,
+  setCompanyId,
   fetchAllDataForSync
 } from './pennylaneCustomersApi.js';
 
 // Synchronisation
 export {
   syncCustomersAndSubscriptions,
-  getHonorairesResume
+  getHonorairesResume,
+  normalizeString,
+  removeJuridicalSuffixes,
+  matchCustomerToClient,
+  getFamilleFromLabel
 } from './syncHonoraires.js';
+
+// Sync Preview & Commit
+export {
+  previewSync,
+  commitSync
+} from './syncPreview.js';
 
 // Classification & Axes
 export {

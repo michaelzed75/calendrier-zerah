@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   // Autoriser CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pennylane-Api-Key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pennylane-Api-Key, X-Company-Id');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -47,13 +47,21 @@ export default async function handler(req, res) {
   console.log(`[Pennylane Proxy] ${req.method} ${url.toString()}`);
 
   try {
+    const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+
+    // Transférer le Company ID (requis par l'API Pennylane v2)
+    const companyId = req.headers['x-company-id'];
+    if (companyId) {
+      headers['X-Company-Id'] = companyId;
+    }
+
     const fetchOptions = {
       method: req.method === 'POST' ? 'POST' : 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
+      headers
     };
 
     // Ajouter le body pour les requêtes POST

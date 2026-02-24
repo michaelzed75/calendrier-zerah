@@ -6,10 +6,23 @@
  * depuis l'API Pennylane v2 pour la facturation des honoraires.
  *
  * Utilise le proxy serverless /api/pennylane-proxy pour éviter les problèmes CORS.
+ * L'API Pennylane v2 exige un header X-Company-Id pour identifier la société.
  */
 
 // URL du proxy API (fonction serverless Vercel)
 const PROXY_URL = '/api/pennylane-proxy';
+
+// Company ID Pennylane (set via setCompanyId avant les appels)
+let _companyId = null;
+
+/**
+ * Configure le Company ID Pennylane pour tous les appels API
+ * @param {string|null} companyId - L'identifiant de la société Pennylane
+ */
+export function setCompanyId(companyId) {
+  _companyId = companyId;
+  console.log(`[PennylaneAPI] Company ID configuré: ${companyId || '(vide)'}`);
+}
 
 /**
  * Effectue un appel à l'API Pennylane via le proxy
@@ -31,17 +44,29 @@ async function callPennylaneAPI(apiKey, endpoint, params = {}) {
     }
   });
 
+  console.log(`[callPennylaneAPI] ${endpoint} → ${url.toString()}`);
+
+  const headers = {
+    'X-Pennylane-Api-Key': apiKey,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  };
+
+  // Ajouter le Company ID si configuré
+  if (_companyId) {
+    headers['X-Company-Id'] = _companyId;
+  }
+
   const response = await fetch(url.toString(), {
     method: 'GET',
-    headers: {
-      'X-Pennylane-Api-Key': apiKey,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    }
+    headers
   });
+
+  console.log(`[callPennylaneAPI] ${endpoint} → status ${response.status}`);
 
   if (!response.ok) {
     const text = await response.text();
+    console.error(`[callPennylaneAPI] ${endpoint} → erreur:`, text);
     throw new Error(`Erreur API Pennylane (${response.status}): ${text}`);
   }
 
@@ -184,17 +209,22 @@ export async function getSubscriptionWithLines(apiKey, subscriptionId) {
 
 /**
  * Teste la connexion à l'API avec une clé donnée
+ * Utilise /me qui ne nécessite aucun scope (valide pour tout token)
  * @param {string} apiKey - Clé API à tester
- * @returns {Promise<{success: boolean, error?: string}>} Résultat du test
+ * @returns {Promise<{success: boolean, error?: string, data?: Object}>} Résultat du test
  */
 export async function testConnection(apiKey) {
   try {
-    await callPennylaneAPI(apiKey, '/me', {});
-    return { success: true };
+    console.log('[testConnection] Test avec /me...');
+    const result = await callPennylaneAPI(apiKey, '/me', {});
+    console.log('[testConnection] Succès:', result);
+    return { success: true, data: result };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erreur inconnue';
+    console.error('[testConnection] Échec:', errorMsg);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Erreur inconnue'
+      error: errorMsg
     };
   }
 }
