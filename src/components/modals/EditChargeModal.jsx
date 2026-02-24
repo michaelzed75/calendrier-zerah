@@ -57,8 +57,11 @@ function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose })
   const [clientSearch, setClientSearch] = useState(initialClient?.nom || '');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
-  // Clients triés et filtrés
-  const sortedClients = [...clients].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  // Clients triés : actifs d'abord, puis inactifs
+  const sortedClients = [...clients].sort((a, b) => {
+    if (a.actif !== b.actif) return a.actif ? -1 : 1;
+    return a.nom.localeCompare(b.nom, 'fr');
+  });
   const filteredClients = sortedClients.filter(c =>
     c.nom.toLowerCase().includes(clientSearch.toLowerCase())
   );
@@ -119,9 +122,10 @@ function EditChargeModal({ charge, clients, collaborateurs, onUpdate, onClose })
                   <div
                     key={c.id}
                     onClick={() => handleClientSelect(c)}
-                    className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white"
+                    className={`px-3 py-2 cursor-pointer hover:bg-slate-600 text-white ${!c.actif ? 'opacity-60' : ''}`}
                   >
                     {c.nom}
+                    {!c.actif && <span className="ml-2 text-xs bg-orange-900/50 text-white px-1.5 py-0.5 rounded">inactif</span>}
                   </div>
                 ))}
               </div>

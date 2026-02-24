@@ -303,8 +303,13 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
    * Regroupe les honoraires par client
    */
   const honorairesParClient = useMemo(() => {
-    // Filtrer d'abord par statut
+    // Exclure les clients inactifs de la facturation
+    const clientsActifsSet = new Set(clients.filter(c => c.actif).map(c => c.id));
+
+    // Filtrer par statut et par client actif
     const filtered = honoraires.filter(h => {
+      // Exclure les abonnements de clients inactifs
+      if (!clientsActifsSet.has(h.client_id)) return false;
       if (filterStatus !== 'tous' && h.status !== filterStatus) return false;
       return true;
     });
@@ -370,7 +375,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     result.sort((a, b) => a.client_nom.localeCompare(b.client_nom));
 
     return result;
-  }, [honoraires, filterCabinet, filterStatus, searchTerm]);
+  }, [honoraires, clients, filterCabinet, filterStatus, searchTerm]);
 
   // Calculer les totaux
   const totaux = useMemo(() => {

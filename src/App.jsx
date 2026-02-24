@@ -257,24 +257,26 @@ export default function App() {
    * @returns {Client[]} Liste des clients accessibles
    */
   const getAccessibleClients = (collaborateur) => {
-    if (!collaborateur) return clients.filter(c => c.actif);
+    // Inclut les clients inactifs pour permettre la saisie de temps
+    // (les clients partis ont encore des bilans en cours)
+    if (!collaborateur) return clients;
 
-    // Admin voit tous les clients actifs
+    // Admin voit tous les clients
     if (collaborateur.is_admin) {
-      return clients.filter(c => c.actif);
+      return clients;
     }
 
     // Chef de mission voit ses clients + clients sans chef assigné
     if (collaborateur.est_chef_mission) {
       return clients.filter(c =>
-        c.actif && (!c.chef_mission_id || c.chef_mission_id === collaborateur.id)
+        !c.chef_mission_id || c.chef_mission_id === collaborateur.id
       );
     }
 
     // Collaborateur voit les clients de ses chefs + clients sans chef assigné
     const chefIds = getChefsOf(collaborateur.id).map(c => c.id);
     return clients.filter(c =>
-      c.actif && (!c.chef_mission_id || chefIds.includes(c.chef_mission_id))
+      !c.chef_mission_id || chefIds.includes(c.chef_mission_id)
     );
   };
 

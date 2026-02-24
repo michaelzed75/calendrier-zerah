@@ -214,15 +214,17 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
     if (!honoraires || !clientsEnrichis) {
       return { lignesClassifiees: [], modesDetectes: new Map() };
     }
-    // Sécurité : toujours exclure les stopped/finished même s'ils remontent de la BDD.
-    // Les stopped sont d'anciens abos remplacés — les compter gonfle le CA artificiellement.
-    let filteredHonoraires = honoraires.filter(h => h.status !== 'stopped' && h.status !== 'finished');
+    // Exclure les clients inactifs et les stopped/finished
+    const clientsActifsSet = new Set(clients.filter(c => c.actif).map(c => c.id));
+    let filteredHonoraires = honoraires.filter(h =>
+      clientsActifsSet.has(h.client_id) && h.status !== 'stopped' && h.status !== 'finished'
+    );
     if (filterStatus !== 'tous') {
       filteredHonoraires = filteredHonoraires.filter(h => h.status === filterStatus);
     }
     const { lignes, modesDetectes } = classifierToutesLesLignes(filteredHonoraires, clientsEnrichis);
     return { lignesClassifiees: lignes, modesDetectes };
-  }, [honoraires, clientsEnrichis, filterStatus]);
+  }, [honoraires, clients, clientsEnrichis, filterStatus]);
 
   // Persister les modes détectés en BDD
   useEffect(() => {

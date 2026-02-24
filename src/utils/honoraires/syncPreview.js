@@ -108,16 +108,20 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
   report('init', 'Chargement des données locales...');
 
   const [
-    { data: localClients },
+    { data: allLocalClients },
     { data: localAbonnements },
     { data: localLignes },
     { data: produitsFacturation }
   ] = await Promise.all([
-    supabase.from('clients').select('id, nom, pennylane_customer_id, code_silae, cabinet, siren, actif').eq('actif', true),
+    supabase.from('clients').select('id, nom, pennylane_customer_id, code_silae, cabinet, siren, actif'),
     supabase.from('abonnements').select('id, client_id, pennylane_subscription_id, label, status, frequence, intervalle, total_ht, total_ttc, total_tva, synced_at'),
     supabase.from('abonnements_lignes').select('id, abonnement_id, pennylane_line_id, label, famille, quantite, montant_ht, montant_ttc, montant_tva, taux_tva, description'),
     supabase.from('produits_facturation').select('label, famille')
   ]);
+
+  // Séparer actifs et inactifs — seuls les actifs sont matchés pour la sync
+  const localClients = (allLocalClients || []).filter(c => c.actif);
+  const inactiveClients = (allLocalClients || []).filter(c => !c.actif);
 
   // Index pour lookup rapide
   const aboByPLId = new Map();
@@ -433,6 +437,41 @@ export async function previewSync(supabase, apiKey, cabinet, onProgress = null) 
       severity: 'warning',
       message: `${abonnementsDisappeared.length} abonnement(s) local(aux) non retrouvé(s) dans Pennylane`,
       details: abonnementsDisappeared
+    });
+  }
+
+  // Clients inactifs avec abonnements actifs sur Pennylane
+  const inactiveWithSubs = [];
+  for (const customer of customers) {
+    if (!customerIdsWithSub.has(customer.id)) continue;
+
+    // Chercher un match parmi les clients INACTIFS
+    const inactiveMatch = matchCustomerToClientWithLevel(customer, inactiveClients);
+    if (inactiveMatch) {
+      // Compter les abonnements actifs (in_progress) pour ce customer
+      const activeSubs = subscriptions.filter(
+        s => s.customer?.id === customer.id && s.status === 'in_progress'
+      );
+      if (activeSubs.length > 0) {
+        const totalHT = activeSubs.reduce(
+          (sum, s) => sum + (parseFloat(s.customer_invoice_data?.currency_amount_before_tax) || 0), 0
+        );
+        inactiveWithSubs.push({
+          client: inactiveMatch.client,
+          customer: { id: customer.id, name: customer.name, reg_no: customer.reg_no },
+          subscriptionsCount: activeSubs.length,
+          totalHT: Math.round(totalHT * 100) / 100,
+          subscriptions: activeSubs.map(s => ({ label: s.label, status: s.status, total_ht: parseFloat(s.customer_invoice_data?.currency_amount_before_tax) || 0 }))
+        });
+      }
+    }
+  }
+  if (inactiveWithSubs.length > 0) {
+    anomalies.push({
+      type: 'inactive_with_subscriptions',
+      severity: 'error',
+      message: `${inactiveWithSubs.length} client(s) inactif(s) avec abonnement(s) actif(s) sur Pennylane`,
+      details: inactiveWithSubs
     });
   }
 

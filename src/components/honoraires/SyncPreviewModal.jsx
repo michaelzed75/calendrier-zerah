@@ -441,6 +441,29 @@ function SyncPreviewModal({ report, onAccept, onCancel, accepting }) {
                         {a.delta && <span className={a.delta >= 0 ? 'text-green-400' : 'text-red-400'}>{a.delta >= 0 ? '+' : ''}{fmt(a.delta)} EUR HT ({a.deltaPct}%)</span>}
                       </div>
                     )}
+                    {/* Détails des clients inactifs avec abonnements */}
+                    {a.type === 'inactive_with_subscriptions' && a.details && a.details.length > 0 && (
+                      <ul className="mt-2 ml-6 space-y-2">
+                        {a.details.map((d, j) => (
+                          <li key={j} className="text-xs text-white bg-red-900/20 border border-red-800/40 rounded p-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                              <span className="font-medium">{d.client.nom}</span>
+                              <span className="px-1.5 py-0.5 rounded text-xs bg-orange-900/50 text-white">inactif</span>
+                              <span className="text-white">→ Pennylane : {d.customer.name}</span>
+                            </div>
+                            <div className="ml-4 text-white">
+                              {d.subscriptionsCount} abo(s) actif(s) • {fmt(d.totalHT)} EUR HT
+                            </div>
+                            {d.subscriptions && d.subscriptions.map((s, k) => (
+                              <div key={k} className="ml-4 text-white">
+                                — {s.label} : {fmt(s.total_ht)} EUR HT
+                              </div>
+                            ))}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 );
               })}
