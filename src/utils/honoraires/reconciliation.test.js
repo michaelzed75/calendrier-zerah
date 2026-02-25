@@ -244,3 +244,81 @@ describe('UUID legacy vs UUID réel', () => {
     expect(result.level).toBe('siren'); // SIREN prioritaire même si UUID diffère
   });
 });
+
+// ============================================================================
+// TESTS — ABONNEMENTS RÉASSIGNÉS (ex: FERIA CAFE déplacé de LM vers client 189)
+// Quand un abonnement PL est réassigné localement à un autre client_id,
+// il doit être exclu du total PL du customer d'origine.
+// ============================================================================
+
+/**
+ * Simule la logique de séparation des abos PL normaux vs réassignés.
+ * Identique à la logique dans reconcilierDonnees().
+ * @param {Array} plAbos - Abos PL du customer
+ * @param {Map} dbAboByPLSubId - Index pennylane_subscription_id → client_id
+ * @param {number} matchedClientId - client_id du client matché
+ * @returns {{ normaux: Array, reassignes: Array }}
+ */
+function separerAbosReassignes(plAbos, dbAboByPLSubId, matchedClientId) {
+  const normaux = [];
+  const reassignes = [];
+  for (const abo of plAbos) {
+    const dbClientId = dbAboByPLSubId.get(abo.id);
+    if (dbClientId && dbClientId !== matchedClientId) {
+      reassignes.push(abo);
+    } else {
+      normaux.push(abo);
+    }
+  }
+  return { normaux, reassignes };
+}
+
+describe('Abonnements réassignés — exclusion du total PL', () => {
+  // Cas réel : LM (client 56) a 2 abos PL (SCI LM 810€ + FERIA CAFE 4850€)
+  // mais FERIA CAFE (abo id=280) a été réassigné en DB au client 189
+  const plAbos = [
+    { id: 17, label: 'SCI LM', status: 'in_progress', totalHT: 810 },
+    { id: 280, label: 'FERIA CAFE', status: 'in_progress', totalHT: 4850 }
+  ];
+
+  it('devrait exclure FERIA CAFE du total PL de LM quand réassigné au client 189', () => {
+    const dbAboByPLSubId = new Map();
+    dbAboByPLSubId.set(17, 56);   // SCI LM → client 56 (LM) = normal
+    dbAboByPLSubId.set(280, 189); // FERIA CAFE → client 189 = réassigné
+
+    const { normaux, reassignes } = separerAbosReassignes(plAbos, dbAboByPLSubId, 56);
+
+    expect(normaux).toHaveLength(1);
+    expect(normaux[0].label).toBe('SCI LM');
+    expect(normaux[0].totalHT).toBe(810);
+
+    expect(reassignes).toHaveLength(1);
+    expect(reassignes[0].label).toBe('FERIA CAFE');
+    expect(reassignes[0].totalHT).toBe(4850);
+
+    // Le total PL de LM doit être 810€ et non 5660€
+    const totalHTPL = normaux.reduce((sum, a) => sum + a.totalHT, 0);
+    expect(totalHTPL).toBe(810);
+  });
+
+  it('ne devrait rien exclure si aucun abo n\'est réassigné', () => {
+    const dbAboByPLSubId = new Map();
+    dbAboByPLSubId.set(17, 56);  // SCI LM → client 56
+    dbAboByPLSubId.set(280, 56); // FERIA CAFE → client 56 (même client)
+
+    const { normaux, reassignes } = separerAbosReassignes(plAbos, dbAboByPLSubId, 56);
+
+    expect(normaux).toHaveLength(2);
+    expect(reassignes).toHaveLength(0);
+  });
+
+  it('ne devrait rien exclure si l\'abo PL n\'existe pas en DB (nouveau)', () => {
+    const dbAboByPLSubId = new Map();
+    // Aucun abo n'est indexé → tous sont "normaux"
+
+    const { normaux, reassignes } = separerAbosReassignes(plAbos, dbAboByPLSubId, 56);
+
+    expect(normaux).toHaveLength(2);
+    expect(reassignes).toHaveLength(0);
+  });
+});

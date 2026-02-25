@@ -170,10 +170,11 @@
         "access": "Clients avec clé API Pennylane configurée"
       },
       "HonorairesPage.jsx": {
-        "lines": 780,
+        "lines": 1626,
         "role": "Gestion des honoraires et abonnements Pennylane",
         "typing": "@ts-check + JSDoc",
         "features": [
+          "4 onglets: Vue résumé, Augmentation, Audit, Réconciliation",
           "Synchronisation abonnements Pennylane avec prévisualisation (SyncPreviewModal)",
           "Matching intelligent customers/clients (UUID → SIREN → nom)",
           "Filtrage doublons: seuls les customers avec abonnements sont matchés",
@@ -186,7 +187,8 @@
           "  - 'Pas dans PL': client non lié à Pennylane",
           "Filtres: cabinet, statut abonnement, recherche nom",
           "Totaux agrégés: comptabilité, social, juridique, support",
-          "Badge 'En construction' sur onglet Vue par client",
+          "Onglet Réconciliation: comparaison live PL↔DB avec écarts HT et %",
+          "Réconciliation: filtres, tri, recherche, exclusion France Formalités",
           "Feedback sync (progression, résultat, erreur) visible depuis tous les onglets"
         ],
         "props": [
@@ -435,7 +437,7 @@
       "honoraires/": {
         "description": "Module de gestion des honoraires et abonnements Pennylane",
         "files": {
-          "index.js": "Export centralisé: syncCustomersAndSubscriptions, getHonorairesResume, testConnection, previewSync, commitSync",
+          "index.js": "Export centralisé: syncCustomersAndSubscriptions, getHonorairesResume, testConnection, previewSync, commitSync, reconcilierDonnees",
           "pennylaneCustomersApi.js": {
             "role": "Client API Pennylane v2 pour customers et abonnements",
             "exports": [
@@ -468,7 +470,7 @@
               "Clients inactifs avec abonnements actifs",
               "Matches faibles (name_partial, name_clean_partial)"
             ],
-            "tests": "syncPreview.test.js (37 tests)"
+            "tests": "syncPreview.test.js (47 tests)"
           },
           "syncHonoraires.js": {
             "role": "Service de synchronisation honoraires (legacy, utilisé par commitSync)",
@@ -511,6 +513,25 @@
           "calculsAugmentation.js": {
             "role": "Calculs d'augmentation tarifaire des abonnements",
             "exports": ["calculerAugmentation(abonnements, pourcentage) - Calcul nouveau tarif"]
+          },
+          "reconciliation.js": {
+            "lines": 287,
+            "role": "Réconciliation Pennylane ↔ Base locale (comparaison live)",
+            "exports": [
+              "reconcilierDonnees(supabase, cabinets, onProgress) - Compare API PL live vs DB, retourne écarts HT et %",
+              "matchCustomerToClient(customer, clients, matchedClientIds) - Matching STRICT: SIREN first, UUID fallback",
+              "isFranceFormalites(name) - Exclut les customers France Formalités (pas d'abo honoraires)",
+              "MATCH_LEVEL_LABELS - Labels des niveaux de match (uuid, siren)"
+            ],
+            "matching_strategy": [
+              "MATCHING STRICT UNIQUEMENT (pas de matching par nom)",
+              "1. Par SIREN (prioritaire — identifiant officiel INSEE, 9 chiffres)",
+              "2. Par pennylane_customer_id (UUID — fallback, peut être mal assigné)",
+              "Déduplication: un client local ne peut être matché qu'une seule fois",
+              "SIREN ambigu (multi-établissements): disambiguation par UUID"
+            ],
+            "exclusions": "Customers France Formalités (nom finissant par ' FF' ou contenant 'FRANCE FORMAL')",
+            "tests": "reconciliation.test.js (20 tests)"
           },
           "exportAugmentation.js": {
             "role": "Export Excel des augmentations tarifaires",
@@ -656,12 +677,16 @@
         "coverage": "Fonctions calendrier: getChargesForDate, getTotalHoursForDate, getAggregatedByClient, getVisibleCollaborateurs, hasBudgetForDate, hasTempsReelsForDate, isJourOuvre, getWeekDays, getWeekTotal, countAlerts"
       },
       "src/utils/honoraires/syncHonoraires.test.js": {
-        "tests": 27,
-        "coverage": "normalizeString, removeJuridicalSuffixes, matchCustomerToClient, getFamilleFromLabel, filtrage customers sans abonnement, cas réels doublons cabinet"
+        "tests": 35,
+        "coverage": "normalizeString, removeJuridicalSuffixes, matchCustomerToClient, getFamilleFromLabel, filtrage customers sans abonnement, cas réels doublons cabinet, faux positifs par nom, SIREN ambigu multi-établissements"
       },
       "src/utils/honoraires/syncPreview.test.js": {
-        "tests": 37,
-        "coverage": "matchCustomerToClientWithLevel (UUID/SIREN/nom/nettoyé/partiel), séparation actifs/inactifs, detectInactiveWithSubscriptions, génération anomalies, détection matches faibles, extraction email depuis customer Pennylane"
+        "tests": 47,
+        "coverage": "matchCustomerToClientWithLevel (UUID/SIREN/nom/nettoyé/partiel), SIREN ambigu multi-établissements, séparation actifs/inactifs, detectInactiveWithSubscriptions, génération anomalies, détection matches faibles, enrichissement emails par SIREN, extraction email depuis customer Pennylane"
+      },
+      "src/utils/honoraires/reconciliation.test.js": {
+        "tests": 20,
+        "coverage": "isFranceFormalites (exclusion FF), matching strict SIREN+UUID (pas de nom), faux positifs documentés, SIREN ambigu multi-établissements avec déduplication, UUID legacy vs UUID réel"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -672,7 +697,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 375
+    "total_tests": 406
   },
   "database_tables": {
     "collaborateurs": {
@@ -1178,7 +1203,16 @@
       "Export Excel: colonne Email ajoutée",
       "Suppression soft delete automatique dans sync-pennylane.js (désactivation manuelle uniquement)",
       "Ajout 4 tests extraction email dans syncPreview.test.js",
-      "Total tests: 365 → 375"
+      "Total tests: 365 → 375",
+      "fix(sync): dédoublonnage clients inactifs dans previewSync (évite doublons matches)",
+      "fix(temps-reels): validation FK avant insert + correction 5 mappings cassés (TempsReelsPage.jsx)",
+      "Outil de réconciliation PL↔DB: reconciliation.js (287 lignes) avec matching STRICT SIREN+UUID uniquement",
+      "Réconciliation: exclusion France Formalités, déduplication, SIREN ambigu multi-établissements",
+      "HonorairesPage.jsx: 780 → 1626 lignes, ajout onglet Réconciliation (4 onglets total)",
+      "Correction matching SIREN ambigu dans syncHonoraires.js + syncPreview.js (disambiguation par UUID)",
+      "pennylaneCustomersApi.js: setCompanyId exporté pour réconciliation multi-cabinets",
+      "Ajout reconciliation.test.js (20 tests) + enrichissement syncHonoraires.test.js et syncPreview.test.js",
+      "Total tests: 375 → 406"
     ]
   }
 }

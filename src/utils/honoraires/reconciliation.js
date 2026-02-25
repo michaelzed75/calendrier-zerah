@@ -156,7 +156,13 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
     // Grouper abos DB par client_id (filtrer par les clients du cabinet)
     const dbClientIds = new Set(dbClients.map(c => c.id));
     const dbAbosByClient = new Map();
+    // Index pennylane_subscription_id → client_id (pour détecter les réassignations locales)
+    const dbAboByPLSubId = new Map();
     for (const abo of (dbAbos || [])) {
+      // Indexer TOUS les abos par PL subscription id (pas seulement ceux du cabinet)
+      if (abo.pennylane_subscription_id) {
+        dbAboByPLSubId.set(abo.pennylane_subscription_id, abo.client_id);
+      }
       if (!dbClientIds.has(abo.client_id)) continue;
       if (!dbAbosByClient.has(abo.client_id)) dbAbosByClient.set(abo.client_id, []);
       dbAbosByClient.get(abo.client_id).push({
@@ -178,11 +184,25 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
       // Exclure les customers France Formalités
       if (isFranceFormalites(customer.name)) continue;
 
-      const plAbos = subsByCustomer.get(customer.id) || [];
+      const plAbosAll = subsByCustomer.get(customer.id) || [];
       const match = matchCustomerToClient(customer, dbClients, matchedClientIds);
 
       if (match) {
         matchedClientIds.add(match.client.id);
+
+        // Séparer les abos PL : normaux vs réassignés localement
+        // Un abo PL est "réassigné" si son pennylane_subscription_id existe en DB
+        // mais sous un client_id différent du client matché
+        const plAbos = [];
+        const reassignedPL = [];
+        for (const abo of plAbosAll) {
+          const dbClientId = dbAboByPLSubId.get(abo.id);
+          if (dbClientId && dbClientId !== match.client.id) {
+            reassignedPL.push(abo);
+          } else {
+            plAbos.push(abo);
+          }
+        }
 
         const clientAbos = dbAbosByClient.get(match.client.id) || [];
         const totalHTPL = plAbos.reduce((sum, a) => sum + a.totalHT, 0);
@@ -211,6 +231,7 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
           nbAbosPL: plAbos.length,
           totalHTPL: Math.round(totalHTPL * 100) / 100,
           abosPL: plAbos,
+          reassignedPL,
           nbAbosDB: clientAbos.length,
           totalHTDB: Math.round(totalHTDB * 100) / 100,
           abosDB: clientAbos,
@@ -218,9 +239,9 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
           ecartPct,
           statut
         });
-      } else if (plAbos.length > 0) {
+      } else if (plAbosAll.length > 0) {
         // Customer PL avec abonnements mais pas de client local
-        const totalHTPL = plAbos.reduce((sum, a) => sum + a.totalHT, 0);
+        const totalHTPL = plAbosAll.reduce((sum, a) => sum + a.totalHT, 0);
         allResults.push({
           clientId: null,
           clientNom: '—',
@@ -230,9 +251,10 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
           customerPLName: customer.name,
           matchLevel: null,
           matchLevelLabel: null,
-          nbAbosPL: plAbos.length,
+          nbAbosPL: plAbosAll.length,
           totalHTPL: Math.round(totalHTPL * 100) / 100,
-          abosPL: plAbos,
+          abosPL: plAbosAll,
+          reassignedPL: [],
           nbAbosDB: 0,
           totalHTDB: 0,
           abosDB: [],
@@ -262,6 +284,7 @@ export async function reconcilierDonnees(supabase, cabinets, onProgress = null) 
         nbAbosPL: 0,
         totalHTPL: 0,
         abosPL: [],
+        reassignedPL: [],
         nbAbosDB: clientAbos.length,
         totalHTDB: Math.round(totalHTDB * 100) / 100,
         abosDB: clientAbos,

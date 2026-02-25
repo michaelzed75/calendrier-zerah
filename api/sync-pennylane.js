@@ -211,10 +211,12 @@ export default async function handler(req, res) {
           .eq('actif', true)
           .not('siren', 'is', null);
 
+        // Index SIREN → [clients] (array pour gérer les SIREN ambigus)
         const clientsBySiren = {};
         for (const c of (currentClients || [])) {
           if (c.siren) {
-            clientsBySiren[c.siren] = c;
+            if (!clientsBySiren[c.siren]) clientsBySiren[c.siren] = [];
+            clientsBySiren[c.siren].push(c);
           }
         }
 
@@ -230,6 +232,7 @@ export default async function handler(req, res) {
             let withEmail = 0;
             let withSiren = 0;
             let matched = 0;
+            let skippedAmbiguous = 0;
 
             for (const customer of customers) {
               const email = (customer.emails && customer.emails[0]) || null;
@@ -237,19 +240,26 @@ export default async function handler(req, res) {
               if (customer.reg_no) withSiren++;
               if (!email || !customer.reg_no) continue;
 
-              const client = clientsBySiren[customer.reg_no];
-              if (client) {
-                matched++;
-                if (client.email !== email) {
-                  await supabase
-                    .from('clients')
-                    .update({ email })
-                    .eq('id', client.id);
-                  emailsUpdated++;
-                }
+              const clients = clientsBySiren[customer.reg_no];
+              if (!clients || clients.length === 0) continue;
+
+              // SIREN ambigu (multi-établissements) → skip pour éviter écrasement
+              if (clients.length > 1) {
+                skippedAmbiguous++;
+                continue;
+              }
+
+              const client = clients[0];
+              matched++;
+              if (client.email !== email) {
+                await supabase
+                  .from('clients')
+                  .update({ email })
+                  .eq('id', client.id);
+                emailsUpdated++;
               }
             }
-            debugParts.push(`${keyRow.cabinet}: ${customers.length} customers, ${withEmail} emails, ${withSiren} SIREN, ${matched} matches, ${emailsUpdated} maj`);
+            debugParts.push(`${keyRow.cabinet}: ${customers.length} customers, ${withEmail} emails, ${withSiren} SIREN, ${matched} matches, ${emailsUpdated} maj${skippedAmbiguous > 0 ? `, ${skippedAmbiguous} SIREN ambigus skippés` : ''}`);
           } catch (err) {
             debugParts.push(`${keyRow.cabinet}: ERREUR ${err.message}`);
             console.error(`Erreur v2 ${keyRow.cabinet}:`, err.message);

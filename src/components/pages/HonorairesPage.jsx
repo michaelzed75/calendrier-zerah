@@ -1324,6 +1324,17 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
                                           ))}
                                         </div>
                                       )}
+                                      {r.reassignedPL?.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-slate-600">
+                                          <h5 className="text-white text-xs mb-1">Réassignés en local (exclus du calcul) :</h5>
+                                          {r.reassignedPL.map((a, i) => (
+                                            <div key={i} className="flex justify-between text-xs bg-slate-700/30 px-3 py-1 rounded text-white">
+                                              <span>{a.label}</span>
+                                              <span>{a.totalHT.toLocaleString('fr-FR')}€</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
