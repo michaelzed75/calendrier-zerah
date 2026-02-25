@@ -434,14 +434,51 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         });
       });
 
-      // 2. Vérifier qu'il y a des données à importer
+      // 2. Vérifier les IDs avant insert (évite les erreurs FK si un client/collab a été supprimé)
+      const usedClientIds = [...new Set(newTempsReels.map(t => t.client_id))];
+      const usedCollabIds = [...new Set(newTempsReels.map(t => t.collaborateur_id))];
+
+      const { data: validClients } = await supabase
+        .from('clients').select('id').in('id', usedClientIds);
+      const { data: validCollabs } = await supabase
+        .from('collaborateurs').select('id').in('id', usedCollabIds);
+
+      const validClientIds = new Set((validClients || []).map(c => c.id));
+      const validCollabIds = new Set((validCollabs || []).map(c => c.id));
+
+      const orphanClients = usedClientIds.filter(id => !validClientIds.has(id));
+      const orphanCollabs = usedCollabIds.filter(id => !validCollabIds.has(id));
+
+      if (orphanClients.length > 0 || orphanCollabs.length > 0) {
+        // Identifier les noms Pennylane concernés pour un message clair
+        const badClientNames = Object.entries(mappingClients)
+          .filter(([, id]) => orphanClients.includes(id))
+          .map(([name, id]) => `"${name}" (id=${id})`);
+        const badCollabNames = Object.entries(mappingCollaborateurs)
+          .filter(([, id]) => orphanCollabs.includes(id))
+          .map(([name, id]) => `"${name}" (id=${id})`);
+
+        const msg = [
+          'Mappings invalides détectés (client ou collaborateur supprimé) :',
+          ...badClientNames.map(n => `  Client: ${n}`),
+          ...badCollabNames.map(n => `  Collab: ${n}`),
+          '',
+          'Corrigez ces mappings avant de relancer l\'import.'
+        ].join('\n');
+
+        alert(msg);
+        setSaving(false);
+        return;
+      }
+
+      // 3. Vérifier qu'il y a des données à importer
       if (newTempsReels.length === 0) {
         alert('Aucune donnée valide à importer.\n\nVérifiez que les mappings collaborateurs et clients sont configurés.');
         setSaving(false);
         return;
       }
 
-      // 3. Agréger les nouvelles données par collaborateur/client/date
+      // 4. Agréger les nouvelles données par collaborateur/client/date
       const aggregatedNew = {};
       newTempsReels.forEach(t => {
         const key = `${t.collaborateur_id}-${t.client_id}-${t.date}`;
@@ -460,12 +497,12 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       });
       const nouvellesDonneesAgregees = Object.values(aggregatedNew);
 
-      // 4. Déterminer la période pour le journal
+      // 5. Déterminer la période pour le journal
       const dates = nouvellesDonneesAgregees.map(t => t.date).filter(d => d);
       const periodeDebut = dates.reduce((min, d) => d < min ? d : min, dates[0]);
       const periodeFin = dates.reduce((max, d) => d > max ? d : max, dates[0]);
 
-      // 5. Récupérer les données existantes pour ces combinaisons spécifiques
+      // 6. Récupérer les données existantes pour ces combinaisons spécifiques
       // On ne récupère QUE les combinaisons qui sont dans le fichier importé
       const keysToCheck = nouvellesDonneesAgregees.map(t => ({
         collaborateur_id: t.collaborateur_id,
@@ -489,7 +526,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         existingIndex[key] = t;
       });
 
-      // 6. FUSION INTELLIGENTE : Séparer ajouts et mises à jour
+      // 7. FUSION INTELLIGENTE : Séparer ajouts et mises à jour
       const modifications = {
         ajouts: [],
         modifications: [],
@@ -545,7 +582,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         }
       });
 
-      // 7. Exécuter les insertions
+      // 8. Exécuter les insertions
       if (toInsert.length > 0) {
         const { error: insertError } = await supabase
           .from('temps_reels')
@@ -554,7 +591,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         if (insertError) throw insertError;
       }
 
-      // 8. Exécuter les mises à jour une par une (upsert)
+      // 9. Exécuter les mises à jour une par une (upsert)
       for (const item of toUpdate) {
         const { id, ...dataWithoutId } = item;
         const { error: updateError } = await supabase
@@ -571,7 +608,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         if (updateError) throw updateError;
       }
 
-      // 9. Enregistrer dans le journal
+      // 10. Enregistrer dans le journal
       const hasChanges = modifications.ajouts.length > 0 || modifications.modifications.length > 0;
 
       if (hasChanges) {
@@ -596,7 +633,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         }
       }
 
-      // 10. Recharger les temps réels depuis Supabase
+      // 11. Recharger les temps réels depuis Supabase
       const { data: newTempsData } = await supabase
         .from('temps_reels')
         .select('*')
@@ -604,7 +641,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
 
       setTempsReels(newTempsData || []);
 
-      // 11. Afficher le résumé
+      // 12. Afficher le résumé
       const resume = [
         `Import terminé (mode fusion) !`,
         `Période concernée: ${periodeDebut} au ${periodeFin}`,
