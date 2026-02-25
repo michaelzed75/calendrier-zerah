@@ -26,21 +26,30 @@ import {
  * @returns {{ client: Object, level: string } | null}
  */
 function matchCustomerToClientWithLevel(customer, clients) {
-  // 1. Par UUID (pennylane_customer_id = external_reference)
+  // 1. SIREN (clé universelle, prioritaire — identifiant officiel INSEE)
+  // Prioritaire car le pennylane_customer_id peut être mal assigné en base
+  // suite à un faux positif du matching par nom lors d'une sync précédente.
+  if (customer.reg_no) {
+    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
+      const candidates = clients.filter(c => c.siren && c.siren === sirenClean);
+      if (candidates.length === 1) {
+        return { client: candidates[0], level: 'siren' };
+      }
+      if (candidates.length > 1 && customer.external_reference) {
+        // SIREN ambigu (plusieurs établissements, ex: RELAIS CHRISTINE / SAINT JAMES)
+        const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
+        if (uuidMatch) return { client: uuidMatch, level: 'siren' };
+      }
+    }
+  }
+
+  // 2. Par UUID (pennylane_customer_id = external_reference) — fallback
   if (customer.external_reference) {
     const match = clients.find(
       c => c.pennylane_customer_id && c.pennylane_customer_id === customer.external_reference
     );
     if (match) return { client: match, level: 'uuid' };
-  }
-
-  // 2. Par SIREN (clé universelle)
-  if (customer.reg_no) {
-    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
-    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
-      const match = clients.find(c => c.siren && c.siren === sirenClean);
-      if (match) return { client: match, level: 'siren' };
-    }
   }
 
   // 3. Nom normalisé (exact)
@@ -585,9 +594,8 @@ export async function commitSync(supabase, previewReport, cabinet, onProgress = 
       const updateData = {
         pennylane_customer_id: match.customer.external_reference || null
       };
-      if (cabinet) {
-        updateData.cabinet = cabinet;
-      }
+      // Ne PAS écraser le cabinet — c'est une donnée stable assignée manuellement.
+      // La sync détecte les cabinet_mismatch en anomalie mais ne les corrige pas.
       // Synchroniser l'email du customer Pennylane (premier email)
       const email = match.customer.emails?.[0] || null;
       if (email) {

@@ -70,3 +70,6 @@ export { exportDiagnosticExcel } from './exportDiagnostic.js';
 
 // Audit
 export { auditAbonnements } from './auditHonoraires.js';
+
+// Réconciliation
+export { reconcilierDonnees } from './reconciliation.js';

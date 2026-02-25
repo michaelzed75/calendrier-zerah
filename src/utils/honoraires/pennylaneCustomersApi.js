@@ -57,20 +57,32 @@ async function callPennylaneAPI(apiKey, endpoint, params = {}) {
     headers['X-Company-Id'] = _companyId;
   }
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers
-  });
+  // Retry avec backoff sur 429 (rate limit)
+  const MAX_RETRIES = 5;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers
+    });
 
-  console.log(`[callPennylaneAPI] ${endpoint} → status ${response.status}`);
+    console.log(`[callPennylaneAPI] ${endpoint} → status ${response.status}`);
 
-  if (!response.ok) {
-    const text = await response.text();
-    console.error(`[callPennylaneAPI] ${endpoint} → erreur:`, text);
-    throw new Error(`Erreur API Pennylane (${response.status}): ${text}`);
+    if (response.status === 429) {
+      const waitSec = Math.min(attempt * 2, 10);
+      console.warn(`[callPennylaneAPI] Rate limit 429 — retry ${attempt}/${MAX_RETRIES} dans ${waitSec}s`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[callPennylaneAPI] ${endpoint} → erreur:`, text);
+      throw new Error(`Erreur API Pennylane (${response.status}): ${text}`);
+    }
+
+    return response.json();
   }
-
-  return response.json();
+  throw new Error(`Rate limit Pennylane dépassé après ${MAX_RETRIES} tentatives sur ${endpoint}`);
 }
 
 /**

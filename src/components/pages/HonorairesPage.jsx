@@ -1,9 +1,9 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
-import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, previewSync, commitSync } from '../../utils/honoraires';
+import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, previewSync, commitSync, reconcilierDonnees } from '../../utils/honoraires';
 import AugmentationPanel from '../honoraires/AugmentationPanel';
 import SyncPreviewModal from '../honoraires/SyncPreviewModal';
 
@@ -41,7 +41,28 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [auditLoading, setAuditLoading] = useState(false);
 
   // Onglets
-  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation' | 'audit'
+  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation' | 'audit' | 'reconciliation'
+
+  // Réconciliation (persisté en sessionStorage)
+  const [reconData, setReconDataRaw] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('reconData');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const setReconData = (data) => {
+    setReconDataRaw(data);
+    try {
+      if (data) sessionStorage.setItem('reconData', JSON.stringify(data));
+      else sessionStorage.removeItem('reconData');
+    } catch { /* quota exceeded */ }
+  };
+  const [reconLoading, setReconLoading] = useState(false);
+  const [reconProgress, setReconProgress] = useState(null);
+  const [reconFilter, setReconFilter] = useState('tous');
+  const [reconSearch, setReconSearch] = useState('');
+  const [reconExpanded, setReconExpanded] = useState(null);
+  const [reconSort, setReconSort] = useState({ column: 'statut', direction: 'asc' });
 
   // Filtres
   const [filterCabinet, setFilterCabinet] = useState('tous');
@@ -209,14 +230,54 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   };
 
   /**
-   * Lance la synchronisation Pennylane
+   * Fusionne les rapports de preview de plusieurs cabinets en un seul rapport.
+   * Le modal SyncPreviewModal reçoit un rapport unique, identique en structure.
+   * Les rapports individuels sont conservés dans _rawReports pour le commit.
+   */
+  const mergePreviewReports = (reports) => {
+    const merged = {
+      clientsMatches: [], clientsNew: [], clientsMissing: [], clientsNoSubscription: [],
+      abonnementsNew: [], abonnementsUpdated: [], abonnementsDisappeared: [], abonnementsStatusChanged: [],
+      lignesModified: [], lignesNew: [], lignesRemoved: [], anomalies: [],
+      summary: {
+        totalCustomers: 0, customersWithSub: 0, matched: 0, unmatched: 0,
+        noSubscription: 0, clientsMissing: 0,
+        newSubs: 0, updatedSubs: 0, disappearedSubs: 0, statusChanges: 0,
+        priceChanges: 0, newLines: 0, removedLines: 0,
+        totalDeltaHT: 0, anomaliesCount: 0
+      },
+      _rawReports: reports
+    };
+
+    const arrayKeys = [
+      'clientsMatches', 'clientsNew', 'clientsMissing', 'clientsNoSubscription',
+      'abonnementsNew', 'abonnementsUpdated', 'abonnementsDisappeared', 'abonnementsStatusChanged',
+      'lignesModified', 'lignesNew', 'lignesRemoved', 'anomalies'
+    ];
+
+    for (const { report } of reports) {
+      for (const key of arrayKeys) merged[key].push(...(report[key] || []));
+      const s = report.summary || {};
+      for (const key of Object.keys(merged.summary)) {
+        if (key !== '_rawReports') merged.summary[key] += s[key] || 0;
+      }
+    }
+    merged.summary.totalDeltaHT = Math.round(merged.summary.totalDeltaHT * 100) / 100;
+    return merged;
+  };
+
+  /**
+   * Lance la synchronisation Pennylane (tous cabinets configurés)
    */
   const handleSync = async () => {
-    if (!apiKey || !apiCabinet) {
+    const cabinetsList = Object.entries(apiKeysMap).map(([cab, info]) => ({
+      cabinet: cab,
+      apiKey: info.api_key,
+      companyId: info.company_id || ''
+    }));
+
+    if (cabinetsList.length === 0) {
       setShowApiKeyInput(true);
-      if (!apiCabinet) {
-        setError('Veuillez sélectionner le cabinet associé à cette clé API');
-      }
       return;
     }
 
@@ -226,16 +287,21 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     setError(null);
 
     try {
-      const report = await previewSync(
-        supabase,
-        apiKey,
-        apiCabinet,
-        (progress) => {
-          setSyncProgress(progress);
-        }
-      );
+      const reports = [];
+      for (const cab of cabinetsList) {
+        if (cab.companyId) setCompanyId(cab.companyId);
+        const report = await previewSync(
+          supabase,
+          cab.apiKey,
+          cab.cabinet,
+          (progress) => {
+            setSyncProgress({ ...progress, message: `[${cab.cabinet}] ${progress.message}` });
+          }
+        );
+        reports.push({ cabinet: cab.cabinet, report });
+      }
 
-      setPreviewReport(report);
+      setPreviewReport(mergePreviewReports(reports));
       setShowPreviewModal(true);
 
     } catch (err) {
@@ -253,14 +319,35 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     setError(null);
 
     try {
-      const result = await commitSync(
-        supabase,
-        previewReport,
-        apiCabinet,
-        (progress) => setSyncProgress(progress)
-      );
+      // Commit chaque cabinet séparément puis agréger les résultats
+      const rawReports = previewReport._rawReports || [{ cabinet: apiCabinet, report: previewReport }];
+      const aggregated = {
+        customersMatched: 0, customersNotMatched: 0,
+        abonnementsCreated: 0, abonnementsUpdated: 0,
+        lignesCreated: 0, historiquePrixCreated: 0,
+        unmatchedCustomers: [], customersNoSubscription: [], errors: []
+      };
 
-      setSyncResult(result);
+      for (const { cabinet, report } of rawReports) {
+        if (apiKeysMap[cabinet]?.company_id) setCompanyId(apiKeysMap[cabinet].company_id);
+        const result = await commitSync(
+          supabase,
+          report,
+          cabinet,
+          (progress) => setSyncProgress({ ...progress, message: `[${cabinet}] ${progress.message}` })
+        );
+        aggregated.customersMatched += result.customersMatched || 0;
+        aggregated.customersNotMatched += result.customersNotMatched || 0;
+        aggregated.abonnementsCreated += result.abonnementsCreated || 0;
+        aggregated.abonnementsUpdated += result.abonnementsUpdated || 0;
+        aggregated.lignesCreated += result.lignesCreated || 0;
+        aggregated.historiquePrixCreated += result.historiquePrixCreated || 0;
+        aggregated.unmatchedCustomers.push(...(result.unmatchedCustomers || []));
+        aggregated.customersNoSubscription.push(...(result.customersNoSubscription || []));
+        aggregated.errors.push(...(result.errors || []));
+      }
+
+      setSyncResult(aggregated);
       setShowPreviewModal(false);
       setPreviewReport(null);
 
@@ -522,6 +609,17 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
         >
           <ShieldCheck size={16} />
           Audit
+        </button>
+        <button
+          onClick={() => setActiveTab('reconciliation')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition text-sm font-medium ${
+            activeTab === 'reconciliation'
+              ? 'bg-slate-800 border border-b-transparent border-slate-700 text-white -mb-px'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <GitCompare size={16} />
+          Réconciliation
         </button>
       </div>
 
@@ -959,6 +1057,287 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Contenu onglet Réconciliation */}
+      {activeTab === 'reconciliation' && (
+        <div>
+          {/* Bouton lancer */}
+          <div className="flex items-center gap-4 mb-6">
+            <button
+              onClick={async () => {
+                const cabinetsList = Object.entries(apiKeysMap).map(([cab, info]) => ({
+                  cabinet: cab,
+                  apiKey: info.api_key,
+                  companyId: info.company_id || ''
+                }));
+                if (cabinetsList.length === 0) {
+                  setError('Aucune clé API Pennylane configurée');
+                  return;
+                }
+                setReconLoading(true);
+                setReconData(null);
+                try {
+                  const data = await reconcilierDonnees(supabase, cabinetsList, setReconProgress);
+                  setReconData(data);
+                } catch (err) {
+                  setError('Erreur réconciliation : ' + err.message);
+                }
+                setReconLoading(false);
+              }}
+              disabled={reconLoading || Object.keys(apiKeysMap).length === 0}
+              className={`px-4 py-2 ${accentClasses.bg} text-white rounded-lg ${accentClasses.bgHover} flex items-center gap-2 disabled:opacity-50`}
+            >
+              {reconLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <GitCompare size={16} />
+              )}
+              Lancer la réconciliation (tous cabinets)
+            </button>
+            {reconLoading && reconProgress && (
+              <span className="text-sm text-white">{reconProgress.message}</span>
+            )}
+          </div>
+
+          {/* Résultats */}
+          {reconData && !reconLoading && (() => {
+            const stats = {
+              iso: reconData.filter(r => r.statut === 'iso').length,
+              ecart: reconData.filter(r => r.statut === 'ecart').length,
+              pl_only: reconData.filter(r => r.statut === 'pl_only').length,
+              db_only: reconData.filter(r => r.statut === 'db_only').length,
+              no_sub: reconData.filter(r => r.statut === 'no_sub').length
+            };
+            const totalPL = reconData.reduce((s, r) => s + r.totalHTPL, 0);
+            const totalDB = reconData.reduce((s, r) => s + r.totalHTDB, 0);
+            const ecartTotal = Math.round((totalDB - totalPL) * 100) / 100;
+
+            // Filtrage
+            let filtered = reconData;
+            if (reconFilter !== 'tous') {
+              filtered = filtered.filter(r => r.statut === reconFilter);
+            }
+            if (reconSearch) {
+              const s = reconSearch.toLowerCase();
+              filtered = filtered.filter(r =>
+                r.clientNom.toLowerCase().includes(s) ||
+                r.customerPLName.toLowerCase().includes(s) ||
+                (r.clientSiren && r.clientSiren.includes(s))
+              );
+            }
+
+            // Tri
+            const sorted = [...filtered].sort((a, b) => {
+              const col = reconSort.column;
+              const dir = reconSort.direction === 'asc' ? 1 : -1;
+              if (col === 'statut') {
+                const order = { pl_only: 0, db_only: 1, ecart: 2, no_sub: 3, iso: 4 };
+                return ((order[a.statut] ?? 5) - (order[b.statut] ?? 5)) * dir;
+              }
+              if (col === 'clientNom') return a.clientNom.localeCompare(b.clientNom) * dir;
+              if (col === 'customerPLName') return a.customerPLName.localeCompare(b.customerPLName) * dir;
+              if (col === 'totalHTPL') return (a.totalHTPL - b.totalHTPL) * dir;
+              if (col === 'totalHTDB') return (a.totalHTDB - b.totalHTDB) * dir;
+              if (col === 'ecartHT') return (Math.abs(a.ecartHT) - Math.abs(b.ecartHT)) * dir;
+              return 0;
+            });
+
+            const handleReconSort = (column) => {
+              setReconSort(prev =>
+                prev.column === column
+                  ? { column, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+                  : { column, direction: 'asc' }
+              );
+            };
+
+            const SortIcon = ({ col }) => {
+              if (reconSort.column !== col) return null;
+              return reconSort.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+            };
+
+            const statutLabel = { iso: 'ISO', ecart: 'Écart', pl_only: 'PL seul', db_only: 'DB seul', no_sub: 'Sans abo' };
+            const statutBg = {
+              iso: 'bg-green-900/30 text-green-400',
+              ecart: 'bg-orange-900/30 text-orange-400',
+              pl_only: 'bg-red-900/30 text-red-400',
+              db_only: 'bg-purple-900/30 text-purple-400',
+              no_sub: 'bg-slate-600/30 text-white'
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Cartes résumé */}
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="bg-green-900/30 border border-green-800 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-green-400">{stats.iso}</div>
+                    <div className="text-xs text-white">ISO</div>
+                  </div>
+                  <div className="bg-orange-900/30 border border-orange-800 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-orange-400">{stats.ecart}</div>
+                    <div className="text-xs text-white">Écarts</div>
+                  </div>
+                  <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-red-400">{stats.pl_only}</div>
+                    <div className="text-xs text-white">PL seul</div>
+                  </div>
+                  <div className="bg-purple-900/30 border border-purple-800 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-purple-400">{stats.db_only}</div>
+                    <div className="text-xs text-white">DB seul</div>
+                  </div>
+                  <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-3 text-center">
+                    <div className="text-lg font-bold text-white">{Math.round(totalPL).toLocaleString('fr-FR')}€</div>
+                    <div className="text-xs text-white">Total PL HT</div>
+                  </div>
+                  <div className={`border rounded-lg p-3 text-center ${Math.abs(ecartTotal) < 1 ? 'bg-green-900/30 border-green-800' : 'bg-orange-900/30 border-orange-800'}`}>
+                    <div className={`text-lg font-bold ${Math.abs(ecartTotal) < 1 ? 'text-green-400' : 'text-orange-400'}`}>
+                      {ecartTotal > 0 ? '+' : ''}{Math.round(ecartTotal).toLocaleString('fr-FR')}€
+                    </div>
+                    <div className="text-xs text-white">Écart DB-PL</div>
+                  </div>
+                </div>
+
+                {/* Filtres */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={reconFilter}
+                    onChange={(e) => setReconFilter(e.target.value)}
+                    className="bg-slate-700 border border-slate-600 text-white px-3 py-2 rounded-lg text-sm"
+                  >
+                    <option value="tous">Tous ({reconData.length})</option>
+                    <option value="iso">ISO ({stats.iso})</option>
+                    <option value="ecart">Écarts ({stats.ecart})</option>
+                    <option value="pl_only">PL seul ({stats.pl_only})</option>
+                    <option value="db_only">DB seul ({stats.db_only})</option>
+                    <option value="no_sub">Sans abo ({stats.no_sub})</option>
+                  </select>
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher..."
+                      value={reconSearch}
+                      onChange={(e) => setReconSearch(e.target.value)}
+                      className="bg-slate-700 border border-slate-600 text-white pl-9 pr-3 py-2 rounded-lg text-sm w-64"
+                    />
+                  </div>
+                  <span className="text-sm text-white">{sorted.length} résultat(s)</span>
+                </div>
+
+                {/* Tableau */}
+                <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-700/50">
+                        <tr>
+                          <th className="px-3 py-3 text-left text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('statut')}>
+                            <span className="flex items-center gap-1">Statut <SortIcon col="statut" /></span>
+                          </th>
+                          <th className="px-3 py-3 text-left text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('clientNom')}>
+                            <span className="flex items-center gap-1">Client (DB) <SortIcon col="clientNom" /></span>
+                          </th>
+                          <th className="px-3 py-3 text-left text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('customerPLName')}>
+                            <span className="flex items-center gap-1">Customer (PL) <SortIcon col="customerPLName" /></span>
+                          </th>
+                          <th className="px-3 py-3 text-center text-white font-medium">Match</th>
+                          <th className="px-3 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('totalHTDB')}>
+                            <span className="flex items-center justify-end gap-1">HT DB <SortIcon col="totalHTDB" /></span>
+                          </th>
+                          <th className="px-3 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('totalHTPL')}>
+                            <span className="flex items-center justify-end gap-1">HT PL <SortIcon col="totalHTPL" /></span>
+                          </th>
+                          <th className="px-3 py-3 text-right text-white font-medium cursor-pointer hover:bg-slate-600/50 select-none" onClick={() => handleReconSort('ecartHT')}>
+                            <span className="flex items-center justify-end gap-1">Écart <SortIcon col="ecartHT" /></span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map((r, idx) => (
+                          <React.Fragment key={idx}>
+                            <tr
+                              className="border-t border-slate-700 hover:bg-slate-700/30 cursor-pointer transition"
+                              onClick={() => setReconExpanded(reconExpanded === idx ? null : idx)}
+                            >
+                              <td className="px-3 py-2">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${statutBg[r.statut]}`}>
+                                  {statutLabel[r.statut]}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-white font-medium">{r.clientNom}</td>
+                              <td className="px-3 py-2 text-white">{r.customerPLName}</td>
+                              <td className="px-3 py-2 text-center">
+                                {r.matchLevelLabel ? (
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    r.matchLevel === 'uuid' || r.matchLevel === 'siren' ? 'bg-blue-900/30 text-blue-400' :
+                                    r.matchLevel === 'name_exact' || r.matchLevel === 'name_clean' ? 'bg-green-900/30 text-green-400' :
+                                    'bg-orange-900/30 text-orange-400'
+                                  }`}>
+                                    {r.matchLevelLabel}
+                                  </span>
+                                ) : (
+                                  <span className="text-white">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right text-white">{r.totalHTDB.toLocaleString('fr-FR')}€</td>
+                              <td className="px-3 py-2 text-right text-white">{r.totalHTPL.toLocaleString('fr-FR')}€</td>
+                              <td className={`px-3 py-2 text-right font-medium ${
+                                Math.abs(r.ecartHT) < 1 ? 'text-green-400' :
+                                r.ecartHT > 0 ? 'text-orange-400' : 'text-red-400'
+                              }`}>
+                                {r.ecartHT > 0 ? '+' : ''}{r.ecartHT.toLocaleString('fr-FR')}€
+                              </td>
+                            </tr>
+                            {/* Détail expandable */}
+                            {reconExpanded === idx && (
+                              <tr>
+                                <td colSpan={7} className="bg-slate-900/50 px-4 py-3 border-t border-slate-600">
+                                  <div className="grid grid-cols-2 gap-6">
+                                    {/* DB */}
+                                    <div>
+                                      <h4 className="text-white font-medium mb-2">Base locale ({r.nbAbosDB} abo{r.nbAbosDB > 1 ? 's' : ''})</h4>
+                                      {r.abosDB.length === 0 ? (
+                                        <p className="text-white text-sm">Aucun abonnement</p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {r.abosDB.map((a, i) => (
+                                            <div key={i} className="flex justify-between text-sm bg-slate-800/50 px-3 py-1.5 rounded">
+                                              <span className="text-white">{a.label || '(sans label)'}</span>
+                                              <span className="text-white font-medium">{a.totalHT.toLocaleString('fr-FR')}€ <span className="text-white text-xs">({a.status})</span></span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* PL */}
+                                    <div>
+                                      <h4 className="text-white font-medium mb-2">Pennylane ({r.nbAbosPL} abo{r.nbAbosPL > 1 ? 's' : ''})</h4>
+                                      {r.abosPL.length === 0 ? (
+                                        <p className="text-white text-sm">Aucun abonnement</p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {r.abosPL.map((a, i) => (
+                                            <div key={i} className="flex justify-between text-sm bg-slate-800/50 px-3 py-1.5 rounded">
+                                              <span className="text-white">{a.label || '(sans label)'}</span>
+                                              <span className="text-white font-medium">{a.totalHT.toLocaleString('fr-FR')}€ <span className="text-white text-xs">({a.status})</span></span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -53,7 +53,23 @@ function removeJuridicalSuffixes(name) {
  * @returns {Object|null} Client matché ou null
  */
 function matchCustomerToClient(customer, clients) {
-  // 1. Match par pennylane_customer_id existant (UUID)
+  // 1. SIREN (CLÉ UNIVERSELLE, prioritaire) — identifiant officiel INSEE
+  if (customer.reg_no) {
+    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
+      const candidates = clients.filter(c => c.siren && c.siren === sirenClean);
+      if (candidates.length === 1) {
+        return candidates[0];
+      }
+      if (candidates.length > 1 && customer.external_reference) {
+        // SIREN ambigu → UUID pour désambiguïser
+        const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
+        if (uuidMatch) return uuidMatch;
+      }
+    }
+  }
+
+  // 2. Match par pennylane_customer_id existant (UUID) — fallback
   if (customer.external_reference) {
     const matchByUUID = clients.find(
       c => c.pennylane_customer_id && c.pennylane_customer_id === customer.external_reference
@@ -61,28 +77,28 @@ function matchCustomerToClient(customer, clients) {
     if (matchByUUID) return matchByUUID;
   }
 
-  // 2. Match par nom normalisé (exact)
+  // 3. Match par nom normalisé (exact)
   const customerNameNorm = normalizeString(customer.name);
   const matchByNameExact = clients.find(
     c => normalizeString(c.nom) === customerNameNorm
   );
   if (matchByNameExact) return matchByNameExact;
 
-  // 3. Match par nom sans suffixes juridiques (exact)
+  // 4. Match par nom sans suffixes juridiques (exact)
   const customerNameClean = removeJuridicalSuffixes(normalizeString(customer.name));
   const matchByNameClean = clients.find(
     c => removeJuridicalSuffixes(normalizeString(c.nom)) === customerNameClean
   );
   if (matchByNameClean) return matchByNameClean;
 
-  // 4. Match par nom normalisé (contient)
+  // 5. Match par nom normalisé (contient)
   const matchByNamePartial = clients.find(c => {
     const clientNameNorm = normalizeString(c.nom);
     return clientNameNorm.includes(customerNameNorm) || customerNameNorm.includes(clientNameNorm);
   });
   if (matchByNamePartial) return matchByNamePartial;
 
-  // 5. Match par nom sans suffixes (contient)
+  // 6. Match par nom sans suffixes (contient)
   const matchByNameCleanPartial = clients.find(c => {
     const clientNameClean = removeJuridicalSuffixes(normalizeString(c.nom));
     return clientNameClean.includes(customerNameClean) || customerNameClean.includes(clientNameClean);
@@ -190,15 +206,22 @@ describe('removeJuridicalSuffixes', () => {
 
 describe('matchCustomerToClient', () => {
   const clients = [
-    { id: 1, nom: 'BDV SARL', pennylane_customer_id: 'uuid-bdv-123' },
-    { id: 2, nom: 'Société Test', pennylane_customer_id: null },
-    { id: 3, nom: 'Client Sans UUID', pennylane_customer_id: null },
-    { id: 4, nom: 'Restaurant Le Bon', pennylane_customer_id: null },
-    { id: 5, nom: 'HOLDING GROUPE ABC', pennylane_customer_id: null }
+    { id: 1, nom: 'BDV SARL', pennylane_customer_id: 'uuid-bdv-123', siren: '123456789' },
+    { id: 2, nom: 'Société Test', pennylane_customer_id: null, siren: '987654321' },
+    { id: 3, nom: 'Client Sans UUID', pennylane_customer_id: null, siren: null },
+    { id: 4, nom: 'Restaurant Le Bon', pennylane_customer_id: null, siren: '555666777' },
+    { id: 5, nom: 'HOLDING GROUPE ABC', pennylane_customer_id: null, siren: null }
   ];
 
-  it('devrait matcher par UUID en priorité', () => {
-    const customer = { id: 100, name: 'Nom Différent', external_reference: 'uuid-bdv-123' };
+  it('devrait matcher par SIREN en priorité', () => {
+    const customer = { id: 100, name: 'Nom Différent', external_reference: null, reg_no: '987654321' };
+    const match = matchCustomerToClient(customer, clients);
+    expect(match).toBeTruthy();
+    expect(match.id).toBe(2);
+  });
+
+  it('devrait matcher par UUID en fallback', () => {
+    const customer = { id: 100, name: 'Nom Différent', external_reference: 'uuid-bdv-123', reg_no: '' };
     const match = matchCustomerToClient(customer, clients);
     expect(match).toBeTruthy();
     expect(match.id).toBe(1);
@@ -355,5 +378,91 @@ describe('Cas réels de doublons cabinet', () => {
     const match = matchCustomerToClient(customersToMatch[0], clients);
     expect(match).toBeTruthy();
     expect(match.id).toBe(1);
+  });
+});
+
+// ============================================================================
+// CAS RÉELS — FAUX POSITIFS PAR NOM (bugs rencontrés en production)
+// ============================================================================
+
+describe('Faux positifs par nom — cas réels de production', () => {
+  it('NE devrait PAS matcher LM avec FERIA CAFE GILBERT DELMAS (inclusion "lm" dans "delmas")', () => {
+    // Bug réel : "lm" (normalisé) est contenu dans "gilbertdelmas" → faux positif niveau 5/6
+    // La solution : le SIREN empêche ce faux match
+    const clients = [
+      { id: 189, nom: 'FERIA CAFE GILBERT DELMAS', pennylane_customer_id: null, siren: '492321757' },
+      { id: 56, nom: 'LM', pennylane_customer_id: 'uuid-lm', siren: '849866504' }
+    ];
+    const customer = { id: 300, name: 'LM', external_reference: 'uuid-lm', reg_no: '849866504' };
+    const match = matchCustomerToClient(customer, clients);
+    // Doit matcher par SIREN avec LM (id 56), PAS par inclusion de nom avec FERIA CAFE
+    expect(match).toBeTruthy();
+    expect(match.id).toBe(56);
+  });
+
+  it('FAUX POSITIF DOCUMENTÉ : GILBERT DELMAS matche LM par inclusion de nom (sans SIREN)', () => {
+    // Bug réel : sans SIREN sur le customer, le matching tombe en fallback nom
+    // "gilbertdelmas" contient "lm" → faux positif niveau 5 (name_partial)
+    // C'est pourquoi renseigner le SIREN sur Pennylane est INDISPENSABLE
+    const clients = [
+      { id: 56, nom: 'LM', pennylane_customer_id: null, siren: '849866504' }
+    ];
+    const customer = { id: 301, name: 'GILBERT DELMAS', external_reference: null, reg_no: '492321757' };
+    const match = matchCustomerToClient(customer, clients);
+    // Pas de client avec SIREN 492321757 → tombe en matching nom → faux positif
+    expect(match).toBeTruthy(); // Faux positif connu
+    expect(match.id).toBe(56);
+  });
+
+  it('le matching par nom partiel EST dangereux pour les noms courts (documentation)', () => {
+    // Sans SIREN, "lm" est contenu dans "gilbertdelmas" → faux positif
+    const clients = [
+      { id: 56, nom: 'LM', pennylane_customer_id: null, siren: null }
+    ];
+    const customer = { id: 302, name: 'GILBERT DELMAS', external_reference: null, reg_no: '' };
+    const match = matchCustomerToClient(customer, clients);
+    // ATTENTION : ceci est un faux positif connu ! Le matching partiel matche "lm" ⊂ "gilbertdelmas"
+    // C'est pourquoi le SIREN est INDISPENSABLE pour les noms courts
+    expect(match).toBeTruthy(); // Malheureusement, sans SIREN, ça matche
+    expect(match.id).toBe(56); // Faux positif documenté
+  });
+});
+
+describe('SIREN ambigu — plusieurs établissements même SIREN (syncHonoraires)', () => {
+  const clientsMultiEtab = [
+    { id: 109, nom: 'RELAIS CHRISTINE', siren: '387571789', pennylane_customer_id: 'uuid-relais-au' },
+    { id: 203, nom: 'SAINT JAMES', siren: '387571789', pennylane_customer_id: 'uuid-stjames-au' },
+    { id: 50, nom: 'AUTRE CLIENT', siren: '111222333', pennylane_customer_id: null }
+  ];
+
+  it('devrait désambiguïser par UUID quand SIREN matche 2 clients', () => {
+    const customer = { id: 400, name: 'CHRISTINE-RELAIS', external_reference: 'uuid-relais-au', reg_no: '387571789' };
+    const match = matchCustomerToClient(customer, clientsMultiEtab);
+    expect(match).toBeTruthy();
+    expect(match.id).toBe(109);
+  });
+
+  it('devrait matcher le 2e établissement correctement', () => {
+    const customer = { id: 401, name: 'CHRISTINE-SAINT JAMES', external_reference: 'uuid-stjames-au', reg_no: '387571789' };
+    const match = matchCustomerToClient(customer, clientsMultiEtab);
+    expect(match).toBeTruthy();
+    expect(match.id).toBe(203);
+  });
+
+  it('devrait tomber en fallback nom si SIREN ambigu sans UUID', () => {
+    const customer = { id: 402, name: 'CHRISTINE INCONNU', external_reference: null, reg_no: '387571789' };
+    const match = matchCustomerToClient(customer, clientsMultiEtab);
+    // SIREN ambigu (2 candidats) + pas d'UUID → ne peut pas désambiguïser par SIREN
+    // Tombe en fallback nom : "christineinconnu" contient "christine" ⊂ "relaischristine" → match partiel
+    // Ce comportement est risqué mais acceptable pour la sync (découverte)
+    // La réconciliation NE fait PAS de matching par nom et retournerait null
+    expect(match).toBeNull(); // Aucun matching par nom exact → "christineinconnu" ≠ nom exact
+  });
+
+  it('devrait matcher SIREN unique directement sans UUID', () => {
+    const customer = { id: 403, name: 'AUTRE', external_reference: null, reg_no: '111222333' };
+    const match = matchCustomerToClient(customer, clientsMultiEtab);
+    expect(match).toBeTruthy();
+    expect(match.id).toBe(50);
   });
 });

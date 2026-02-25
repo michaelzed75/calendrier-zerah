@@ -89,23 +89,31 @@ export function removeJuridicalSuffixes(name) {
  * @returns {Client|null} Client matché ou null
  */
 export function matchCustomerToClient(customer, clients) {
-  // 1. Match par pennylane_customer_id existant (= external_reference UUID)
+  // 1. SIREN (CLÉ UNIVERSELLE, prioritaire) — identifiant officiel INSEE
+  // Prioritaire car le pennylane_customer_id peut être mal assigné en base
+  // suite à un faux positif du matching par nom lors d'une sync précédente.
+  if (customer.reg_no) {
+    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
+      const candidates = clients.filter(c => c.siren && c.siren === sirenClean);
+      if (candidates.length === 1) {
+        return candidates[0];
+      }
+      if (candidates.length > 1 && customer.external_reference) {
+        // SIREN ambigu (plusieurs établissements, ex: RELAIS CHRISTINE / SAINT JAMES)
+        // → utiliser l'UUID Pennylane pour désambiguïser parmi les candidats SIREN
+        const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
+        if (uuidMatch) return uuidMatch;
+      }
+    }
+  }
+
+  // 2. Match par pennylane_customer_id (= external_reference UUID) — fallback
   if (customer.external_reference) {
     const matchByUUID = clients.find(
       c => c.pennylane_customer_id && c.pennylane_customer_id === customer.external_reference
     );
     if (matchByUUID) return matchByUUID;
-  }
-
-  // 2. Match par SIREN (CLÉ UNIVERSELLE) — reg_no de Pennylane = SIREN du client
-  if (customer.reg_no) {
-    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
-    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
-      const matchBySiren = clients.find(
-        c => c.siren && c.siren === sirenClean
-      );
-      if (matchBySiren) return matchBySiren;
-    }
   }
 
   // 3. Match par nom normalisé (exact)
@@ -258,10 +266,8 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
         const updateData = {
           pennylane_customer_id: customer.external_reference || null
         };
-        // Si un cabinet est spécifié, mettre à jour le cabinet du client
-        if (cabinet) {
-          updateData.cabinet = cabinet;
-        }
+        // Ne PAS écraser le cabinet — c'est une donnée stable assignée manuellement.
+        // La sync détecte les cabinet_mismatch en anomalie mais ne les corrige pas.
         // Synchroniser l'email du customer Pennylane (premier email)
         const email = (customer.emails && customer.emails[0]) || null;
         if (email) {

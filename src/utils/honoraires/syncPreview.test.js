@@ -41,19 +41,28 @@ function removeJuridicalSuffixes(name) {
  * Match avec niveau — identique à syncPreview.js
  */
 function matchCustomerToClientWithLevel(customer, clients) {
+  // 1. SIREN (prioritaire — identifiant officiel INSEE)
+  if (customer.reg_no) {
+    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
+      const candidates = clients.filter(c => c.siren && c.siren === sirenClean);
+      if (candidates.length === 1) {
+        return { client: candidates[0], level: 'siren' };
+      }
+      if (candidates.length > 1 && customer.external_reference) {
+        // SIREN ambigu (plusieurs établissements) → UUID pour désambiguïser
+        const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
+        if (uuidMatch) return { client: uuidMatch, level: 'siren' };
+      }
+    }
+  }
+
+  // 2. UUID (fallback)
   if (customer.external_reference) {
     const match = clients.find(
       c => c.pennylane_customer_id && c.pennylane_customer_id === customer.external_reference
     );
     if (match) return { client: match, level: 'uuid' };
-  }
-
-  if (customer.reg_no) {
-    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
-    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
-      const match = clients.find(c => c.siren && c.siren === sirenClean);
-      if (match) return { client: match, level: 'siren' };
-    }
   }
 
   const customerNameNorm = normalizeString(customer.name);
@@ -148,11 +157,11 @@ describe('matchCustomerToClientWithLevel', () => {
     expect(result.level).toBe('siren');
   });
 
-  it('devrait prioriser UUID sur SIREN', () => {
+  it('devrait prioriser SIREN sur UUID', () => {
     const customer = { id: 102, name: 'XYZ', external_reference: 'uuid-bdv-123', reg_no: '987654321' };
     const result = matchCustomerToClientWithLevel(customer, clients);
-    expect(result.client.id).toBe(1); // UUID match BDV, pas SIREN match Société Test
-    expect(result.level).toBe('uuid');
+    expect(result.client.id).toBe(2); // SIREN 987654321 match Société Test, pas UUID match BDV
+    expect(result.level).toBe('siren');
   });
 
   it('devrait prioriser SIREN sur le nom', () => {
@@ -203,6 +212,52 @@ describe('matchCustomerToClientWithLevel', () => {
     const result = matchCustomerToClientWithLevel(customer, clients);
     expect(result).toBeTruthy();
     expect(result.client.id).toBe(1);
+    expect(result.level).toBe('siren');
+  });
+});
+
+describe('SIREN ambigu — plusieurs établissements (RELAIS CHRISTINE / SAINT JAMES)', () => {
+  const clientsMultiEtab = [
+    { id: 109, nom: 'RELAIS CHRISTINE', siren: '387571789', pennylane_customer_id: 'uuid-relais-au', actif: true },
+    { id: 203, nom: 'SAINT JAMES', siren: '387571789', pennylane_customer_id: 'uuid-stjames-au', actif: true },
+    { id: 50, nom: 'AUTRE CLIENT', siren: '111222333', pennylane_customer_id: null, actif: true }
+  ];
+
+  it('devrait désambiguïser par UUID quand le SIREN matche plusieurs clients', () => {
+    const customer = { id: 200, name: 'CHRISTINE-RELAIS CHRISTINE', external_reference: 'uuid-relais-au', reg_no: '387571789' };
+    const result = matchCustomerToClientWithLevel(customer, clientsMultiEtab);
+    expect(result).toBeTruthy();
+    expect(result.client.id).toBe(109);
+    expect(result.level).toBe('siren');
+  });
+
+  it('devrait matcher le 2e établissement par UUID quand le SIREN est ambigu', () => {
+    const customer = { id: 201, name: 'CHRISTINE- SAINT JAMES', external_reference: 'uuid-stjames-au', reg_no: '387571789' };
+    const result = matchCustomerToClientWithLevel(customer, clientsMultiEtab);
+    expect(result).toBeTruthy();
+    expect(result.client.id).toBe(203);
+    expect(result.level).toBe('siren');
+  });
+
+  it('devrait retourner null si SIREN ambigu et UUID ne matche aucun candidat', () => {
+    const customer = { id: 202, name: 'CHRISTINE INCONNU', external_reference: 'uuid-inconnu', reg_no: '387571789' };
+    const result = matchCustomerToClientWithLevel(customer, clientsMultiEtab);
+    // UUID 'uuid-inconnu' ne matche ni RELAIS CHRISTINE ni SAINT JAMES → fallback UUID global → null
+    expect(result).toBeNull();
+  });
+
+  it('devrait retourner null si SIREN ambigu et pas d UUID', () => {
+    const customer = { id: 203, name: 'CHRISTINE SANS REF', external_reference: null, reg_no: '387571789' };
+    const result = matchCustomerToClientWithLevel(customer, clientsMultiEtab);
+    // Pas d'UUID pour désambiguïser, pas de fallback nom → null
+    expect(result).toBeNull();
+  });
+
+  it('devrait matcher directement quand le SIREN est unique (pas d ambiguïté)', () => {
+    const customer = { id: 204, name: 'AUTRE', external_reference: null, reg_no: '111222333' };
+    const result = matchCustomerToClientWithLevel(customer, clientsMultiEtab);
+    expect(result).toBeTruthy();
+    expect(result.client.id).toBe(50);
     expect(result.level).toBe('siren');
   });
 });
