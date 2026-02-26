@@ -1,10 +1,11 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search, FileSpreadsheet, Scissors } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, previewSync, commitSync, reconcilierDonnees } from '../../utils/honoraires';
 import AugmentationPanel from '../honoraires/AugmentationPanel';
+import RestructurationPanel from '../honoraires/RestructurationPanel';
 import SyncPreviewModal from '../honoraires/SyncPreviewModal';
 
 /**
@@ -41,7 +42,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [auditLoading, setAuditLoading] = useState(false);
 
   // Onglets
-  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation' | 'audit' | 'reconciliation'
+  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation' | 'restructuration' | 'audit' | 'reconciliation'
 
   // Réconciliation (persisté en sessionStorage)
   const [reconData, setReconDataRaw] = useState(() => {
@@ -799,6 +800,17 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           Augmentation
         </button>
         <button
+          onClick={() => setActiveTab('restructuration')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition text-sm font-medium ${
+            activeTab === 'restructuration'
+              ? 'bg-slate-800 border border-b-transparent border-slate-700 text-white -mb-px'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Scissors size={16} />
+          Restructuration
+        </button>
+        <button
           onClick={() => setActiveTab('audit')}
           className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition text-sm font-medium ${
             activeTab === 'audit'
@@ -1004,6 +1016,15 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           accent={accent}
           filterCabinet={filterCabinet}
           filterStatus={filterStatus}
+        />
+      )}
+
+      {/* Contenu onglet Restructuration (Phase 2) */}
+      {activeTab === 'restructuration' && (
+        <RestructurationPanel
+          clients={clients}
+          accent={accent}
+          filterCabinet={filterCabinet}
         />
       )}
 

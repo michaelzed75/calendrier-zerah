@@ -83,3 +83,13 @@ export {
   chargerProduitsPennylane,
   supprimerTarifsReference
 } from './tarifsReferenceService.js';
+
+// Restructuration abonnements (Phase 2)
+export {
+  analyserClient,
+  analyserTousLesClients,
+  calculerStatistiques
+} from './subscriptionRestructuration.js';
+
+// Export restructuration
+export { exportRestructurationExcel } from './exportRestructuration.js';

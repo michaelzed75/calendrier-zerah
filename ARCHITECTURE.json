@@ -361,6 +361,19 @@
           "Export Excel des augmentations (multi-feuilles)"
         ]
       },
+      "RestructurationPanel.jsx": {
+        "lines": 310,
+        "role": "Phase 2 — UI de restructuration des abonnements PL (séparation fixe/variable)",
+        "features": [
+          "Mode 'Un client (test)' avec recherche par nom/SIREN/UUID",
+          "Mode 'Tous les clients' avec batch analysis et progress",
+          "KPI cards : clients analysés, avec variables, lignes fixes, abos à supprimer",
+          "Vue arborescente : client → abonnement → lignes (expand/collapse)",
+          "Badge décision par abo : Inchangé (vert), Retirer variable (orange), Supprimer abo (rouge)",
+          "Lignes fixes en vert avec prix 2026, lignes variables en rouge",
+          "Export Excel restructuration (4 onglets)"
+        ]
+      },
       "DiagnosticModal.jsx": {
         "lines": 343,
         "role": "Modal de diagnostic des anomalies avant augmentation",
@@ -623,8 +636,36 @@
               "exportAugmentationExcel(data) - Génère fichier XLSX (feuilles: Résumé, Détail par client, Par axe, Prix suspects)"
             ]
           },
+          "subscriptionRestructuration.js": {
+            "lines": 220,
+            "role": "Phase 2 — Analyse et plan de restructuration des abonnements PL (séparation fixe/variable)",
+            "exports": [
+              "analyserClient({clientId, supabase}) — Analyse un client : charge abonnements + tarifs 2026, sépare fixe/variable, détermine décision par abo",
+              "analyserTousLesClients({supabase, cabinet, onProgress}) — Analyse batch de tous les clients avec tarifs 2026",
+              "calculerStatistiques(plans) — Agrège KPIs globaux et par cabinet"
+            ],
+            "decisions_par_abonnement": [
+              "'inchange' : aucune ligne variable → juste mettre à jour les prix",
+              "'a_modifier' : mix fixe/variable → garder fixe, supprimer variable",
+              "'a_supprimer' : 100% variable → supprimer l'abonnement entier"
+            ],
+            "tests": "subscriptionRestructuration.test.js (12 tests)"
+          },
+          "exportRestructuration.js": {
+            "lines": 330,
+            "role": "Export Excel Phase 2 avec 4 onglets : Résumé, Import PL (fixe), A supprimer, Détail croisé",
+            "exports": [
+              "exportRestructurationExcel({plans, stats, singleClient}) — Génère fichier XLSX de restructuration"
+            ],
+            "sheets": [
+              "Résumé : KPIs + tableau par cabinet",
+              "Import PL (FIXE) : format import Pennylane avec prix 2026 (uniquement lignes fixes)",
+              "A SUPPRIMER : liste des lignes variables à retirer de PL (header rouge)",
+              "Détail croisé : vue complète par client × abonnement × ligne × décision"
+            ]
+          },
           "index.js": {
-            "lines": 86,
+            "lines": 98,
             "role": "Export centralisé du module honoraires",
             "exports": [
               "syncCustomersAndSubscriptions, getHonorairesResume, testConnection, fetchAllDataForSync",
@@ -634,7 +675,8 @@
               "calculerAugmentationLigne, calculerAugmentationGlobale, calculerTotauxResume, creerParametresDefaut, getCoeffAnnualisation",
               "genererDiagnostic, auditAbonnements",
               "sauvegarderTarifsBaseline, sauvegarderTarifsReference, chargerTarifsReference, getDatesEffetDisponibles, chargerProduitsPennylane, supprimerTarifsReference",
-              "exportAugmentationExcel, exportDiagnosticExcel"
+              "analyserClient, analyserTousLesClients, calculerStatistiques",
+              "exportAugmentationExcel, exportDiagnosticExcel, exportRestructurationExcel"
             ]
           }
         }
@@ -789,8 +831,12 @@
         "coverage": "isFranceFormalites (exclusion FF), matching strict SIREN+UUID (pas de nom), faux positifs documentés, SIREN ambigu multi-établissements avec déduplication, UUID legacy vs UUID réel"
       },
       "src/utils/honoraires/tarifsReferenceService.test.js": {
-        "tests": 22,
+        "tests": 19,
         "coverage": "sauvegarderTarifsBaseline (ancien prix, exclu, sans axe, erreurs, type_recurrence, progress), sauvegarderTarifsReference (nouveau prix, exclu, sans axe, upsert onConflict), baseline vs reference prix différents, getTypeRecurrence 8 axes"
+      },
+      "src/utils/honoraires/subscriptionRestructuration.test.js": {
+        "tests": 12,
+        "coverage": "analyserClient HFC INVEST (séparation fixe/variable, totaux HT, décision inchangé/a_supprimer, prix 2026, action supprimer, axes variables, client sans abonnements, abonnement mixte a_modifier), calculerStatistiques (agrégation, par cabinet, tableau vide)"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -801,7 +847,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 406
+    "total_tests": 445
   },
   "database_tables": {
     "collaborateurs": {
@@ -1339,7 +1385,16 @@
       "Ajout tarifsReferenceService.test.js (19 tests): baseline, reference, type_recurrence, progress",
       "Migration 012 exécutée en prod: 64 produits (29 Zerah + 35 Audit Up), 1126 tarifs (563 × 2 dates)",
       "Données vérifiées: 563 tarifs 2025 + 563 tarifs 2026, Zerah 308 / Audit Up 818, fixe 656 / variable 470",
-      "Total tests: 414 → 433"
+      "Total tests: 414 → 433",
+      "feat(honoraires): Phase 2 — Restructuration des abonnements PL (séparation fixe/variable)",
+      "subscriptionRestructuration.js: analyserClient + analyserTousLesClients + calculerStatistiques",
+      "exportRestructuration.js: Excel 4 onglets (Résumé, Import PL fixe, A supprimer, Détail croisé)",
+      "RestructurationPanel.jsx: UI Phase 2 avec mode single/batch, KPIs, arborescence client→abo→ligne",
+      "HonorairesPage.jsx: ajout onglet Restructuration (5 onglets total: vue, augmentation, restructuration, audit, reconciliation)",
+      "index.js: exports analyserClient, analyserTousLesClients, calculerStatistiques, exportRestructurationExcel",
+      "Ajout subscriptionRestructuration.test.js (12 tests): HFC INVEST, séparation fixe/variable, décisions, prix 2026, stats",
+      "Test client HFC INVEST: 5 fixes + 6 variables, 4 abonnements, décision correcte (3 inchangés + 1 à supprimer)",
+      "Total tests: 433 → 445"
     ]
   }
 }
