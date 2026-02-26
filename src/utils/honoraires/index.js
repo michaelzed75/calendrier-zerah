@@ -76,6 +76,7 @@ export { reconcilierDonnees } from './reconciliation.js';
 
 // Tarifs de référence
 export {
+  sauvegarderTarifsBaseline,
   sauvegarderTarifsReference,
   chargerTarifsReference,
   getDatesEffetDisponibles,

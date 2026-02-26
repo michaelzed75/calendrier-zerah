@@ -39,6 +39,73 @@ function getTypeRecurrence(axe) {
 }
 
 /**
+ * Sauvegarde les tarifs AVANT augmentation (baseline) en BDD.
+ * Persiste chaque ligne avec son prix unitaire HT actuel (ancien).
+ * Permet de revenir aux tarifs d'origine si nécessaire.
+ *
+ * @param {import('../../supabaseClient').SupabaseClient} supabase
+ * @param {import('./calculsAugmentation').ResultatClient[]} resultats - Résultats de l'augmentation
+ * @param {string} dateEffet - Date d'effet baseline (ex: '2025-01-01')
+ * @param {string} source - Source (ex: 'baseline_2025')
+ * @param {Function} [onProgress] - Callback de progression
+ * @returns {Promise<{inserted: number, errors: string[]}>}
+ */
+export async function sauvegarderTarifsBaseline(supabase, resultats, dateEffet, source = 'baseline_2025', onProgress) {
+  let inserted = 0;
+  const errors = [];
+  const total = resultats.reduce((acc, c) => acc + c.lignes.length, 0);
+  let processed = 0;
+
+  for (const client of resultats) {
+    if (client.exclu) continue;
+
+    for (const ligne of client.lignes) {
+      if (!ligne.axe) continue;
+
+      const tarif = {
+        client_id: client.client_id,
+        label: ligne.label,
+        axe: ligne.axe,
+        type_recurrence: getTypeRecurrence(ligne.axe),
+        pu_ht: ligne.ancien_prix_unitaire_ht,
+        quantite: ligne.quantite,
+        frequence: ligne.frequence || 'monthly',
+        intervalle: ligne.intervalle || 1,
+        tva_rate: 0.20,
+        cabinet: client.client_cabinet,
+        date_effet: dateEffet,
+        source,
+        abonnement_ligne_id: ligne.ligne_id || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('tarifs_reference')
+        .upsert(tarif, {
+          onConflict: 'client_id,label,date_effet'
+        });
+
+      if (error) {
+        errors.push(`${client.client_nom} / ${ligne.label}: ${error.message}`);
+      } else {
+        inserted++;
+      }
+
+      processed++;
+      if (onProgress && processed % 20 === 0) {
+        onProgress({ processed, total, percent: Math.round((processed / total) * 100) });
+      }
+    }
+  }
+
+  if (onProgress) {
+    onProgress({ processed: total, total, percent: 100 });
+  }
+
+  return { inserted, errors };
+}
+
+/**
  * Sauvegarde les tarifs de référence en BDD.
  * Prend les résultats de l'AugmentationPanel (après verrouillage) et persiste
  * chaque ligne avec son nouveau prix unitaire HT.

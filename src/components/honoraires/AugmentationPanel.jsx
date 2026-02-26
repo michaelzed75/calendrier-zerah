@@ -7,6 +7,7 @@ import {
   calculerAugmentationGlobale, calculerTotauxResume, creerParametresDefaut,
   parseSilaeExcel, importSilaeData, getSilaeProductions, getSilaePeriodes,
   updateSilaeMapping, exportAugmentationExcel, genererDiagnostic,
+  sauvegarderTarifsBaseline,
   sauvegarderTarifsReference
 } from '../../utils/honoraires';
 import SilaeMappingModal from './SilaeMappingModal';
@@ -561,24 +562,55 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
   };
 
   // === Sauvegarde tarifs de référence en BDD ===
+  // Étape 1 : baseline 2025 (prix actuels AVANT augmentation)
+  // Étape 2 : augmentés 2026 (prix APRÈS augmentation)
   const handleSaveTarifs = async () => {
     setShowSaveConfirm(false);
     setSaving(true);
     setSaveResult(null);
-    setSaveProgress({ processed: 0, total: 0, percent: 0 });
+    setSaveProgress({ processed: 0, total: 0, percent: 0, step: 'baseline' });
     try {
-      const dateEffet = new Date().toISOString().split('T')[0]; // Aujourd'hui
-      const result = await sauvegarderTarifsReference(
+      const clientsNonExclus = resultatsFinaux.filter(c => !c.exclu);
+      const totalLignes = clientsNonExclus.reduce((acc, c) => acc + c.lignes.filter(l => l.axe).length, 0);
+
+      // Étape 1 : Sauvegarder les tarifs ACTUELS (baseline 2025)
+      const baselineResult = await sauvegarderTarifsBaseline(
         supabase,
-        resultatsFinaux.filter(c => !c.exclu),
-        dateEffet,
-        'augmentation_2026',
-        (progress) => setSaveProgress(progress)
+        clientsNonExclus,
+        '2025-01-01',
+        'baseline_2025',
+        (progress) => setSaveProgress({
+          ...progress,
+          // Remap sur 0-50% (première moitié de la barre)
+          percent: Math.round(progress.percent / 2),
+          step: 'baseline'
+        })
       );
-      setSaveResult(result);
+
+      // Étape 2 : Sauvegarder les tarifs AUGMENTÉS (2026)
+      setSaveProgress({ processed: 0, total: totalLignes, percent: 50, step: 'augmentation' });
+      const augResult = await sauvegarderTarifsReference(
+        supabase,
+        clientsNonExclus,
+        '2026-01-01',
+        'augmentation_2026',
+        (progress) => setSaveProgress({
+          ...progress,
+          // Remap sur 50-100% (seconde moitié de la barre)
+          percent: 50 + Math.round(progress.percent / 2),
+          step: 'augmentation'
+        })
+      );
+
+      setSaveResult({
+        inserted: augResult.inserted,
+        updated: augResult.updated,
+        baselineInserted: baselineResult.inserted,
+        errors: [...baselineResult.errors, ...augResult.errors]
+      });
     } catch (err) {
       console.error('Erreur sauvegarde tarifs:', err);
-      setSaveResult({ inserted: 0, updated: 0, errors: [err.message] });
+      setSaveResult({ inserted: 0, updated: 0, baselineInserted: 0, errors: [err.message] });
     }
     setSaving(false);
     setSaveProgress(null);
@@ -796,14 +828,20 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
             title="Sauvegarder les tarifs augmentés en base de données"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
-            {saving ? `Sauvegarde ${saveProgress?.percent || 0}%` : 'Sauvegarder tarifs'}
+            {saving
+              ? (saveProgress?.step === 'baseline'
+                ? `Baseline 2025... ${saveProgress?.percent || 0}%`
+                : `Augmentation 2026... ${saveProgress?.percent || 0}%`)
+              : 'Sauvegarder tarifs'}
           </button>
           {saveResult && (
             <span className="text-xs text-white">
               {saveResult.errors?.length > 0 && !saveResult.inserted ? (
                 <span className="text-red-400"><AlertCircle size={12} className="inline" /> {saveResult.errors[0]}</span>
               ) : (
-                <span className="text-emerald-400"><Check size={12} className="inline" /> {saveResult.inserted} tarifs sauvegardés</span>
+                <span className="text-emerald-400">
+                  <Check size={12} className="inline" /> {saveResult.baselineInserted || 0} tarifs 2025 + {saveResult.inserted} tarifs 2026
+                </span>
               )}
             </span>
           )}
@@ -1022,12 +1060,15 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
               Sauvegarder les tarifs de référence
             </h3>
             <p className="text-sm text-white mb-2">
-              Cette action va persister <strong>{lignesModifiees.length} lignes</strong> de tarifs
-              augmentés en base de données avec la date d'effet du <strong>{new Date().toLocaleDateString('fr-FR')}</strong>.
+              Cette action va sauvegarder <strong>{lignesModifiees.length} lignes</strong> en <strong>deux étapes</strong> :
             </p>
+            <ol className="text-sm text-white mb-3 list-decimal list-inside space-y-1">
+              <li><strong>Tarifs 2025</strong> (baseline) — les prix actuels avant augmentation, pour pouvoir y revenir</li>
+              <li><strong>Tarifs 2026</strong> (augmentés) — les nouveaux prix après augmentation</li>
+            </ol>
             <p className="text-sm text-white mb-4">
-              Ces tarifs serviront de référence pour la génération des factures variables mensuelles
-              et la mise à jour des abonnements fixes dans Pennylane.
+              Les deux versions resteront en base avec leurs dates d'effet respectives
+              (<strong>2025-01-01</strong> et <strong>2026-01-01</strong>).
             </p>
             {nbLocked < lignesModifiees.length && (
               <div className="flex items-center gap-2 p-2 bg-amber-900/30 border border-amber-800 rounded mb-4">

@@ -348,13 +348,15 @@
         ]
       },
       "AugmentationPanel.jsx": {
-        "lines": 1110,
-        "role": "Panneau d'analyse des augmentations tarifaires avec tarifs de référence",
+        "lines": 1151,
+        "role": "Panneau d'analyse des augmentations tarifaires avec sauvegarde tarifs 2025+2026",
         "typing": "@ts-check + JSDoc",
         "features": [
           "Calcul augmentation par client et par axe (8 axes métier)",
           "Exclusion des clients inactifs du calcul CA HT",
-          "Tarifs de référence 2025 avec verrouillage augmentation",
+          "Sauvegarde en 2 étapes : baseline 2025 (ancien prix) + augmentés 2026 (nouveau prix)",
+          "Progress bar 0-50% baseline, 50-100% augmentation avec libellé dynamique",
+          "Verrouillage prix individuels par ligne",
           "DiagnosticModal: analyse anomalies (7 patterns) avant augmentation",
           "Export Excel des augmentations (multi-feuilles)"
         ]
@@ -580,13 +582,20 @@
             ]
           },
           "tarifsReferenceService.js": {
-            "lines": 204,
-            "role": "Service CRUD pour les tarifs de référence 2025 (table tarifs_reference)",
+            "lines": 271,
+            "role": "Service CRUD pour les tarifs de référence (table tarifs_reference) — baseline 2025 + augmentés 2026",
             "exports": [
-              "getTarifsReference(supabase) - Récupère tous les tarifs de référence",
-              "saveTarifReference(supabase, tarif) - Sauvegarde un tarif (upsert)",
-              "deleteTarifReference(supabase, id) - Supprime un tarif"
-            ]
+              "sauvegarderTarifsBaseline(supabase, resultats, dateEffet, source, onProgress) - Sauvegarde tarifs AVANT augmentation (ancien_prix_unitaire_ht)",
+              "sauvegarderTarifsReference(supabase, resultats, dateEffet, source, onProgress) - Sauvegarde tarifs APRÈS augmentation (nouveau_prix_unitaire_ht)",
+              "chargerTarifsReference(supabase, options) - Charge tarifs avec filtres (cabinet, type, dateEffet)",
+              "getDatesEffetDisponibles(supabase) - Dates d'effet distinctes pour sélecteur",
+              "chargerProduitsPennylane(supabase, cabinet) - Mapping produits Pennylane par cabinet",
+              "supprimerTarifsReference(supabase, dateEffet) - Supprime tarifs pour une date d'effet"
+            ],
+            "two_step_save": "Baseline 2025 (ancien_prix) + Augmentation 2026 (nouveau_prix) en 2 passes avec progress callback",
+            "upsert_strategy": "onConflict: 'client_id,label,date_effet' — permet 2 versions par produit",
+            "type_recurrence_rule": "social_bulletin + accessoires_social → 'variable', tout le reste → 'fixe'",
+            "tests": "tarifsReferenceService.test.js (19 tests)"
           },
           "reconciliation.js": {
             "lines": 287,
@@ -615,17 +624,17 @@
             ]
           },
           "index.js": {
-            "lines": 84,
+            "lines": 86,
             "role": "Export centralisé du module honoraires",
             "exports": [
-              "syncCustomersAndSubscriptions, getHonorairesResume, testConnection",
+              "syncCustomersAndSubscriptions, getHonorairesResume, testConnection, fetchAllDataForSync",
               "previewSync, commitSync, reconcilierDonnees",
               "classifierLigne, classifierToutesLesLignes, detectModeFacturationSocial",
-              "AXE_DEFINITIONS, AXE_KEYS, getMultiplicateurAccessoire",
-              "calculerAugmentationParClient, calculerTotaux",
-              "diagnostiquerHonoraires, runAuditHonoraires",
-              "getTarifsReference, saveTarifReference, deleteTarifReference",
-              "exportAugmentationExcel"
+              "AXE_DEFINITIONS, AXE_KEYS",
+              "calculerAugmentationLigne, calculerAugmentationGlobale, calculerTotauxResume, creerParametresDefaut, getCoeffAnnualisation",
+              "genererDiagnostic, auditAbonnements",
+              "sauvegarderTarifsBaseline, sauvegarderTarifsReference, chargerTarifsReference, getDatesEffetDisponibles, chargerProduitsPennylane, supprimerTarifsReference",
+              "exportAugmentationExcel, exportDiagnosticExcel"
             ]
           }
         }
@@ -778,6 +787,10 @@
       "src/utils/honoraires/reconciliation.test.js": {
         "tests": 20,
         "coverage": "isFranceFormalites (exclusion FF), matching strict SIREN+UUID (pas de nom), faux positifs documentés, SIREN ambigu multi-établissements avec déduplication, UUID legacy vs UUID réel"
+      },
+      "src/utils/honoraires/tarifsReferenceService.test.js": {
+        "tests": 22,
+        "coverage": "sauvegarderTarifsBaseline (ancien prix, exclu, sans axe, erreurs, type_recurrence, progress), sauvegarderTarifsReference (nouveau prix, exclu, sans axe, upsert onConflict), baseline vs reference prix différents, getTypeRecurrence 8 axes"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -1315,7 +1328,18 @@
       "DiagnosticModal.jsx: 343 lignes, modal diagnostic anomalies (7 patterns)",
       "exportAugmentation.js: 619 lignes, export Excel multi-feuilles (Résumé, Détail, Par axe, Prix suspects)",
       "HonorairesPage.jsx: 1626 → 1925 lignes, section 5 Audit prix suspects + Excel",
-      "Total tests: 406 → 414"
+      "Total tests: 406 → 414",
+      "feat(honoraires): sauvegarde tarifs en 2 étapes — baseline 2025 + augmentation 2026",
+      "tarifsReferenceService.js: ajout sauvegarderTarifsBaseline() (ancien_prix_unitaire_ht) avec progress callback",
+      "AugmentationPanel.jsx: handleSaveTarifs en 2 étapes (baseline 0-50%, augmentation 50-100%)",
+      "AugmentationPanel.jsx: bouton dynamique (Baseline 2025... X% / Augmentation 2026... X%)",
+      "AugmentationPanel.jsx: modale confirmation explique les 2 étapes (2025-01-01 + 2026-01-01)",
+      "AugmentationPanel.jsx: résultat affiché '594 tarifs 2025 + 594 tarifs 2026'",
+      "index.js: export sauvegarderTarifsBaseline ajouté",
+      "Ajout tarifsReferenceService.test.js (19 tests): baseline, reference, type_recurrence, progress",
+      "Migration 012 exécutée en prod: 64 produits (29 Zerah + 35 Audit Up), 1126 tarifs (563 × 2 dates)",
+      "Données vérifiées: 563 tarifs 2025 + 563 tarifs 2026, Zerah 308 / Audit Up 818, fixe 656 / variable 470",
+      "Total tests: 414 → 433"
     ]
   }
 }
