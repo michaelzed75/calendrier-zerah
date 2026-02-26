@@ -667,17 +667,20 @@
             "tests": "subscriptionRestructuration.test.js (12 tests)"
           },
           "exportRestructuration.js": {
-            "lines": 330,
-            "role": "Export Excel Phase 2 avec 4 onglets : Résumé, Import PL (fixe), A supprimer, Détail croisé",
+            "lines": 490,
+            "role": "Export Excel Phase 2 avec 5 onglets : Résumé, Import PL AUP, Import PL ZF, A supprimer, Détail croisé",
             "exports": [
               "exportRestructurationExcel({plans, stats, singleClient}) — Génère fichier XLSX de restructuration"
             ],
             "sheets": [
               "Résumé : KPIs + tableau par cabinet",
-              "Import PL (FIXE) : format import Pennylane avec prix 2026 (uniquement lignes fixes)",
+              "Import PL AUP : format import Pennylane — abonnements fixes Audit Up avec prix 2026",
+              "Import PL ZF : format import Pennylane — abonnements fixes Zerah Fiduciaire avec prix 2026",
               "A SUPPRIMER : liste des lignes variables à retirer de PL (header rouge)",
               "Détail croisé : vue complète par client × abonnement × ligne × décision"
-            ]
+            ],
+            "split_cabinet": "Génère 1 onglet Import PL par cabinet (AUP/ZF) — trié par nom client",
+            "tests": "exportRestructuration.test.js (24 tests)"
           },
           "facturationVariableService.js": {
             "lines": 632,
@@ -894,6 +897,10 @@
         "tests": 12,
         "coverage": "analyserClient HFC INVEST (séparation fixe/variable, totaux HT, décision inchangé/a_supprimer, prix 2026, action supprimer, axes variables, client sans abonnements, abonnement mixte a_modifier), calculerStatistiques (agrégation, par cabinet, tableau vide)"
       },
+      "src/utils/honoraires/exportRestructuration.test.js": {
+        "tests": 24,
+        "coverage": "Structure générale (5 onglets 2 cabinets, 4 onglets 1 cabinet, nommage fichier, singleClient), split AUP/ZF (séparation clients, tri alphabétique, abo sans lignes fixes ignoré), format colonnes (9 fixes PL, colonnes produit, multi-lignes), données ligne (TTC = HT×1.2, arrondis, TVA FR_200, métadonnées abo), formatDatePennylane (ISO→dd/mm/yyyy, ISO+T, passthrough), onglet A SUPPRIMER, Détail croisé, cas limites (0 abos, plans vide, yearly 1€)"
+      },
       "src/utils/honoraires/facturationVariable.test.js": {
         "tests": 59,
         "coverage": "Export Excel PL brouillons (split cabinet AUP/ZF, nommage fichiers, période dans nom produit, format cellules strict: SIREN nombre, TVA 0.00%, date serial m/d/yy, colonnes E/L absentes, exclusion lignes manuelles, 12 headers, feuille Feuil1), serial dates Excel (jan/fév/mar/déc), formaterPeriodeFr 12 mois, BK BAGNEUX données référence (6 produits, 5 auto + 1 manuel, total HT 746.20), mapping colonne_silae, calcul PU TTC, normalisation labels, syncProduitsPennylane (import, vide, null)"
@@ -907,7 +914,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 504
+    "total_tests": 528
   },
   "database_tables": {
     "collaborateurs": {
@@ -1119,7 +1126,7 @@
     "pennylane-proxy.js": {
       "role": "Proxy API Pennylane pour éviter CORS",
       "endpoint": "/api/pennylane-proxy",
-      "method": "GET/POST",
+      "method": "GET/POST/PUT/DELETE/PATCH",
       "headers_required": ["X-Pennylane-Api-Key"],
       "headers_optional": ["X-Company-Id (isolation par cabinet Pennylane)"],
       "query_params": ["endpoint", "...autres params transmis à Pennylane"],
@@ -1465,7 +1472,17 @@
       "index.js: exports Phase 3 (genererFacturationVariable, syncProduitsPennylane, exportFacturationVariableExcel, getAllProducts)",
       "Migration 013: ALTER TABLE silae_productions ADD COLUMN editique",
       "Format Excel validé en import PL: SIREN nombre, TVA 0.00%, date serial m/d/yy, feuille Feuil1",
-      "Nommage fichiers: 'AUP Janvier 26 a importer dans PL.xlsx', période ajoutée au nom produit"
+      "Nommage fichiers: 'AUP Janvier 26 a importer dans PL.xlsx', période ajoutée au nom produit",
+      "feat(honoraires): upload Silae dans FacturationVariablePanel + API write PL + docs",
+      "FacturationVariablePanel.jsx: upload fichier Silae avec sélecteur mois/année + SilaeMappingModal",
+      "silaeService.js: extractPeriodeFromFilename exportée (partagée AugmentationPanel + FacturationVariablePanel)",
+      "pennylane-proxy.js: support PUT/DELETE/PATCH + gestion 204 No Content",
+      "pennylaneCustomersApi.js: callPennylaneWriteAPI + listCustomerInvoices/deleteDraftInvoice/updateDraftInvoice/deleteSubscription/createSubscription",
+      "docs/modop-facturation-variable.md + docs/modop-nettoyage-pennylane.md créés",
+      "Nettoyage PL 2025→2026: Op1 (40 brouillons supprimés), Op2 (72 prix brouillons mis à jour), Op3 (42 abos variables supprimés), Op4a (235 abos fixes supprimés)",
+      "exportRestructuration.js: split Import PL en 2 onglets par cabinet (Import PL AUP + Import PL ZF), trié par nom",
+      "Ajout exportRestructuration.test.js (24 tests): structure, split cabinet, format colonnes, données, dates, cas limites",
+      "Total tests: 504 → 528"
     ]
   }
 }

@@ -3,11 +3,12 @@
 /**
  * @file Export Excel de restructuration des abonnements Pennylane
  *
- * Génère un fichier Excel avec 4 onglets :
+ * Génère un fichier Excel avec 5 onglets :
  * 1. Résumé — Vue d'ensemble : nb clients, lignes fixes/variables, montants
- * 2. Abonnements FIXES — Import PL : nouvelles souscriptions avec prix 2026 (fixe uniquement)
- * 3. Produits à SUPPRIMER — Liste des lignes variables à retirer de PL
- * 4. Détail croisé — Vue complète par client : abonnements × lignes × décision
+ * 2. Import PL AUP — Abonnements fixes Audit Up avec prix 2026
+ * 3. Import PL ZF — Abonnements fixes Zerah Fiduciaire avec prix 2026
+ * 4. A SUPPRIMER — Liste des lignes variables à retirer de PL
+ * 5. Détail croisé — Vue complète par client : abonnements × lignes × décision
  *
  * Utilisé pour :
  * - Valider visuellement la restructuration avant exécution
@@ -243,100 +244,106 @@ function buildResumeSheet(wb, { stats, dateStr, singleClient, plans }) {
  * Même format que buildPennylaneSheets dans exportAugmentation.js.
  */
 function buildImportFixeSheet(wb, { plans }) {
-  const fixedHeaders = [
-    'Intervalle de frequence',
-    "Frequence d'abonnement",
-    'Mode de finalisation',
-    'Date de creation',
-    'Jour du mois de facturation',
-    'Nom',
-    'Identifiant du client',
-    'Conditions de paiement',
-    'Moyen de paiement'
-  ];
-
-  // Trouver le max de lignes fixes par abonnement
-  let maxLines = 0;
+  // Séparer les plans par cabinet → un onglet par cabinet
+  const cabinets = new Map();
   for (const plan of plans) {
-    for (const abo of plan.abonnements) {
-      if (abo.lignes_fixes.length > maxLines) maxLines = abo.lignes_fixes.length;
-    }
-  }
-  maxLines = Math.max(maxLines, 1); // Au moins 1
-
-  const lineHeaders = [];
-  for (let l = 1; l <= maxLines; l++) {
-    lineHeaders.push(`Ligne ${l} - Label`);
-    lineHeaders.push(`Ligne ${l} - Quantite`);
-    lineHeaders.push(`Ligne ${l} - TTC`);
-    lineHeaders.push(`Ligne ${l} - Taux TVA`);
-    lineHeaders.push(`Ligne ${l} - description`);
+    const cab = plan.cabinet || 'Autre';
+    if (!cabinets.has(cab)) cabinets.set(cab, []);
+    cabinets.get(cab).push(plan);
   }
 
-  const headers = [...fixedHeaders, ...lineHeaders];
-  const data = [];
+  for (const [cabinet, cabinetPlans] of cabinets) {
+    const shortName = cabinet === 'Audit Up' ? 'AUP' : cabinet === 'Zerah Fiduciaire' ? 'ZF' : cabinet;
 
-  // Trier les plans par nom client
-  const sortedPlans = [...plans].sort((a, b) => a.client_nom.localeCompare(b.client_nom, 'fr'));
+    const fixedHeaders = [
+      'Intervalle de frequence',
+      "Frequence d'abonnement",
+      'Mode de finalisation',
+      'Date de creation',
+      'Jour du mois de facturation',
+      'Nom',
+      'Identifiant du client',
+      'Conditions de paiement',
+      'Moyen de paiement'
+    ];
 
-  for (const plan of sortedPlans) {
-    for (const abo of plan.abonnements) {
-      // N'exporter que les abonnements qui ont au moins une ligne fixe
-      if (abo.lignes_fixes.length === 0) continue;
-
-      const dateCreation = formatDatePennylane(abo.date_debut);
-
-      const row = [
-        abo.intervalle || 1,
-        abo.frequence || 'monthly',
-        abo.mode_finalisation || 'awaiting_validation',
-        dateCreation,
-        abo.jour_facturation || 31,
-        plan.client_nom,
-        plan.pennylane_customer_id,
-        abo.conditions_paiement || 'upon_receipt',
-        abo.moyen_paiement || 'offline'
-      ];
-
-      // Lignes de produit FIXES avec prix 2026
-      for (let l = 0; l < maxLines; l++) {
-        if (l < abo.lignes_fixes.length) {
-          const ligne = abo.lignes_fixes[l];
-          const ttcUnitaire = Math.round(ligne.nouveau_pu_ht * 1.2 * 100) / 100;
-
-          row.push(ligne.label);
-          row.push(ligne.quantite);
-          row.push(ttcUnitaire);
-          row.push('FR_200');
-          row.push(ligne.description || '');
-        } else {
-          row.push('', '', '', '', '');
-        }
+    let maxLines = 0;
+    for (const plan of cabinetPlans) {
+      for (const abo of plan.abonnements) {
+        if (abo.lignes_fixes.length > maxLines) maxLines = abo.lignes_fixes.length;
       }
-
-      data.push(row);
     }
+    maxLines = Math.max(maxLines, 1);
+
+    const lineHeaders = [];
+    for (let l = 1; l <= maxLines; l++) {
+      lineHeaders.push(`Ligne ${l} - Label`);
+      lineHeaders.push(`Ligne ${l} - Quantite`);
+      lineHeaders.push(`Ligne ${l} - TTC`);
+      lineHeaders.push(`Ligne ${l} - Taux TVA`);
+      lineHeaders.push(`Ligne ${l} - description`);
+    }
+
+    const headers = [...fixedHeaders, ...lineHeaders];
+    const data = [];
+
+    const sortedPlans = [...cabinetPlans].sort((a, b) => a.client_nom.localeCompare(b.client_nom, 'fr'));
+
+    for (const plan of sortedPlans) {
+      for (const abo of plan.abonnements) {
+        if (abo.lignes_fixes.length === 0) continue;
+
+        const dateCreation = formatDatePennylane(abo.date_debut);
+
+        const row = [
+          abo.intervalle || 1,
+          abo.frequence || 'monthly',
+          abo.mode_finalisation || 'awaiting_validation',
+          dateCreation,
+          abo.jour_facturation || 31,
+          plan.client_nom,
+          plan.pennylane_customer_id,
+          abo.conditions_paiement || 'upon_receipt',
+          abo.moyen_paiement || 'offline'
+        ];
+
+        for (let l = 0; l < maxLines; l++) {
+          if (l < abo.lignes_fixes.length) {
+            const ligne = abo.lignes_fixes[l];
+            const ttcUnitaire = Math.round(ligne.nouveau_pu_ht * 1.2 * 100) / 100;
+
+            row.push(ligne.label);
+            row.push(ligne.quantite);
+            row.push(ttcUnitaire);
+            row.push('FR_200');
+            row.push(ligne.description || '');
+          } else {
+            row.push('', '', '', '', '');
+          }
+        }
+
+        data.push(row);
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+
+    const colWidths = [
+      { wch: 10 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 8 },
+      { wch: 30 }, { wch: 38 }, { wch: 16 }, { wch: 10 }
+    ];
+    for (let l = 0; l < maxLines; l++) {
+      colWidths.push({ wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 30 });
+    }
+    ws['!cols'] = colWidths;
+
+    for (let c = 0; c < headers.length; c++) {
+      const ref = `${colLetter(c)}1`;
+      if (ws[ref]) ws[ref].s = c < fixedHeaders.length ? styleHeader : styleHeaderGarder;
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, `Import PL ${shortName}`);
   }
-
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-
-  // Largeurs
-  const colWidths = [
-    { wch: 10 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 8 },
-    { wch: 30 }, { wch: 38 }, { wch: 16 }, { wch: 10 }
-  ];
-  for (let l = 0; l < maxLines; l++) {
-    colWidths.push({ wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 30 });
-  }
-  ws['!cols'] = colWidths;
-
-  // Styler le header
-  for (let c = 0; c < headers.length; c++) {
-    const ref = `${colLetter(c)}1`;
-    if (ws[ref]) ws[ref].s = c < fixedHeaders.length ? styleHeader : styleHeaderGarder;
-  }
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Import PL (FIXE)');
 }
 
 /**
