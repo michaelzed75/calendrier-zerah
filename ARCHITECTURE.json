@@ -895,8 +895,8 @@
         "coverage": "analyserClient HFC INVEST (séparation fixe/variable, totaux HT, décision inchangé/a_supprimer, prix 2026, action supprimer, axes variables, client sans abonnements, abonnement mixte a_modifier), calculerStatistiques (agrégation, par cabinet, tableau vide)"
       },
       "src/utils/honoraires/facturationVariable.test.js": {
-        "tests": "à compléter",
-        "coverage": "Tests du service de facturation variable et de l'export Excel Phase 3"
+        "tests": 59,
+        "coverage": "Export Excel PL brouillons (split cabinet AUP/ZF, nommage fichiers, période dans nom produit, format cellules strict: SIREN nombre, TVA 0.00%, date serial m/d/yy, colonnes E/L absentes, exclusion lignes manuelles, 12 headers, feuille Feuil1), serial dates Excel (jan/fév/mar/déc), formaterPeriodeFr 12 mois, BK BAGNEUX données référence (6 produits, 5 auto + 1 manuel, total HT 746.20), mapping colonne_silae, calcul PU TTC, normalisation labels, syncProduitsPennylane (import, vide, null)"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -907,7 +907,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 445
+    "total_tests": 504
   },
   "database_tables": {
     "collaborateurs": {
