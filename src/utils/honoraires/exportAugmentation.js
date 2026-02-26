@@ -53,7 +53,7 @@ const styleCellNum = {
   font: { name: 'Calibri', sz: 10 },
   border: allBorders,
   alignment: { horizontal: 'right', vertical: 'center' },
-  numFmt: '#,##0.00" \\u20ac"'
+  numFmt: '#,##0.00'
 };
 
 const styleCellPct = {
@@ -68,7 +68,7 @@ const styleTotal = {
   fill: { fgColor: { rgb: BLEU_FONCE } },
   border: allBorders,
   alignment: { horizontal: 'right', vertical: 'center' },
-  numFmt: '#,##0.00" \\u20ac"'
+  numFmt: '#,##0.00'
 };
 
 const styleTotalLabel = {
@@ -83,7 +83,7 @@ const styleSubtotal = {
   fill: { fgColor: { rgb: BLEU_CLAIR } },
   border: allBorders,
   alignment: { horizontal: 'right', vertical: 'center' },
-  numFmt: '#,##0.00" \\u20ac"'
+  numFmt: '#,##0.00'
 };
 
 const styleSubtotalLabel = {
@@ -97,7 +97,7 @@ const styleDeltaPositif = {
   font: { name: 'Calibri', sz: 10, color: { rgb: VERT } },
   border: allBorders,
   alignment: { horizontal: 'right', vertical: 'center' },
-  numFmt: '+#,##0.00" \\u20ac";-#,##0.00" \\u20ac"'
+  numFmt: '+#,##0.00;-#,##0.00'
 };
 
 const styleExclu = {
@@ -238,7 +238,7 @@ function buildResumeSheet(wb, { totaux, parametres, filterCabinet, dateStr }) {
   setCell(ws, `A${row}`, 'TOTAL GÉNÉRAL', styleTotalLabel);
   setCell(ws, `B${row}`, totaux.global.ancien, styleTotal);
   setCell(ws, `C${row}`, totaux.global.nouveau, styleTotal);
-  setCell(ws, `D${row}`, totaux.global.delta, { ...styleTotal, numFmt: '+#,##0.00" \\u20ac";-#,##0.00" \\u20ac"' });
+  setCell(ws, `D${row}`, totaux.global.delta, { ...styleTotal, numFmt: '+#,##0.00;-#,##0.00' });
   setCell(ws, `E${row}`, totaux.global.deltaPct, { ...styleTotal, numFmt: '0.00"%"' });
   setCell(ws, `F${row}`, `${totaux.global.nbClients} clients`, styleTotalLabel);
 
@@ -261,145 +261,144 @@ function buildResumeSheet(wb, { totaux, parametres, filterCabinet, dateStr }) {
 /**
  * Feuille Détail par client
  *
- * Les colonnes Montant actuel / Nouveau montant utilisent les montants Silae (production réelle)
- * quand disponibles, pour que la somme des lignes = sous-total client = total général.
- * Les sous-totaux et le total général utilisent des formules SUM Excel.
+ * Tableau plat : 1 ligne = 1 produit d'abonnement.
+ * Colonnes séparées : chaque donnée a sa propre colonne (nombre pur).
+ * Les montants sont des formules Excel (Qté × PU) pour permettre la vérification.
+ * Filtre automatique activé. Pas de sous-totaux.
  */
 function buildDetailSheet(wb, { resultats, dateStr }) {
   const ws = {};
+  const styleCellCenter = { ...styleCell, alignment: { horizontal: 'center', vertical: 'center' } };
+  const styleNum = { ...styleCell, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '#,##0.00' };
+  const styleDelta = { ...styleCell, font: { name: 'Calibri', sz: 10, color: { rgb: VERT } }, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '+#,##0.00;-#,##0.00' };
+  const stylePct = { ...styleCell, alignment: { horizontal: 'right', vertical: 'center' }, numFmt: '0.00%' };
+
+  // Colonnes :
+  // A  PL Sub ID
+  // B  Client
+  // C  Cabinet
+  // D  Statut                 ← in_progress / not_started (filtrable)
+  // E  Exclu
+  // F  Axe
+  // G  Produit
+  // H  Fréquence
+  // I  Intervalle
+  // J  Quantité               ← la quantité effective (Silae si dispo, sinon PL)
+  // K  Coeff annuel
+  // L  PU actuel HT           ← prix unitaire seul
+  // M  PU nouveau HT          ← prix unitaire seul
+  // N  Mt actuel HT           ← formule = J × L (Qté × PU actuel)
+  // O  Mt nouveau HT          ← formule = J × M (Qté × PU nouveau)
+  // P  Delta HT               ← formule = O - N
+  // Q  Delta %                 ← formule = P / N
+  // R  Mt annuel actuel        ← formule = N × K (× coeff annuel)
+  // S  Mt annuel nouveau       ← formule = O × K
+  // T  Delta annuel            ← formule = S - R
 
   const headers = [
-    'PL Sub ID', 'Client', 'Cabinet', 'Axe', 'Produit',
-    'Qté PL', 'Qté Silae', 'Coeff.',
-    'Prix unit. actuel HT', 'Nouveau prix unit. HT',
-    'Mt actuel HT', 'Nouveau mt HT', 'Delta', 'Delta %',
-    'Mt annuel avant', 'Mt annuel après', 'Delta annuel'
+    'PL Sub ID', 'Client', 'Cabinet', 'Statut', 'Exclu', 'Axe', 'Produit',
+    'Fréquence', 'Intervalle',
+    'Quantité', 'Coeff annuel',
+    'PU actuel HT', 'PU nouveau HT',
+    'Mt actuel HT', 'Mt nouveau HT', 'Delta HT', 'Delta %',
+    'Mt annuel actuel', 'Mt annuel nouveau', 'Delta annuel'
   ];
   const nbCols = headers.length;
 
-  // Colonnes avec formules de somme (index 0-based)
-  // O=14 Mt annuel avant, P=15 Mt annuel après, Q=16 Delta annuel
-  const COL_ANNUEL_AVANT = 14;  // O
-  const COL_ANNUEL_APRES = 15;  // P
-  const COL_DELTA_ANNUEL = 16;  // Q
-
-  // Row 1 = header
   for (let c = 0; c < nbCols; c++) {
     setCell(ws, `${colLetter(c)}1`, headers[c], styleHeader);
   }
 
-  let row = 2; // Ligne Excel courante (1-indexed, commence après le header)
-  let clientFirstRow = 0; // Première ligne de données du client en cours
-  const subtotalRows = []; // Lignes des sous-totaux (pour le total général)
+  let row = 2;
 
   for (const client of resultats) {
     const clientLines = client.lignes.filter(l => l.axe);
     if (clientLines.length === 0) continue;
 
-    clientFirstRow = row;
-
     for (const ligne of clientLines) {
       const coeff = ligne.coeff_annualisation || getCoeffAnnualisation(ligne.frequence, ligne.intervalle);
-
-      // Montants cohérents : si Silae dispo, utiliser les montants basés sur qté Silae
       const hasSilae = ligne.montant_silae !== null && ligne.montant_silae !== undefined;
-      const ancienMontant = hasSilae
-        ? Math.round(ligne.ancien_prix_unitaire_ht * ligne.quantite_silae * 100) / 100
-        : ligne.ancien_montant_ht;
-      const nouveauMontant = hasSilae
-        ? ligne.montant_silae
-        : ligne.nouveau_montant_ht;
-      const delta = hasSilae
-        ? ligne.delta_silae
-        : ligne.delta_ht;
-      const deltaPct = ancienMontant > 0
-        ? Math.round(((nouveauMontant - ancienMontant) / ancienMontant) * 10000) / 100
-        : 0;
+      const qte = hasSilae ? ligne.quantite_silae : (ligne.quantite || 1);
 
-      // Colonnes A..N : données directes
+      // A..G : texte
       setCell(ws, `A${row}`, ligne.pennylane_subscription_id || '', styleCell);
       setCell(ws, `B${row}`, client.client_nom, styleCell);
       setCell(ws, `C${row}`, client.client_cabinet, styleCell);
-      setCell(ws, `D${row}`, AXE_DEFINITIONS[ligne.axe]?.label || ligne.axe || '', styleCell);
-      setCell(ws, `E${row}`, ligne.description ? `${ligne.label} — ${ligne.description}` : ligne.label, styleCell);
-      setCell(ws, `F${row}`, ligne.quantite, { ...styleCell, alignment: { horizontal: 'center', vertical: 'center' } });
-      setCell(ws, `G${row}`, hasSilae ? ligne.quantite_silae : '', { ...styleCell, alignment: { horizontal: 'center', vertical: 'center' } });
-      setCell(ws, `H${row}`, coeff, { ...styleCell, alignment: { horizontal: 'center', vertical: 'center' } });
-      setCell(ws, `I${row}`, ligne.ancien_prix_unitaire_ht, styleCellNum);
-      setCell(ws, `J${row}`, ligne.nouveau_prix_unitaire_ht, styleCellNum);
-      setCell(ws, `K${row}`, ancienMontant, styleCellNum);
-      setCell(ws, `L${row}`, nouveauMontant, styleCellNum);
-      setCell(ws, `M${row}`, delta, styleDeltaPositif);
-      setCell(ws, `N${row}`, deltaPct, styleCellPct);
+      setCell(ws, `D${row}`, ligne.status || '', styleCellCenter);
+      setCell(ws, `E${row}`, client.exclu ? 'oui' : 'non', styleCellCenter);
+      setCell(ws, `F${row}`, AXE_DEFINITIONS[ligne.axe]?.label || ligne.axe || '', styleCell);
+      setCell(ws, `G${row}`, ligne.description ? `${ligne.label} — ${ligne.description}` : ligne.label, styleCell);
 
-      // Colonnes O, P, Q : formules = montant × coeff
-      setFormula(ws, `O${row}`, `K${row}*H${row}`, styleCellNum);
-      setFormula(ws, `P${row}`, `L${row}*H${row}`, styleCellNum);
-      setFormula(ws, `Q${row}`, `M${row}*H${row}`, styleDeltaPositif);
+      // H, I : fréquence / intervalle
+      setCell(ws, `H${row}`, ligne.frequence || 'monthly', styleCellCenter);
+      setCell(ws, `I${row}`, ligne.intervalle || 1, styleCellCenter);
+
+      // J : Quantité (nombre pur)
+      setCell(ws, `J${row}`, qte, styleCellCenter);
+
+      // K : Coeff annuel (nombre pur)
+      setCell(ws, `K${row}`, coeff, styleCellCenter);
+
+      // L : PU actuel HT (nombre pur)
+      setCell(ws, `L${row}`, ligne.ancien_prix_unitaire_ht || 0, styleNum);
+
+      // M : PU nouveau HT (nombre pur)
+      setCell(ws, `M${row}`, ligne.nouveau_prix_unitaire_ht || 0, styleNum);
+
+      // N : Mt actuel HT = Qté × PU actuel (formule)
+      setFormula(ws, `N${row}`, `J${row}*L${row}`, styleNum);
+
+      // O : Mt nouveau HT = Qté × PU nouveau (formule)
+      setFormula(ws, `O${row}`, `J${row}*M${row}`, styleNum);
+
+      // P : Delta HT = Mt nouveau - Mt actuel (formule)
+      setFormula(ws, `P${row}`, `O${row}-N${row}`, styleDelta);
+
+      // Q : Delta % = Delta / Mt actuel (formule)
+      setFormula(ws, `Q${row}`, `IF(N${row}=0,0,P${row}/N${row})`, stylePct);
+
+      // R : Mt annuel actuel = Mt actuel × Coeff (formule)
+      setFormula(ws, `R${row}`, `N${row}*K${row}`, styleNum);
+
+      // S : Mt annuel nouveau = Mt nouveau × Coeff (formule)
+      setFormula(ws, `S${row}`, `O${row}*K${row}`, styleNum);
+
+      // T : Delta annuel = S - R (formule)
+      setFormula(ws, `T${row}`, `S${row}-R${row}`, styleDelta);
 
       row++;
     }
-
-    // Sous-total client : formules SUM sur les lignes du client
-    const firstR = clientFirstRow;
-    const lastR = row - 1;
-
-    for (let c = 0; c < nbCols; c++) {
-      setCell(ws, `${colLetter(c)}${row}`, '', styleSubtotal);
-    }
-    setCell(ws, `B${row}`, `SOUS-TOTAL ${client.client_nom}`, styleSubtotalLabel);
-    if (client.exclu) setCell(ws, `C${row}`, 'EXCLU', styleSubtotalLabel);
-
-    // Formules SUM pour les 3 colonnes annuelles
-    setFormula(ws, `O${row}`, `SUM(O${firstR}:O${lastR})`, styleSubtotal);
-    setFormula(ws, `P${row}`, `SUM(P${firstR}:P${lastR})`, styleSubtotal);
-    setFormula(ws, `Q${row}`, `SUM(Q${firstR}:Q${lastR})`, styleSubtotal);
-
-    subtotalRows.push(row);
-    row++;
   }
 
-  // === TOTAL GÉNÉRAL : somme des sous-totaux ===
-  if (subtotalRows.length > 0) {
-    row++; // Ligne vide
+  const lastRow = row - 1;
 
-    for (let c = 0; c < nbCols; c++) {
-      setCell(ws, `${colLetter(c)}${row}`, '', styleTotal);
-    }
-    setCell(ws, `B${row}`, 'TOTAL GÉNÉRAL', styleTotalLabel);
+  ws['!ref'] = `A1:${colLetter(nbCols - 1)}${lastRow}`;
+  ws['!autofilter'] = { ref: `A1:${colLetter(nbCols - 1)}${lastRow}` };
 
-    // Formule : somme des cellules sous-totaux (références non contiguës)
-    const sumRefs = (col) => subtotalRows.map(r => `${col}${r}`).join('+');
-    setFormula(ws, `O${row}`, sumRefs('O'), styleTotal);
-    setFormula(ws, `P${row}`, sumRefs('P'), styleTotal);
-    setFormula(ws, `Q${row}`, `P${row}-O${row}`, { ...styleTotal, numFmt: '+#,##0.00" \\u20ac";-#,##0.00" \\u20ac"' });
-
-    row++;
-  }
-
-  // Dimensions
-  ws['!ref'] = `A1:${colLetter(nbCols - 1)}${row}`;
-
-  // Largeurs colonnes
   ws['!cols'] = [
     { wch: 12 }, // A - PL Sub ID
     { wch: 30 }, // B - Client
     { wch: 18 }, // C - Cabinet
-    { wch: 18 }, // D - Axe
-    { wch: 35 }, // E - Produit
-    { wch: 7 },  // F - Qté PL
-    { wch: 9 },  // G - Qté Silae
-    { wch: 6 },  // H - Coeff
-    { wch: 16 }, // I - Prix unit actuel
-    { wch: 16 }, // J - Nouveau prix unit
-    { wch: 14 }, // K - Montant actuel
-    { wch: 14 }, // L - Nouveau montant
-    { wch: 12 }, // M - Delta
-    { wch: 8 },  // N - Delta %
-    { wch: 14 }, // O - Mt annuel avant
-    { wch: 14 }, // P - Mt annuel après
-    { wch: 14 }  // Q - Delta annuel
+    { wch: 13 }, // D - Statut
+    { wch: 6 },  // E - Exclu
+    { wch: 20 }, // F - Axe
+    { wch: 40 }, // G - Produit
+    { wch: 10 }, // H - Fréquence
+    { wch: 9 },  // I - Intervalle
+    { wch: 9 },  // J - Quantité
+    { wch: 10 }, // K - Coeff annuel
+    { wch: 14 }, // L - PU actuel HT
+    { wch: 14 }, // M - PU nouveau HT
+    { wch: 14 }, // N - Mt actuel HT
+    { wch: 14 }, // O - Mt nouveau HT
+    { wch: 12 }, // P - Delta HT
+    { wch: 9 },  // Q - Delta %
+    { wch: 16 }, // R - Mt annuel actuel
+    { wch: 16 }, // S - Mt annuel nouveau
+    { wch: 14 }  // T - Delta annuel
   ];
+
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
   XLSX.utils.book_append_sheet(wb, ws, 'Détail par client');
 }

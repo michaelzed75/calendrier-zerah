@@ -104,17 +104,31 @@ describe('classifierLigne', () => {
     expect(classifierLigne(ligne('Mission du social', 'social'), 'forfait')).toBe('social_forfait');
   });
 
-  // Social au bulletin
+  // Social au bulletin — détection par label (contient "bulletin")
   it('classifie "Etablissement du bulletin de salaire" avec quantité > 1 en social_bulletin', () => {
     expect(classifierLigne(ligne('Etablissement du bulletin de salaire', 'social', 5), 'forfait')).toBe('social_bulletin');
   });
 
-  it('classifie "Etablissement du bulletin de salaire" avec quantité = 1 en social_forfait (pas au bulletin)', () => {
-    expect(classifierLigne(ligne('Etablissement du bulletin de salaire', 'social', 1), 'forfait')).toBe('social_forfait');
+  it('classifie "Etablissement du bulletin de salaire" avec quantité = 1 en social_bulletin (label contient "bulletin")', () => {
+    // Fix: avant, qty=1 + mode forfait → social_forfait (FAUX).
+    // Maintenant, le label "bulletin" suffit → social_bulletin (CORRECT).
+    expect(classifierLigne(ligne('Etablissement du bulletin de salaire', 'social', 1), 'forfait')).toBe('social_bulletin');
   });
 
   it('classifie bulletin avec mode reel même si quantité = 1', () => {
+    // Le label "bulletin" suffit, indépendamment du mode client
     expect(classifierLigne(ligne('Etablissement du bulletin de salaire', 'social', 1), 'reel')).toBe('social_bulletin');
+  });
+
+  // Social au bulletin — détection par prix unitaire
+  it('classifie une ligne social sans mot-clé avec prix < 30€ en social_bulletin', () => {
+    const l = { label: 'Paie mensuelle', famille: 'social', quantite: 1, montant_ht: 15.40 };
+    expect(classifierLigne(l, 'forfait')).toBe('social_bulletin');
+  });
+
+  // Social forfait — détection par label
+  it('classifie "Forfait social" en social_forfait', () => {
+    expect(classifierLigne(ligne('Forfait social', 'social', 1), 'forfait')).toBe('social_forfait');
   });
 
   // Juridique
@@ -190,10 +204,32 @@ describe('detectModeFacturationSocial', () => {
     expect(detectModeFacturationSocial(lignes)).toBe('forfait');
   });
 
-  it('détecte "forfait" quand pas de bulletin à quantité > 1', () => {
+  it('détecte "reel" quand un label contient "bulletin" même avec quantité = 1', () => {
+    // Fix: avant, qty=1 + prix ≥ 30€ → forfait (FAUX car le label dit "bulletin").
+    // Maintenant, le label "bulletin" suffit → reel (CORRECT).
     const lignes = [
       { label: 'Mission du social', famille: 'social', quantite: 1, montant_ht: 450 },
       { label: 'Etablissement du bulletin de salaire', famille: 'social', quantite: 1, montant_ht: 450 }
+    ];
+    expect(detectModeFacturationSocial(lignes)).toBe('reel');
+  });
+
+  it('détecte "reel" même si le client a aussi des lignes forfait (client mixte)', () => {
+    // Un client peut avoir "Mission du social" (forfait) ET "bulletin de salaire" (bulletin)
+    // Le mode client est "reel" dès qu'il y a au moins une ligne bulletin
+    // Mais IMPORTANT: la classification de chaque LIGNE est indépendante du mode client
+    const lignes = [
+      { label: 'Mission du social', famille: 'social', quantite: 1, montant_ht: 525 },
+      { label: 'Etablissement du bulletin de salaire', famille: 'social', quantite: 10, montant_ht: 154 }
+    ];
+    expect(detectModeFacturationSocial(lignes)).toBe('reel');
+  });
+
+  it('exclut les accessoires de la détection du mode', () => {
+    // Les accessoires (coffre-fort, publi-postage) ne comptent pas pour le mode
+    const lignes = [
+      { label: 'Dépôt coffre-fort numérique', famille: 'social', quantite: 1, montant_ht: 5 },
+      { label: 'Mission du social', famille: 'social', quantite: 1, montant_ht: 450 }
     ];
     expect(detectModeFacturationSocial(lignes)).toBe('forfait');
   });
@@ -323,6 +359,32 @@ describe('classifierToutesLesLignes', () => {
     const socialLines = lignes.filter(l => l.axe === 'social_forfait');
     expect(comptaLines).toHaveLength(2); // Hôtel 1200€ + Restaurant 465€
     expect(socialLines).toHaveLength(2); // Hôtel 335€ + Restaurant 600€
+  });
+
+  it('classifie correctement un client mixte forfait + bulletin (FIX du bug CA HT)', () => {
+    // Cas réel : un client a "Mission du social" (forfait 525€) ET "bulletin de salaire" (15€ × 10)
+    // AVANT le fix : detectModeFacturationSocial → 'reel', puis TOUTES les lignes → social_bulletin
+    // → La ligne 525€ était multipliée par quantité Silae → CA HT gonflé
+    // APRÈS le fix : chaque ligne est classée sur son PROPRE label
+    const honoraires = [{
+      id: 1, pennylane_subscription_id: 100, client_id: 1,
+      clients: { nom: 'Client Mixte', cabinet: 'Zerah', mode_facturation_social: null },
+      status: 'in_progress', frequence: 'monthly', intervalle: 3,
+      abonnements_lignes: [
+        { id: 10, label: 'Mission du social', famille: 'social', quantite: 1, montant_ht: 525, montant_ttc: 630 },
+        { id: 11, label: 'Etablissement du bulletin de salaire', famille: 'social', quantite: 10, montant_ht: 154, montant_ttc: 184.80 }
+      ]
+    }];
+
+    const { lignes } = classifierToutesLesLignes(honoraires, clients);
+
+    expect(lignes).toHaveLength(2);
+    // "Mission du social" → social_forfait (PAS social_bulletin !)
+    const forfaitLine = lignes.find(l => l.label === 'Mission du social');
+    expect(forfaitLine.axe).toBe('social_forfait');
+    // "Etablissement du bulletin" → social_bulletin
+    const bulletinLine = lignes.find(l => l.label === 'Etablissement du bulletin de salaire');
+    expect(bulletinLine.axe).toBe('social_bulletin');
   });
 
   it('garde plusieurs lignes pour les axes non-uniques (accessoires_social)', () => {

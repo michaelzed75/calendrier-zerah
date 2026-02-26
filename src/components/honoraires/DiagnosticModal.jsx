@@ -48,6 +48,13 @@ const SECTIONS = [
     icon: HelpCircle,
     severityColor: 'yellow',
     emptyText: 'Toutes les lignes sont classifiées'
+  },
+  {
+    key: 'suspiciousBulletinPrices',
+    label: 'Prix social suspects (bulletin ↔ forfait)',
+    icon: Activity,
+    severityColor: 'orange',
+    emptyText: 'Aucun prix suspect détecté'
   }
 ];
 

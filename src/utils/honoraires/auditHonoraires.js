@@ -4,12 +4,15 @@
  * @file Audit des abonnements honoraires
  * Vérifie la cohérence des données abonnements après nettoyage des doublons clients.
  *
- * 4 vérifications :
+ * 5 vérifications :
  * 1. Abonnements orphelins (client_id inexistant ou inactif)
  * 2. Clients actifs sans abonnement
  * 3. Cohérence CA (total HT entre 2M et 2.5M€)
  * 4. Matching complet (abonnements sans client local)
+ * 5. Prix social suspects (bulletin ↔ forfait : prix incohérent avec la classification)
  */
+
+import { classifierLigne, detectModeFacturationSocial } from './classificationAxes.js';
 
 /**
  * @typedef {Object} AuditResult
@@ -42,11 +45,12 @@
  * @returns {Promise<AuditResult>}
  */
 export async function auditAbonnements(supabase) {
-  const [orphelins, clientsSansAbo, coherenceCA, matching] = await Promise.all([
+  const [orphelins, clientsSansAbo, coherenceCA, matching, prixSuspects] = await Promise.all([
     checkOrphelins(supabase),
     checkClientsSansAbonnement(supabase),
     checkCoherenceCA(supabase),
-    checkMatching(supabase)
+    checkMatching(supabase),
+    checkSuspiciousSocialPrices(supabase)
   ]);
 
   return {
@@ -54,6 +58,7 @@ export async function auditAbonnements(supabase) {
     clientsSansAbo,
     coherenceCA,
     matching,
+    prixSuspects,
     timestamp: new Date().toISOString()
   };
 }
@@ -308,5 +313,159 @@ async function checkMatching(supabase) {
     clientsAvecAbo: clientIds.size,
     clientsInactifsAvecAbo,
     doublonsSubscriptionId
+  };
+}
+
+/**
+ * 5. Vérifie les prix social suspects (bulletin ↔ forfait)
+ * Détecte les incohérences entre la classification et le prix unitaire :
+ * - Bulletin > 30€ → probable forfait classé en bulletin
+ * - Bulletin < 1€ → erreur probable (quantité/montant inversés)
+ * - Forfait < 30€ → probable bulletin classé en forfait
+ * @param {Object} supabase
+ */
+async function checkSuspiciousSocialPrices(supabase) {
+  // Récupérer les abonnements actifs avec leurs lignes
+  const { data: abonnements, error } = await supabase
+    .from('abonnements')
+    .select(`
+      id, client_id, pennylane_subscription_id, label, status, frequence, intervalle,
+      clients(id, nom, cabinet, mode_facturation_social),
+      abonnements_lignes(id, label, famille, quantite, montant_ht, montant_ttc, description)
+    `)
+    .in('status', ['in_progress', 'not_started']);
+
+  if (error) throw new Error(`Erreur récupération abonnements: ${error.message}`);
+
+  const alertes = [];
+
+  // Regrouper les lignes par client pour détecter le mode social
+  const lignesParClient = new Map();
+  for (const abo of abonnements || []) {
+    const cid = abo.client_id;
+    if (!lignesParClient.has(cid)) lignesParClient.set(cid, []);
+    for (const ligne of (abo.abonnements_lignes || [])) {
+      lignesParClient.get(cid).push(ligne);
+    }
+  }
+
+  const clientModes = new Map();
+  for (const [clientId, lignes] of lignesParClient) {
+    clientModes.set(clientId, detectModeFacturationSocial(lignes));
+  }
+
+  // Classifier chaque ligne et vérifier les prix
+  for (const abo of abonnements || []) {
+    const modeSocial = clientModes.get(abo.client_id) || 'forfait';
+    const clientNom = abo.clients?.nom || abo.label || '';
+    const clientCabinet = abo.clients?.cabinet || '-';
+
+    for (const ligne of (abo.abonnements_lignes || [])) {
+      const axe = classifierLigne(ligne, modeSocial);
+      if (axe !== 'social_bulletin' && axe !== 'social_forfait') continue;
+
+      const quantite = ligne.quantite || 1;
+      const montantHt = ligne.montant_ht || 0;
+      const prixUnitaire = quantite > 0 ? montantHt / quantite : montantHt;
+
+      if (axe === 'social_bulletin') {
+        if (prixUnitaire > 0 && prixUnitaire < 1) {
+          alertes.push({
+            severity: 'warning',
+            client_id: abo.client_id,
+            client_nom: clientNom,
+            client_cabinet: clientCabinet,
+            axe,
+            label: ligne.label,
+            quantite,
+            montant_ht: montantHt,
+            prix_unitaire: prixUnitaire,
+            message: `Prix bulletin anormalement bas (${prixUnitaire.toFixed(2)}€) — vérifier quantité/montant`
+          });
+        } else if (prixUnitaire > 30) {
+          alertes.push({
+            severity: 'error',
+            client_id: abo.client_id,
+            client_nom: clientNom,
+            client_cabinet: clientCabinet,
+            axe,
+            label: ligne.label,
+            quantite,
+            montant_ht: montantHt,
+            prix_unitaire: prixUnitaire,
+            message: `Prix bulletin élevé (${prixUnitaire.toFixed(2)}€ > 30€) — probable forfait classé en bulletin`
+          });
+        }
+      }
+
+      if (axe === 'social_forfait') {
+        if (prixUnitaire > 0 && prixUnitaire < 30) {
+          alertes.push({
+            severity: 'warning',
+            client_id: abo.client_id,
+            client_nom: clientNom,
+            client_cabinet: clientCabinet,
+            axe,
+            label: ligne.label,
+            quantite,
+            montant_ht: montantHt,
+            prix_unitaire: prixUnitaire,
+            message: `Prix forfait social bas (${prixUnitaire.toFixed(2)}€ < 30€) — probable bulletin classé en forfait`
+          });
+        }
+      }
+    }
+  }
+
+  // Détecter les clients mixtes (forfait + bulletin sur le même client)
+  // Un client ne devrait normalement avoir qu'un seul mode social
+  const clientAxes = new Map(); // client_id → Set<axe>
+  for (const abo of abonnements || []) {
+    const modeSocial = clientModes.get(abo.client_id) || 'forfait';
+    for (const ligne of (abo.abonnements_lignes || [])) {
+      const axe = classifierLigne(ligne, modeSocial);
+      if (axe !== 'social_bulletin' && axe !== 'social_forfait') continue;
+      if (!clientAxes.has(abo.client_id)) {
+        clientAxes.set(abo.client_id, {
+          axes: new Set(),
+          nom: abo.clients?.nom || abo.label || '',
+          cabinet: abo.clients?.cabinet || '-',
+          lignes: []
+        });
+      }
+      const info = clientAxes.get(abo.client_id);
+      info.axes.add(axe);
+      info.lignes.push({ label: ligne.label, montant_ht: ligne.montant_ht || 0, axe });
+    }
+  }
+
+  for (const [clientId, info] of clientAxes) {
+    if (info.axes.has('social_forfait') && info.axes.has('social_bulletin')) {
+      const forfaitLines = info.lignes.filter(l => l.axe === 'social_forfait');
+      const bulletinLines = info.lignes.filter(l => l.axe === 'social_bulletin');
+      const detail = [
+        ...forfaitLines.map(l => `Forfait: "${l.label}" ${l.montant_ht.toFixed(2)}€`),
+        ...bulletinLines.map(l => `Bulletin: "${l.label}" ${l.montant_ht.toFixed(2)}€`)
+      ].join(' + ');
+      alertes.push({
+        severity: 'warning',
+        client_id: clientId,
+        client_nom: info.nom,
+        client_cabinet: info.cabinet,
+        axe: 'mixte',
+        label: 'Client mixte forfait + bulletin',
+        quantite: null,
+        montant_ht: null,
+        prix_unitaire: null,
+        message: `Client mixte forfait + bulletin — vérifier la cohérence : ${detail}`
+      });
+    }
+  }
+
+  return {
+    count: alertes.length,
+    errors: alertes.filter(a => a.severity === 'error').length,
+    warnings: alertes.filter(a => a.severity === 'warning').length,
+    details: alertes
   };
 }

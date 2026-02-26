@@ -73,3 +73,12 @@ export { auditAbonnements } from './auditHonoraires.js';
 
 // Réconciliation
 export { reconcilierDonnees } from './reconciliation.js';
+
+// Tarifs de référence
+export {
+  sauvegarderTarifsReference,
+  chargerTarifsReference,
+  getDatesEffetDisponibles,
+  chargerProduitsPennylane,
+  supprimerTarifsReference
+} from './tarifsReferenceService.js';

@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, previewSync, commitSync, reconcilierDonnees } from '../../utils/honoraires';
@@ -534,6 +534,205 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     XLSX.writeFile(wb, `clients_sans_abonnement_${date}.xlsx`);
   };
 
+  /**
+   * Export Excel complet de la vue par client (tous les clients avec détails)
+   */
+  const handleExportVueClient = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Onglet 1 : Résumé par client
+    const resumeData = honorairesParClient.map(c => ({
+      'Client': c.client_nom,
+      'Cabinet': c.client_cabinet,
+      'Nb Abon.': c.abonnements.length,
+      'Compta HT': Math.round((c.totaux_par_famille?.comptabilite || 0) * 100) / 100,
+      'Social HT': Math.round((c.totaux_par_famille?.social || 0) * 100) / 100,
+      'Juridique HT': Math.round((c.totaux_par_famille?.juridique || 0) * 100) / 100,
+      'Support HT': Math.round((c.totaux_par_famille?.support || 0) * 100) / 100,
+      'Total HT': Math.round((c.total_ht || 0) * 100) / 100,
+      'Total TTC': Math.round((c.total_ttc || 0) * 100) / 100,
+      'Mensuel HT': Math.round((c.total_mensuel_ht || 0) * 100) / 100
+    }));
+    // Ligne de total
+    resumeData.push({
+      'Client': 'TOTAL',
+      'Cabinet': '',
+      'Nb Abon.': honorairesParClient.reduce((s, c) => s + c.abonnements.length, 0),
+      'Compta HT': Math.round(totaux.comptabilite * 100) / 100,
+      'Social HT': Math.round(totaux.social * 100) / 100,
+      'Juridique HT': Math.round(totaux.juridique * 100) / 100,
+      'Support HT': Math.round(totaux.support * 100) / 100,
+      'Total HT': Math.round(totaux.total_ht * 100) / 100,
+      'Total TTC': '',
+      'Mensuel HT': Math.round(totaux.total_mensuel * 100) / 100
+    });
+
+    const wsResume = XLSX.utils.json_to_sheet(resumeData);
+    wsResume['!cols'] = [
+      { wch: 35 }, { wch: 18 }, { wch: 8 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsResume, 'Résumé par client');
+
+    // Onglet 2 : Détail des lignes
+    const lignesData = [];
+    for (const c of honorairesParClient) {
+      for (const abo of c.abonnements) {
+        for (const ligne of (abo.abonnements_lignes || [])) {
+          lignesData.push({
+            'Client': c.client_nom,
+            'Cabinet': c.client_cabinet,
+            'Abonnement': abo.label || '-',
+            'Statut': abo.status,
+            'Fréquence': abo.frequence === 'yearly' ? 'Annuel' : `${abo.intervalle || 1}m`,
+            'Produit': ligne.label,
+            'Famille': ligne.famille || '-',
+            'Quantité': ligne.quantite || 1,
+            'Montant HT': Math.round((ligne.montant_ht || 0) * 100) / 100,
+            'Montant TTC': Math.round((ligne.montant_ttc || 0) * 100) / 100,
+            'TVA': ligne.taux_tva || '20%'
+          });
+        }
+      }
+    }
+    const wsLignes = XLSX.utils.json_to_sheet(lignesData);
+    wsLignes['!cols'] = [
+      { wch: 35 }, { wch: 18 }, { wch: 20 }, { wch: 12 }, { wch: 10 },
+      { wch: 40 }, { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 8 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsLignes, 'Détail lignes');
+
+    const date = new Date().toISOString().split('T')[0];
+    const suffix = filterCabinet !== 'tous' ? `_${filterCabinet.replace(/\s+/g, '_')}` : '';
+    XLSX.writeFile(wb, `honoraires_vue_client${suffix}_${date}.xlsx`);
+  };
+
+  /**
+   * Export Excel du rapport d'audit
+   */
+  const handleExportAudit = () => {
+    if (!auditResult) return;
+    const wb = XLSX.utils.book_new();
+
+    // Onglet 1 : Cohérence CA
+    const caData = [{
+      'CA Annualisé HT': auditResult.coherenceCA?.caAnnualise || 0,
+      'Total HT': auditResult.coherenceCA?.totalHT || 0,
+      'Mensuel HT': auditResult.coherenceCA?.totalMensuelHT || 0,
+      'Nb Abonnements actifs': auditResult.coherenceCA?.nbAbonnements || 0,
+      'Nb Abonnements arrêtés': auditResult.coherenceCA?.nbAbonnementsStopped || 0,
+      'Nb Clients': auditResult.coherenceCA?.nbClients || 0
+    }];
+    const wsCa = XLSX.utils.json_to_sheet(caData);
+    XLSX.utils.book_append_sheet(wb, wsCa, 'Cohérence CA');
+
+    // Onglet 2 : Orphelins
+    if (auditResult.orphelins?.details?.length > 0) {
+      const orphData = auditResult.orphelins.details.map(o => ({
+        'Abonnement ID': o.abonnement_id,
+        'Label': o.label,
+        'Client ID': o.client_id,
+        'Statut': o.status,
+        'Total HT': o.total_ht
+      }));
+      const wsOrph = XLSX.utils.json_to_sheet(orphData);
+      XLSX.utils.book_append_sheet(wb, wsOrph, 'Orphelins');
+    }
+
+    // Onglet 3 : Clients sans abo
+    if (auditResult.clientsSansAbo?.details?.length > 0) {
+      const sansData = auditResult.clientsSansAbo.details.map(d => ({
+        'Nom': d.nom,
+        'Cabinet': d.cabinet,
+        'SIREN': d.siren || '-',
+        'Statut': d.statut
+      }));
+      const wsSans = XLSX.utils.json_to_sheet(sansData);
+      XLSX.utils.book_append_sheet(wb, wsSans, 'Clients sans abo');
+    }
+
+    // Onglet 4 : Clients inactifs avec abo
+    if (auditResult.matching?.clientsInactifsAvecAbo?.length > 0) {
+      const inactifsData = auditResult.matching.clientsInactifsAvecAbo.map(d => ({
+        'Client': d.client_nom,
+        'Cabinet': d.client_cabinet,
+        'Label Abo': d.label,
+        'Statut Abo': d.status
+      }));
+      const wsInactifs = XLSX.utils.json_to_sheet(inactifsData);
+      XLSX.utils.book_append_sheet(wb, wsInactifs, 'Inactifs avec abo');
+    }
+
+    // Onglet 5 : Prix social suspects
+    if (auditResult.prixSuspects?.details?.length > 0) {
+      const prixData = auditResult.prixSuspects.details.map(d => ({
+        'Sévérité': d.severity === 'error' ? 'ERREUR' : 'Avertissement',
+        'Client': d.client_nom,
+        'Cabinet': d.client_cabinet,
+        'Ligne': d.label,
+        'Axe': d.axe,
+        'Quantité': d.quantite,
+        'Montant HT': d.montant_ht,
+        'Prix Unitaire': d.prix_unitaire,
+        'Message': d.message
+      }));
+      const wsPrix = XLSX.utils.json_to_sheet(prixData);
+      XLSX.utils.book_append_sheet(wb, wsPrix, 'Prix suspects');
+    }
+
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `audit_honoraires_${date}.xlsx`);
+  };
+
+  /**
+   * Export Excel de la réconciliation PL ↔ DB
+   */
+  const handleExportReconciliation = (data) => {
+    if (!data || data.length === 0) return;
+    const wb = XLSX.utils.book_new();
+
+    const statutLabels = { iso: 'ISO', ecart: 'Écart', pl_only: 'PL seul', db_only: 'DB seul', no_sub: 'Sans abo' };
+    const exportData = data.map(r => ({
+      'Statut': statutLabels[r.statut] || r.statut,
+      'Client (DB)': r.clientNom,
+      'SIREN': r.clientSiren || '-',
+      'Customer (PL)': r.customerPLName,
+      'Cabinet': r.cabinet || '-',
+      'HT DB': Math.round((r.totalHTDB || 0) * 100) / 100,
+      'HT PL': Math.round((r.totalHTPL || 0) * 100) / 100,
+      'Écart HT': Math.round((r.ecartHT || 0) * 100) / 100,
+      'Écart %': r.totalHTPL > 0 ? Math.round(((r.ecartHT || 0) / r.totalHTPL) * 10000) / 100 : 0,
+      'Match': r.matchType || '-'
+    }));
+
+    // Ligne de total
+    const totalPL = data.reduce((s, r) => s + (r.totalHTPL || 0), 0);
+    const totalDB = data.reduce((s, r) => s + (r.totalHTDB || 0), 0);
+    exportData.push({
+      'Statut': 'TOTAL',
+      'Client (DB)': `${data.length} lignes`,
+      'SIREN': '',
+      'Customer (PL)': '',
+      'Cabinet': '',
+      'HT DB': Math.round(totalDB * 100) / 100,
+      'HT PL': Math.round(totalPL * 100) / 100,
+      'Écart HT': Math.round((totalDB - totalPL) * 100) / 100,
+      'Écart %': '',
+      'Match': ''
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    ws['!cols'] = [
+      { wch: 10 }, { wch: 35 }, { wch: 12 }, { wch: 35 },
+      { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Réconciliation');
+
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `reconciliation_PL_DB_${date}.xlsx`);
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -825,9 +1024,18 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
               Lancer l'audit
             </button>
             {auditResult && (
-              <span className="text-sm text-white">
-                Dernier audit : {new Date(auditResult.timestamp).toLocaleString('fr-FR')}
-              </span>
+              <>
+                <span className="text-sm text-white">
+                  Dernier audit : {new Date(auditResult.timestamp).toLocaleString('fr-FR')}
+                </span>
+                <button
+                  onClick={() => handleExportAudit()}
+                  className="px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-600 flex items-center gap-2 text-sm ml-auto"
+                >
+                  <FileSpreadsheet size={16} />
+                  Export Excel
+                </button>
+              </>
             )}
           </div>
 
@@ -1055,6 +1263,67 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
                   <p className="text-sm text-white">Tous les abonnements sont correctement rattachés à des clients actifs. Aucun doublon détecté.</p>
                 )}
               </div>
+
+              {/* 5. Prix social suspects */}
+              {auditResult.prixSuspects && (
+                <div className={`p-4 rounded-lg border ${
+                  auditResult.prixSuspects.count === 0
+                    ? 'bg-green-900/30 border-green-800'
+                    : auditResult.prixSuspects.errors > 0
+                      ? 'bg-red-900/30 border-red-800'
+                      : 'bg-orange-900/30 border-orange-800'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {auditResult.prixSuspects.count === 0 ? (
+                      <CheckCircle size={20} className="text-white" />
+                    ) : (
+                      <AlertCircle size={20} className="text-white" />
+                    )}
+                    <h3 className="font-semibold">5. Prix social suspects ({auditResult.prixSuspects.count})</h3>
+                  </div>
+                  {auditResult.prixSuspects.count === 0 ? (
+                    <p className="text-sm text-white">Aucun prix social suspect détecté. Classification bulletin/forfait cohérente.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                        <div className="p-2 bg-slate-800 rounded border border-slate-600">
+                          <span className="text-white">Erreurs :</span>
+                          <span className={`ml-2 font-bold ${auditResult.prixSuspects.errors > 0 ? 'text-white' : 'text-white'}`}>
+                            {auditResult.prixSuspects.errors}
+                          </span>
+                        </div>
+                        <div className="p-2 bg-slate-800 rounded border border-slate-600">
+                          <span className="text-white">Avertissements :</span>
+                          <span className="ml-2 font-bold text-white">{auditResult.prixSuspects.warnings}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {auditResult.prixSuspects.details.map((a, i) => (
+                          <div key={i} className={`p-2 rounded border text-sm ${
+                            a.severity === 'error'
+                              ? 'bg-red-900/20 border-red-800'
+                              : 'bg-orange-900/20 border-orange-800'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-block w-2 h-2 rounded-full ${
+                                a.severity === 'error' ? 'bg-red-500' : 'bg-orange-500'
+                              }`} />
+                              <span className="font-medium text-white">{a.client_nom}</span>
+                              <span className="text-white">({a.client_cabinet})</span>
+                            </div>
+                            <div className="ml-4 text-white">
+                              {a.message}
+                            </div>
+                            <div className="ml-4 text-white text-xs">
+                              Ligne : {a.label} | Qté : {a.quantite} | Mt HT : {a.montant_ht?.toFixed(2)}€ | PU : {a.prix_unitaire?.toFixed(2)}€ | Axe : {a.axe}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1098,6 +1367,15 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
             </button>
             {reconLoading && reconProgress && (
               <span className="text-sm text-white">{reconProgress.message}</span>
+            )}
+            {reconData && !reconLoading && (
+              <button
+                onClick={() => handleExportReconciliation(reconData)}
+                className="px-3 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-600 flex items-center gap-2 text-sm ml-auto"
+              >
+                <FileSpreadsheet size={16} />
+                Export Excel
+              </button>
             )}
           </div>
 
@@ -1402,6 +1680,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
             <option value="not_started">À venir</option>
             <option value="stopped">Arrêté</option>
           </select>
+        </div>
+        <div className="ml-auto self-end">
+          <button
+            onClick={handleExportVueClient}
+            disabled={honorairesParClient.length === 0}
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+          >
+            <Download size={14} />
+            Export Excel
+          </button>
         </div>
       </div>
 

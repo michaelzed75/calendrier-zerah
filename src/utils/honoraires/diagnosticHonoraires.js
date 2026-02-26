@@ -87,6 +87,7 @@ export function genererDiagnostic(honoraires, clients) {
   const multipleSubscriptions = [];
   const nonStandardLabels = [];
   const unclassifiedLines = [];
+  const suspiciousBulletinPrices = [];
 
   for (const [clientId, data] of clientsMap) {
     const { clientNom, clientCabinet, allClassified, allLines, abonnements } = data;
@@ -216,12 +217,63 @@ export function genererDiagnostic(honoraires, clients) {
         });
       }
     }
+
+    // --- Pattern 7 : Prix social suspect (abonnements actifs uniquement) ---
+    // Vérifie la cohérence prix ↔ classification dans les deux sens :
+    // - Bulletin avec prix > 30€ → probable forfait mal classé en bulletin
+    // - Bulletin avec prix < 1€ → erreur probable (quantité/montant inversés)
+    // - Forfait avec prix < 30€ → probable bulletin mal classé en forfait
+    for (const line of activeClassified) {
+      if (line.axe !== 'social_bulletin' && line.axe !== 'social_forfait') continue;
+      const quantite = line.quantite || 1;
+      const montantHt = line.montant_ht || 0;
+      const prixUnitaire = quantite > 0 ? montantHt / quantite : montantHt;
+
+      if (line.axe === 'social_bulletin') {
+        if (prixUnitaire > 0 && prixUnitaire < 1) {
+          suspiciousBulletinPrices.push({
+            type: 'suspicious_social_price',
+            severity: 'warning',
+            clientId,
+            clientNom,
+            clientCabinet,
+            description: `${clientNom} : prix bulletin anormalement bas (${prixUnitaire.toFixed(2)}€ HT/bulletin) — vérifier quantité/montant`,
+            details: [formatLigneDetail(line)]
+          });
+        } else if (prixUnitaire > 30) {
+          suspiciousBulletinPrices.push({
+            type: 'suspicious_social_price',
+            severity: 'error',
+            clientId,
+            clientNom,
+            clientCabinet,
+            description: `${clientNom} : prix bulletin élevé (${prixUnitaire.toFixed(2)}€ > 30€) — probable forfait classé en bulletin`,
+            details: [formatLigneDetail(line)]
+          });
+        }
+      }
+
+      if (line.axe === 'social_forfait') {
+        if (prixUnitaire > 0 && prixUnitaire < 30) {
+          suspiciousBulletinPrices.push({
+            type: 'suspicious_social_price',
+            severity: 'warning',
+            clientId,
+            clientNom,
+            clientCabinet,
+            description: `${clientNom} : prix forfait social bas (${prixUnitaire.toFixed(2)}€ < 30€) — probable bulletin classé en forfait`,
+            details: [formatLigneDetail(line)]
+          });
+        }
+      }
+    }
   }
 
   // === Résumé ===
   const allAnomalies = [
     ...socialConflicts, ...duplicateUniqueAxes, ...duplicateLabels,
-    ...multipleSubscriptions, ...nonStandardLabels, ...unclassifiedLines
+    ...multipleSubscriptions, ...nonStandardLabels, ...unclassifiedLines,
+    ...suspiciousBulletinPrices
   ];
 
   return {
@@ -235,7 +287,8 @@ export function genererDiagnostic(honoraires, clients) {
       duplicateLabels,
       multipleSubscriptions,
       nonStandardLabels,
-      unclassifiedLines
+      unclassifiedLines,
+      suspiciousBulletinPrices
     },
     summary: {
       totalAnomalies: allAnomalies.length,

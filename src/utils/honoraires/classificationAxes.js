@@ -151,23 +151,32 @@ export function classifierLigne(ligne, modeFacturationSocial) {
     return 'accessoires_social';
   }
 
-  // Axes 3/4 : Social
+  // Axes 3/4 : Social — classification PAR LIGNE (pas par mode client global)
+  // Le mode client global causait des faux positifs : si un client avait une seule ligne
+  // "au bulletin", TOUTES ses lignes sociales étaient classées bulletin,
+  // y compris les vrais forfaits → multiplication Silae erronée → CA gonflé.
   if (famille === 'social') {
-    // Si quantité > 1 → c'est du bulletin
+    // Critère 1 : le label contient "bulletin" → c'est du bulletin
+    // Ex: "Etablissement du bulletin de salaire"
+    if (label.includes('bulletin')) {
+      return 'social_bulletin';
+    }
+    // Critère 2 : le label contient "forfait" → c'est du forfait
+    // Ex: "Forfait social", "Mission du social au forfait"
+    if (label.includes('forfait')) {
+      return 'social_forfait';
+    }
+    // Critère 3 : quantité > 1 → c'est du bulletin (plusieurs bulletins)
     if (quantite > 1) {
       return 'social_bulletin';
     }
-    // Si le mode client est "reel" → au bulletin (même si quantité = 1 ce mois-ci)
-    if (modeFacturationSocial === 'reel') {
-      return 'social_bulletin';
-    }
-    // Détection par prix unitaire : < 30€ = bulletin (ex: 15,40€ vs 450€ forfait)
+    // Critère 4 : prix unitaire < seuil → bulletin
     const montantHt = ligne.montant_ht || 0;
     const prixUnitaire = quantite > 0 ? montantHt / quantite : montantHt;
     if (prixUnitaire > 0 && prixUnitaire < SEUIL_PRIX_BULLETIN) {
       return 'social_bulletin';
     }
-    // Sinon → forfait
+    // Par défaut → forfait (plus sûr : pas de multiplication Silae)
     return 'social_forfait';
   }
 
@@ -213,30 +222,50 @@ export function getMultiplicateurAccessoire(label) {
  * Détecte automatiquement le mode de facturation social d'un client
  * à partir de ses lignes de facturation.
  *
- * Règles (par priorité) :
- * 1. Si une ligne social a quantité > 1 → bulletin (reel)
- * 2. Si une ligne social a un prix unitaire < 30€ → bulletin (reel)
- *    (un forfait social coûte 100-500€, un bulletin coûte 10-25€)
- * 3. Sinon → forfait
+ * NOTE : Cette fonction est utilisée pour l'AFFICHAGE du mode client uniquement.
+ * La classification des lignes individuelles se fait directement dans classifierLigne()
+ * sur la base du label, de la quantité et du prix unitaire de CHAQUE ligne.
+ *
+ * Un client peut avoir les deux modes (forfait + bulletin) simultanément.
+ * Le mode retourné ici indique le mode DOMINANT pour l'affichage.
+ *
+ * Règles :
+ * 1. Si une ligne social a "bulletin" dans le label → le client a du bulletin
+ * 2. Si une ligne social a quantité > 1 → le client a du bulletin
+ * 3. Si une ligne social a un prix unitaire < 30€ → le client a du bulletin
+ * 4. Sinon → forfait uniquement
  *
  * @param {Object[]} lignes - Lignes de facturation du client
- * @returns {'forfait'|'reel'} Mode détecté
+ * @returns {'forfait'|'reel'} Mode détecté (BDD constraint: forfait ou reel uniquement)
  */
 export function detectModeFacturationSocial(lignes) {
   for (const ligne of lignes) {
     const famille = (ligne.famille || '').toLowerCase();
+    if (famille !== 'social') continue;
+
+    const label = (ligne.label || '').toLowerCase();
     const quantite = ligne.quantite || 1;
     const montantHt = ligne.montant_ht || 0;
 
-    if (famille !== 'social') continue;
+    // Exclure les accessoires (coffre-fort, publi-postage, etc.)
+    if (label.includes('coffre') || label.includes('publi') ||
+        label.includes('entrée') || label.includes('entree') ||
+        label.includes('sortie') || label.includes('extra') ||
+        label.includes('modification')) {
+      continue;
+    }
 
-    // Critère 1 : quantité > 1 → forcément du bulletin
+    // Critère 1 : le label contient "bulletin" → c'est du bulletin
+    if (label.includes('bulletin')) {
+      return 'reel';
+    }
+
+    // Critère 2 : quantité > 1 → forcément du bulletin
     if (quantite > 1) {
       return 'reel';
     }
 
-    // Critère 2 : prix unitaire < 30€ → c'est un prix au bulletin
-    // (ex: BK Bagneux = 15,40€ vs ACF = 450€)
+    // Critère 3 : prix unitaire < 30€ → prix au bulletin
     const prixUnitaire = quantite > 0 ? montantHt / quantite : montantHt;
     if (prixUnitaire > 0 && prixUnitaire < SEUIL_PRIX_BULLETIN) {
       return 'reel';

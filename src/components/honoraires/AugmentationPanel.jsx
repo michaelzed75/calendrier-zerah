@@ -1,12 +1,13 @@
 // @ts-check
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Download, Upload, Check, Loader2, AlertCircle, Pencil, Lock, Unlock, ArrowUpDown, ArrowUp, ArrowDown, Activity } from 'lucide-react';
+import { Download, Upload, Check, Loader2, AlertCircle, Pencil, Lock, Unlock, ArrowUpDown, ArrowUp, ArrowDown, Activity, Save, Database } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import {
   AXE_DEFINITIONS, AXE_KEYS, classifierToutesLesLignes,
   calculerAugmentationGlobale, calculerTotauxResume, creerParametresDefaut,
   parseSilaeExcel, importSilaeData, getSilaeProductions, getSilaePeriodes,
-  updateSilaeMapping, exportAugmentationExcel, genererDiagnostic
+  updateSilaeMapping, exportAugmentationExcel, genererDiagnostic,
+  sauvegarderTarifsReference
 } from '../../utils/honoraires';
 import SilaeMappingModal from './SilaeMappingModal';
 import DiagnosticModal from './DiagnosticModal';
@@ -174,6 +175,12 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
   // === Diagnostic ===
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState(null);
+
+  // === Sauvegarde tarifs de référence ===
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState(null);
+  const [saveProgress, setSaveProgress] = useState(null);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // === UI ===
   const [searchTerm, setSearchTerm] = useState('');
@@ -553,6 +560,30 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
     });
   };
 
+  // === Sauvegarde tarifs de référence en BDD ===
+  const handleSaveTarifs = async () => {
+    setShowSaveConfirm(false);
+    setSaving(true);
+    setSaveResult(null);
+    setSaveProgress({ processed: 0, total: 0, percent: 0 });
+    try {
+      const dateEffet = new Date().toISOString().split('T')[0]; // Aujourd'hui
+      const result = await sauvegarderTarifsReference(
+        supabase,
+        resultatsFinaux.filter(c => !c.exclu),
+        dateEffet,
+        'augmentation_2026',
+        (progress) => setSaveProgress(progress)
+      );
+      setSaveResult(result);
+    } catch (err) {
+      console.error('Erreur sauvegarde tarifs:', err);
+      setSaveResult({ inserted: 0, updated: 0, errors: [err.message] });
+    }
+    setSaving(false);
+    setSaveProgress(null);
+  };
+
   // === Formatage ===
   const fmt = (n) => (n || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
   const fmtDec = (n) => (n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -758,6 +789,24 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
             <Download size={14} />
             Export Excel
           </button>
+          <button
+            onClick={() => setShowSaveConfirm(true)}
+            disabled={lignesModifiees.length === 0 || saving}
+            className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+            title="Sauvegarder les tarifs augmentés en base de données"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+            {saving ? `Sauvegarde ${saveProgress?.percent || 0}%` : 'Sauvegarder tarifs'}
+          </button>
+          {saveResult && (
+            <span className="text-xs text-white">
+              {saveResult.errors?.length > 0 && !saveResult.inserted ? (
+                <span className="text-red-400"><AlertCircle size={12} className="inline" /> {saveResult.errors[0]}</span>
+              ) : (
+                <span className="text-emerald-400"><Check size={12} className="inline" /> {saveResult.inserted} tarifs sauvegardés</span>
+              )}
+            </span>
+          )}
         </div>
       </div>
 
@@ -961,6 +1010,50 @@ function AugmentationPanel({ honoraires, clients, accent, filterCabinet, filterS
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* === Modal confirmation sauvegarde tarifs === */}
+      {showSaveConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+              <Database size={20} className="text-emerald-400" />
+              Sauvegarder les tarifs de référence
+            </h3>
+            <p className="text-sm text-white mb-2">
+              Cette action va persister <strong>{lignesModifiees.length} lignes</strong> de tarifs
+              augmentés en base de données avec la date d'effet du <strong>{new Date().toLocaleDateString('fr-FR')}</strong>.
+            </p>
+            <p className="text-sm text-white mb-4">
+              Ces tarifs serviront de référence pour la génération des factures variables mensuelles
+              et la mise à jour des abonnements fixes dans Pennylane.
+            </p>
+            {nbLocked < lignesModifiees.length && (
+              <div className="flex items-center gap-2 p-2 bg-amber-900/30 border border-amber-800 rounded mb-4">
+                <AlertCircle size={16} className="text-amber-400 shrink-0" />
+                <p className="text-xs text-white">
+                  <strong>{lignesModifiees.length - nbLocked} lignes ne sont pas verrouillées</strong> — elles seront quand même sauvegardées avec leur valeur actuelle.
+                  Pensez à verrouiller d'abord si vous voulez figer des prix spécifiques.
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowSaveConfirm(false)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSaveTarifs}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <Save size={14} />
+                Confirmer la sauvegarde
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
