@@ -170,7 +170,7 @@
         "access": "Clients avec clé API Pennylane configurée"
       },
       "HonorairesPage.jsx": {
-        "lines": 1626,
+        "lines": 1925,
         "role": "Gestion des honoraires et abonnements Pennylane",
         "typing": "@ts-check + JSDoc",
         "features": [
@@ -187,6 +187,9 @@
           "  - 'Pas dans PL': client non lié à Pennylane",
           "Filtres: cabinet, statut abonnement, recherche nom",
           "Totaux agrégés: comptabilité, social, juridique, support",
+          "Onglet Audit: 5 checks (récap familles, non classifiés, écarts fréquence, doublons potentiels, prix social suspects)",
+          "Onglet Audit: section 5 prix social suspects + détection clients mixtes (forfait+bulletin)",
+          "Onglet Audit: export Excel des alertes (feuille Prix suspects)",
           "Onglet Réconciliation: comparaison live PL↔DB avec écarts HT et %",
           "Réconciliation: filtres, tri, recherche, exclusion France Formalités",
           "Feedback sync (progression, résultat, erreur) visible depuis tous les onglets"
@@ -345,12 +348,25 @@
         ]
       },
       "AugmentationPanel.jsx": {
-        "role": "Panneau d'analyse des augmentations tarifaires",
+        "lines": 1110,
+        "role": "Panneau d'analyse des augmentations tarifaires avec tarifs de référence",
         "typing": "@ts-check + JSDoc",
         "features": [
-          "Calcul augmentation par client et par famille",
+          "Calcul augmentation par client et par axe (8 axes métier)",
           "Exclusion des clients inactifs du calcul CA HT",
-          "Export Excel des augmentations"
+          "Tarifs de référence 2025 avec verrouillage augmentation",
+          "DiagnosticModal: analyse anomalies (7 patterns) avant augmentation",
+          "Export Excel des augmentations (multi-feuilles)"
+        ]
+      },
+      "DiagnosticModal.jsx": {
+        "lines": 343,
+        "role": "Modal de diagnostic des anomalies avant augmentation",
+        "typing": "@ts-check + JSDoc",
+        "features": [
+          "7 patterns de détection: doublons, écarts fréquence, accessoires sans bulletin, etc.",
+          "Section prix social suspects (Pattern 7): bulletin < 1€, > 30€, forfait < 30€",
+          "Affichage par sévérité (error/warning) avec icônes colorées"
         ]
       }
     },
@@ -437,7 +453,7 @@
       "honoraires/": {
         "description": "Module de gestion des honoraires et abonnements Pennylane",
         "files": {
-          "index.js": "Export centralisé: syncCustomersAndSubscriptions, getHonorairesResume, testConnection, previewSync, commitSync, reconcilierDonnees",
+          "index.js": "Export centralisé du module honoraires (voir détail dans files/index.js)",
           "pennylaneCustomersApi.js": {
             "role": "Client API Pennylane v2 pour customers et abonnements",
             "exports": [
@@ -507,12 +523,70 @@
             ]
           },
           "classificationAxes.js": {
-            "role": "Classification des abonnements en axes métier",
-            "exports": ["classifySubscription(label) - Retourne l'axe (comptabilité, social, juridique, support)"]
+            "lines": 370,
+            "role": "Classification des lignes de facturation en 8 axes d'augmentation",
+            "exports": [
+              "AXE_DEFINITIONS - Définitions des 8 axes (compta_mensuelle, bilan, pl, social_forfait, social_bulletin, accessoires_social, juridique, support)",
+              "AXE_KEYS - Liste ordonnée des clés d'axes",
+              "classifierLigne(ligne, modeFacturationSocial) - Classifie une ligne PAR LIGNE (label, qté, prix unitaire)",
+              "getMultiplicateurAccessoire(label) - Multiplicateur accessoire (1× ou 2× bulletin)",
+              "detectModeFacturationSocial(lignes) - Détecte mode dominant (forfait/reel) pour AFFICHAGE uniquement",
+              "classifierToutesLesLignes(honoraires, clients) - Classifie toutes les lignes + détecte modes"
+            ],
+            "classification_logic": [
+              "Classification PAR LIGNE (pas par mode client global) — corrige écart CA 2.66M→2.22M",
+              "Priorité: bilan → P&L → compta → accessoires → social (label→qté→prix) → juridique → support",
+              "Social: label 'bulletin' → social_bulletin, label 'forfait' → social_forfait, qté > 1 → bulletin, prix < 30€ → bulletin, défaut → forfait",
+              "Accessoires: coffre-fort, publi-postage, entrée/sortie, extra, modification de bulletin"
+            ],
+            "tests": "classificationAxes.test.js (46 tests)"
           },
           "calculsAugmentation.js": {
-            "role": "Calculs d'augmentation tarifaire des abonnements",
-            "exports": ["calculerAugmentation(abonnements, pourcentage) - Calcul nouveau tarif"]
+            "lines": 530,
+            "role": "Calculs d'augmentation tarifaire par axe et par client",
+            "exports": [
+              "calculerAugmentationParClient(lignesClassifiees, augmentations, silaeData) - Calcul nouveau tarif par axe",
+              "calculerTotaux(resultatsParClient) - Agrégation totaux CA actuel/nouveau/delta"
+            ]
+          },
+          "diagnosticHonoraires.js": {
+            "lines": 322,
+            "role": "Diagnostic des anomalies dans les données honoraires",
+            "exports": [
+              "diagnostiquerHonoraires(lignesClassifiees) - Analyse 7 patterns d'anomalies"
+            ],
+            "patterns": [
+              "1. Doublons potentiels (lignes identiques même client)",
+              "2. Écarts de fréquence (annuel vs mensuel)",
+              "3. Accessoires sans bulletin associé",
+              "4. Lignes non classifiées",
+              "5. Prix unitaire anormal (< 1€ ou > 10000€)",
+              "6. Clients avec beaucoup de lignes (> 10)",
+              "7. Prix social suspects (bulletin < 1€, > 30€, forfait < 30€)"
+            ]
+          },
+          "auditHonoraires.js": {
+            "lines": 471,
+            "role": "Audit des données honoraires avec requêtes Supabase directes",
+            "exports": [
+              "runAuditHonoraires(supabase) - Exécute les 5 checks d'audit"
+            ],
+            "checks": [
+              "1. Récapitulatif par famille (compta, social, juridique, support)",
+              "2. Lignes non classifiées (axe = null)",
+              "3. Écarts de fréquence entre lignes d'un même abonnement",
+              "4. Doublons potentiels (même label, même client, même montant)",
+              "5. Prix social suspects + détection clients mixtes (forfait+bulletin)"
+            ]
+          },
+          "tarifsReferenceService.js": {
+            "lines": 204,
+            "role": "Service CRUD pour les tarifs de référence 2025 (table tarifs_reference)",
+            "exports": [
+              "getTarifsReference(supabase) - Récupère tous les tarifs de référence",
+              "saveTarifReference(supabase, tarif) - Sauvegarde un tarif (upsert)",
+              "deleteTarifReference(supabase, id) - Supprime un tarif"
+            ]
           },
           "reconciliation.js": {
             "lines": 287,
@@ -534,8 +608,25 @@
             "tests": "reconciliation.test.js (20 tests)"
           },
           "exportAugmentation.js": {
-            "role": "Export Excel des augmentations tarifaires",
-            "exports": ["exportAugmentationExcel(data) - Génère fichier XLSX"]
+            "lines": 619,
+            "role": "Export Excel multi-feuilles des augmentations tarifaires",
+            "exports": [
+              "exportAugmentationExcel(data) - Génère fichier XLSX (feuilles: Résumé, Détail par client, Par axe, Prix suspects)"
+            ]
+          },
+          "index.js": {
+            "lines": 84,
+            "role": "Export centralisé du module honoraires",
+            "exports": [
+              "syncCustomersAndSubscriptions, getHonorairesResume, testConnection",
+              "previewSync, commitSync, reconcilierDonnees",
+              "classifierLigne, classifierToutesLesLignes, detectModeFacturationSocial",
+              "AXE_DEFINITIONS, AXE_KEYS, getMultiplicateurAccessoire",
+              "calculerAugmentationParClient, calculerTotaux",
+              "diagnostiquerHonoraires, runAuditHonoraires",
+              "getTarifsReference, saveTarifReference, deleteTarifReference",
+              "exportAugmentationExcel"
+            ]
           }
         }
       },
@@ -896,7 +987,8 @@
     "migrations": {
       "006_type_personne_siret.sql": "Ajout colonnes type_personne (PM/PP) + siret_complement sur clients",
       "007_unique_siren.sql": "UNIQUE INDEX sur (siren, COALESCE(siret_complement, '')) WHERE actif=true",
-      "011_client_email.sql": "Ajout colonne email TEXT sur clients (contact synchronisé depuis Pennylane v2/customers)"
+      "011_client_email.sql": "Ajout colonne email TEXT sur clients (contact synchronisé depuis Pennylane v2/customers)",
+      "012_tarifs_reference.sql": "Table tarifs_reference: tarifs de référence 2025 par axe (compta, bilan, social, juridique, support) avec verrouillage"
     },
   "known_issues_and_todos": [
     "Pas de gestion d'erreurs centralisée",
@@ -1212,7 +1304,18 @@
       "Correction matching SIREN ambigu dans syncHonoraires.js + syncPreview.js (disambiguation par UUID)",
       "pennylaneCustomersApi.js: setCompanyId exporté pour réconciliation multi-cabinets",
       "Ajout reconciliation.test.js (20 tests) + enrichissement syncHonoraires.test.js et syncPreview.test.js",
-      "Total tests: 375 → 406"
+      "Total tests: 375 → 406",
+      "fix(honoraires): classification social PAR LIGNE au lieu de mode client global (écart CA 2.66M→2.22M corrigé)",
+      "classificationAxes.js: 8 axes d'augmentation, classification par label/qté/prix unitaire",
+      "detectModeFacturationSocial: exclusion accessoires, détection par label, AFFICHAGE uniquement",
+      "diagnosticHonoraires.js: Pattern 7 prix social suspects (bulletin < 1€, > 30€, forfait < 30€)",
+      "auditHonoraires.js: check 5 prix social suspects + détection clients mixtes (forfait+bulletin) via Supabase",
+      "tarifsReferenceService.js + migration 012_tarifs_reference.sql: table tarifs_reference 2025",
+      "AugmentationPanel.jsx: 1110 lignes, UI tarifs de référence + verrouillage augmentation",
+      "DiagnosticModal.jsx: 343 lignes, modal diagnostic anomalies (7 patterns)",
+      "exportAugmentation.js: 619 lignes, export Excel multi-feuilles (Résumé, Détail, Par axe, Prix suspects)",
+      "HonorairesPage.jsx: 1626 → 1925 lignes, section 5 Audit prix suspects + Excel",
+      "Total tests: 406 → 414"
     ]
   }
 }
