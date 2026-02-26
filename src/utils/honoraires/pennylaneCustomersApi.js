@@ -278,3 +278,126 @@ export async function fetchAllDataForSync(apiKey, onProgress = null) {
 export async function getAllProducts(apiKey, onProgress = null) {
   return getAllPaginated(apiKey, '/products', {}, onProgress);
 }
+
+// ═══════════════════ WRITE API (Nettoyage Pennylane) ═══════════════════
+
+/**
+ * Effectue un appel WRITE à l'API Pennylane via le proxy (POST/PUT/DELETE/PATCH)
+ * @param {string} apiKey
+ * @param {'POST'|'PUT'|'DELETE'|'PATCH'} method
+ * @param {string} endpoint - ex: '/customer_invoices/123'
+ * @param {Object} [body] - Corps de la requête (pour POST/PUT/PATCH)
+ * @param {Object} [params] - Query params optionnels
+ * @returns {Promise<Object|null>} Réponse de l'API (null pour 204 No Content)
+ */
+async function callPennylaneWriteAPI(apiKey, method, endpoint, body = null, params = {}) {
+  const url = new URL(PROXY_URL, window.location.origin);
+  url.searchParams.append('endpoint', endpoint);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      url.searchParams.append(key, String(value));
+    }
+  });
+
+  console.log(`[callPennylaneWriteAPI] ${method} ${endpoint}`);
+
+  const headers = {
+    'X-Pennylane-Api-Key': apiKey,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  };
+
+  if (_companyId) {
+    headers['X-Company-Id'] = _companyId;
+  }
+
+  const fetchOptions = { method, headers };
+  if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  // Retry sur 429
+  const MAX_RETRIES = 5;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const response = await fetch(url.toString(), fetchOptions);
+
+    if (response.status === 429) {
+      const waitSec = Math.min(attempt * 2, 10);
+      console.warn(`[callPennylaneWriteAPI] Rate limit 429 — retry ${attempt}/${MAX_RETRIES} dans ${waitSec}s`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+
+    // 204 No Content (typique pour DELETE)
+    if (response.status === 204) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[callPennylaneWriteAPI] ${method} ${endpoint} → erreur:`, text);
+      throw new Error(`Erreur API Pennylane ${method} (${response.status}): ${text}`);
+    }
+
+    return response.json();
+  }
+  throw new Error(`Rate limit Pennylane dépassé après ${MAX_RETRIES} tentatives sur ${method} ${endpoint}`);
+}
+
+/**
+ * Liste les factures clients (brouillons, finalisées, etc.)
+ * @param {string} apiKey
+ * @param {Object} [filters] - { status, date_from, date_to }
+ * @returns {Promise<Object[]>}
+ */
+export async function listCustomerInvoices(apiKey, filters = {}) {
+  const params = {};
+  if (filters.status) params.status = filters.status;
+  const filterArr = [];
+  if (filters.date_from) filterArr.push({ field: 'date', operator: 'gteq', value: filters.date_from });
+  if (filters.date_to) filterArr.push({ field: 'date', operator: 'lteq', value: filters.date_to });
+  if (filterArr.length > 0) params.filter = JSON.stringify(filterArr);
+  return getAllPaginated(apiKey, '/customer_invoices', params);
+}
+
+/**
+ * Supprime une facture brouillon
+ * @param {string} apiKey
+ * @param {number} invoiceId
+ * @returns {Promise<null>}
+ */
+export async function deleteDraftInvoice(apiKey, invoiceId) {
+  return callPennylaneWriteAPI(apiKey, 'DELETE', `/customer_invoices/${invoiceId}`);
+}
+
+/**
+ * Met à jour une facture brouillon (lignes, montants)
+ * @param {string} apiKey
+ * @param {number} invoiceId
+ * @param {Object} data - Données de mise à jour
+ * @returns {Promise<Object>}
+ */
+export async function updateDraftInvoice(apiKey, invoiceId, data) {
+  return callPennylaneWriteAPI(apiKey, 'PUT', `/customer_invoices/${invoiceId}`, data);
+}
+
+/**
+ * Supprime un abonnement récurrent
+ * @param {string} apiKey
+ * @param {number} subscriptionId
+ * @returns {Promise<null>}
+ */
+export async function deleteSubscription(apiKey, subscriptionId) {
+  return callPennylaneWriteAPI(apiKey, 'DELETE', `/billing_subscriptions/${subscriptionId}`);
+}
+
+/**
+ * Crée un nouvel abonnement récurrent
+ * @param {string} apiKey
+ * @param {Object} data - Données de l'abonnement
+ * @returns {Promise<Object>}
+ */
+export async function createSubscription(apiKey, data) {
+  return callPennylaneWriteAPI(apiKey, 'POST', '/billing_subscriptions', data);
+}

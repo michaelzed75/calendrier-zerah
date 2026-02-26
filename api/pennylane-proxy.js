@@ -9,7 +9,7 @@ const API_BASE = 'https://app.pennylane.com/api/external/v2';
 export default async function handler(req, res) {
   // Autoriser CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pennylane-Api-Key, X-Company-Id');
 
   if (req.method === 'OPTIONS') {
@@ -60,16 +60,21 @@ export default async function handler(req, res) {
     }
 
     const fetchOptions = {
-      method: req.method === 'POST' ? 'POST' : 'GET',
+      method: req.method,
       headers
     };
 
-    // Ajouter le body pour les requêtes POST
-    if (req.method === 'POST' && req.body) {
+    // Ajouter le body pour les requêtes POST, PUT, PATCH
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
       fetchOptions.body = JSON.stringify(req.body);
     }
 
     const response = await fetch(url.toString(), fetchOptions);
+
+    // 204 No Content (typique pour DELETE)
+    if (response.status === 204) {
+      return res.status(204).end();
+    }
 
     const contentType = response.headers.get('content-type');
 

@@ -1037,6 +1037,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           clients={clients}
           accent={accent}
           filterCabinet={filterCabinet}
+          apiKeysMap={apiKeysMap}
         />
       )}
 

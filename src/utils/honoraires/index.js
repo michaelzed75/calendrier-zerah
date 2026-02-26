@@ -15,7 +15,13 @@ export {
   testConnection,
   setCompanyId,
   fetchAllDataForSync,
-  getAllProducts
+  getAllProducts,
+  // Write API (Nettoyage Pennylane)
+  listCustomerInvoices,
+  deleteDraftInvoice,
+  updateDraftInvoice,
+  deleteSubscription,
+  createSubscription
 } from './pennylaneCustomersApi.js';
 
 // Synchronisation
@@ -59,7 +65,8 @@ export {
   updateSilaeMapping,
   importSilaeData,
   getSilaeProductions,
-  getSilaePeriodes
+  getSilaePeriodes,
+  extractPeriodeFromFilename
 } from './silaeService.js';
 
 // Export augmentation

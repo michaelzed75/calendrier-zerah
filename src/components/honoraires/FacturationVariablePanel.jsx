@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useCallback, useEffect } from 'react';
-import { Loader2, Download, Search, AlertTriangle, Check, FileSpreadsheet, Calculator, ChevronDown, ChevronRight, Calendar, Database } from 'lucide-react';
+import { Loader2, Download, Search, AlertTriangle, Check, FileSpreadsheet, Calculator, ChevronDown, ChevronRight, Calendar, Database, Upload } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import {
   genererFacturationVariable,
@@ -11,6 +11,8 @@ import {
 } from '../../utils/honoraires/facturationVariableService';
 import { getAllProducts, setCompanyId } from '../../utils/honoraires/pennylaneCustomersApi';
 import { exportFacturationVariableExcel } from '../../utils/honoraires/exportFacturationVariable';
+import { parseSilaeExcel, importSilaeData, updateSilaeMapping, extractPeriodeFromFilename } from '../../utils/honoraires/silaeService';
+import SilaeMappingModal from './SilaeMappingModal';
 
 /**
  * Panel Phase 3 : Facturation variable mensuelle.
@@ -46,6 +48,17 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   // Sync produits
   const [exporting, setExporting] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null); // { message, type: 'info'|'success'|'error' }
+
+  // Import Silae
+  const [importingSilae, setImportingSilae] = useState(false);
+  const [silaeResult, setSilaeResult] = useState(null);
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [unmatchedSilae, setUnmatchedSilae] = useState([]);
+  const [matchedSilae, setMatchedSilae] = useState([]);
+  const [pendingSilaeRows, setPendingSilaeRows] = useState([]);
+  const [pendingSilaePeriode, setPendingSilaePeriode] = useState('');
+  const [importMonth, setImportMonth] = useState('');
+  const [importYear, setImportYear] = useState('2026');
 
   // === Chargement initial des périodes et dates ===
   useEffect(() => {
@@ -178,7 +191,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         }
       } else if (exportMode === 'batch' && resultat) {
         const freshResultat = await genererFacturationVariable({
-          supabase, periode, dateEffet, cabinet: filterCabinet
+          supabase, periode, dateEffet,
+          cabinet: filterCabinet !== 'tous' ? filterCabinet : undefined
         });
         if (freshResultat) {
           setResultat(freshResultat);
@@ -196,6 +210,79 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       setExporting(false);
     }
   }, [clientResult, resultat, selectedClientId, periode, dateEffet, filterCabinet, apiKeysMap]);
+
+  // === Import Silae ===
+  const handleSilaeFileSelect = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingSilae(true);
+    setSilaeResult(null);
+    setError(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const rows = parseSilaeExcel(buffer);
+
+      // Période : sélection manuelle ou extraction du nom de fichier
+      let periodeImport;
+      if (importMonth && importYear) {
+        periodeImport = `${importYear}-${importMonth}`;
+      } else {
+        periodeImport = extractPeriodeFromFilename(file.name);
+      }
+
+      const result = await importSilaeData(supabase, rows, periodeImport, clients);
+      setMatchedSilae(result.matched);
+
+      if (result.unmatched.length > 0) {
+        setUnmatchedSilae(result.unmatched);
+        setPendingSilaeRows(rows);
+        setPendingSilaePeriode(periodeImport);
+        setShowMappingModal(true);
+      }
+
+      setSilaeResult({ ...result, periode: periodeImport, filename: file.name });
+
+      // Rafraîchir les périodes disponibles et auto-sélectionner
+      const freshPeriodes = await getPeriodesDisponibles(supabase);
+      setPeriodesDisponibles(freshPeriodes);
+      setPeriode(periodeImport);
+    } catch (err) {
+      console.error('Erreur import Silae:', err);
+      setSilaeResult({ errors: [err.message] });
+      setError(`Erreur import Silae: ${err.message}`);
+    }
+    setImportingSilae(false);
+    e.target.value = '';
+  }, [importMonth, importYear, clients]);
+
+  const handleMappingSave = useCallback(async (mappingsMap) => {
+    setShowMappingModal(false);
+    try {
+      for (const [codeSilae, clientIds] of mappingsMap) {
+        const silaeRow = unmatchedSilae.find(r => r.code === codeSilae);
+        await updateSilaeMapping(supabase, codeSilae, clientIds, silaeRow?.nom, silaeRow?.siren);
+      }
+      if (pendingSilaeRows.length > 0 && pendingSilaePeriode) {
+        const result = await importSilaeData(supabase, pendingSilaeRows, pendingSilaePeriode, clients);
+        setSilaeResult(prev => ({
+          ...prev,
+          inserted: (prev?.inserted || 0) + result.inserted,
+          matched: [...(prev?.matched || []), ...result.matched]
+        }));
+        // Rafraîchir les périodes
+        const freshPeriodes = await getPeriodesDisponibles(supabase);
+        setPeriodesDisponibles(freshPeriodes);
+        setPeriode(pendingSilaePeriode);
+      }
+    } catch (err) {
+      console.error('Erreur save mapping:', err);
+      setError(`Erreur mapping Silae: ${err.message}`);
+    }
+    setUnmatchedSilae([]);
+    setMatchedSilae([]);
+    setPendingSilaeRows([]);
+    setPendingSilaePeriode('');
+  }, [unmatchedSilae, pendingSilaeRows, pendingSilaePeriode, clients]);
 
   // === Toggle expand ===
   const toggleClient = (id) => {
@@ -284,6 +371,74 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           les brouillons de factures variables. Les colonnes manuelles (ex: modification de bulletin)
           restent vides avec l'étiquette.
         </p>
+      </div>
+
+      {/* Import Silae */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Upload className="w-4 h-4 text-orange-400" />
+          <h4 className="text-white font-semibold text-sm">Importer un fichier Silae</h4>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <label className="block text-xs text-white mb-1">Mois</label>
+            <select
+              value={importMonth}
+              onChange={e => setImportMonth(e.target.value)}
+              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
+            >
+              <option value="">Auto (nom fichier)</option>
+              <option value="01">Janvier</option>
+              <option value="02">Février</option>
+              <option value="03">Mars</option>
+              <option value="04">Avril</option>
+              <option value="05">Mai</option>
+              <option value="06">Juin</option>
+              <option value="07">Juillet</option>
+              <option value="08">Août</option>
+              <option value="09">Septembre</option>
+              <option value="10">Octobre</option>
+              <option value="11">Novembre</option>
+              <option value="12">Décembre</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-white mb-1">Année</label>
+            <input
+              type="number"
+              value={importYear}
+              onChange={e => setImportYear(e.target.value)}
+              min={2024}
+              max={2030}
+              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm w-20"
+            />
+          </div>
+          <div className="flex items-end">
+            <label className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium transition ${
+              importingSilae ? 'bg-slate-600 text-white' : 'bg-orange-600 text-white hover:bg-orange-500'
+            }`}>
+              {importingSilae ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {importingSilae ? 'Import en cours…' : 'Choisir fichier Silae'}
+              <input type="file" accept=".xlsx,.xls" onChange={handleSilaeFileSelect} className="hidden" disabled={importingSilae} />
+            </label>
+          </div>
+          {silaeResult && silaeResult.inserted !== undefined && (
+            <div className="flex items-center gap-2 text-sm">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span className="text-white">
+                {silaeResult.inserted} importés pour {silaeResult.periode}
+              </span>
+              {silaeResult.unmatched?.length > 0 && (
+                <span className="text-amber-400 text-xs">
+                  ({silaeResult.unmatched.length} non mappés)
+                </span>
+              )}
+            </div>
+          )}
+          {silaeResult?.errors?.length > 0 && !silaeResult.inserted && (
+            <span className="text-red-400 text-sm">{silaeResult.errors[0]}</span>
+          )}
+        </div>
       </div>
 
       {/* Erreur */}
@@ -434,6 +589,18 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
           <span className="ml-3 text-white">{progress || 'Chargement...'}</span>
         </div>
+      )}
+
+      {/* Modal mapping Silae */}
+      {showMappingModal && unmatchedSilae.length > 0 && (
+        <SilaeMappingModal
+          unmatchedRows={unmatchedSilae}
+          matchedRows={matchedSilae}
+          clients={clients}
+          onSave={handleMappingSave}
+          onClose={() => setShowMappingModal(false)}
+          accent={accent}
+        />
       )}
     </div>
   );

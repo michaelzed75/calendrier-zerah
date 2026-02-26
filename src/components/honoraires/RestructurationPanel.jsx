@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useCallback } from 'react';
-import { Loader2, Download, Search, AlertTriangle, Check, Scissors, Package, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Download, Search, AlertTriangle, Check, Scissors, Package, Trash2, RefreshCw, ChevronDown, ChevronRight, Key, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import {
   analyserClient,
@@ -19,8 +19,9 @@ import {
  * @param {Object[]} props.clients - Clients de la BDD
  * @param {Object} props.accent - Configuration couleur
  * @param {string} props.filterCabinet - Filtre cabinet actif
+ * @param {Object} props.apiKeysMap - Clés API PL par cabinet (pour company_id)
  */
-export default function RestructurationPanel({ clients, accent, filterCabinet }) {
+export default function RestructurationPanel({ clients, accent, filterCabinet, apiKeysMap }) {
   // === State ===
   const [mode, setMode] = useState('single'); // 'single' | 'all'
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +35,14 @@ export default function RestructurationPanel({ clients, accent, filterCabinet })
   const [stats, setStats] = useState(null); // Statistiques agrégées
   const [expandedClients, setExpandedClients] = useState(new Set());
   const [expandedAbos, setExpandedAbos] = useState(new Set());
+
+  // Clés API write (sessionStorage — survivent au changement d'onglet et F5, disparaissent à la fermeture du navigateur)
+  const [writeKeyAup, setWriteKeyAupState] = useState(() => sessionStorage.getItem('pl_write_key_aup') || '');
+  const [writeKeyZf, setWriteKeyZfState] = useState(() => sessionStorage.getItem('pl_write_key_zf') || '');
+  const [showWriteKeys, setShowWriteKeys] = useState(false);
+
+  const setWriteKeyAup = (val) => { setWriteKeyAupState(val); sessionStorage.setItem('pl_write_key_aup', val); };
+  const setWriteKeyZf = (val) => { setWriteKeyZfState(val); sessionStorage.setItem('pl_write_key_zf', val); };
 
   // === Recherche client ===
   const filteredClients = searchQuery.length >= 2
@@ -148,6 +157,54 @@ export default function RestructurationPanel({ clients, accent, filterCabinet })
           Sépare les produits <span className="text-emerald-400 font-medium">FIXES</span> (restent en abonnement PL)
           des produits <span className="text-red-400 font-medium">VARIABLES</span> (bulletins, accessoires social)
           qui seront facturés via import mensuel.
+        </p>
+      </div>
+
+      {/* Clés API write temporaires */}
+      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Key size={16} className="text-amber-400" />
+          <h4 className="text-white text-sm font-semibold">Clés API Pennylane (écriture)</h4>
+          <span className="text-white text-xs bg-red-900/50 px-2 py-0.5 rounded">Temporaire — non sauvegardées</span>
+          <button
+            onClick={() => setShowWriteKeys(v => !v)}
+            className="ml-auto text-white hover:text-amber-400 transition"
+            title={showWriteKeys ? 'Masquer' : 'Afficher'}
+          >
+            {showWriteKeys ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-white mb-1">Audit Up</label>
+            <div className="flex items-center gap-2">
+              <input
+                type={showWriteKeys ? 'text' : 'password'}
+                value={writeKeyAup}
+                onChange={e => setWriteKeyAup(e.target.value)}
+                placeholder="Clé write AUP..."
+                className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+              />
+              {writeKeyAup && <Check size={14} className="text-emerald-400 flex-shrink-0" />}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-white mb-1">Zerah Fiduciaire</label>
+            <div className="flex items-center gap-2">
+              <input
+                type={showWriteKeys ? 'text' : 'password'}
+                value={writeKeyZf}
+                onChange={e => setWriteKeyZf(e.target.value)}
+                placeholder="Clé write ZF..."
+                className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm focus:border-amber-500 focus:outline-none"
+              />
+              {writeKeyZf && <Check size={14} className="text-emerald-400 flex-shrink-0" />}
+            </div>
+          </div>
+        </div>
+        <p className="text-white text-xs mt-2">
+          Ces clés sont stockées en sessionStorage (survivent au changement d'onglet et au F5).
+          Elles disparaissent à la fermeture du navigateur et seront supprimées avec cet onglet après le nettoyage.
         </p>
       </div>
 

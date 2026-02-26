@@ -350,6 +350,38 @@ export async function getSilaeProductions(supabase, periode = null) {
 }
 
 /**
+ * Extrait la période (YYYY-MM) du nom de fichier Silae.
+ * Ex: "Production Janvier 26.xlsx" → "2026-01"
+ * Fallback : mois/année courants si non détecté.
+ *
+ * @param {string} filename
+ * @returns {string} Période au format YYYY-MM
+ */
+export function extractPeriodeFromFilename(filename) {
+  const moisMap = {
+    'janvier': '01', 'fevrier': '02', 'mars': '03', 'avril': '04',
+    'mai': '05', 'juin': '06', 'juillet': '07', 'aout': '08',
+    'septembre': '09', 'octobre': '10', 'novembre': '11', 'decembre': '12'
+  };
+
+  const lower = filename.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  for (const [mois, num] of Object.entries(moisMap)) {
+    if (lower.includes(mois)) {
+      const match = lower.match(/(\d{2,4})/);
+      if (match) {
+        let year = parseInt(match[1]);
+        if (year < 100) year += 2000;
+        return `${year}-${num}`;
+      }
+    }
+  }
+
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
  * Récupère les périodes Silae disponibles (distinctes).
  *
  * @param {Object} supabase
