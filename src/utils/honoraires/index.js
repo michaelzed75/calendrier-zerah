@@ -14,7 +14,8 @@ export {
   getSubscriptionWithLines,
   testConnection,
   setCompanyId,
-  fetchAllDataForSync
+  fetchAllDataForSync,
+  getAllProducts
 } from './pennylaneCustomersApi.js';
 
 // Synchronisation
@@ -93,3 +94,15 @@ export {
 
 // Export restructuration
 export { exportRestructurationExcel } from './exportRestructuration.js';
+
+// Facturation variable mensuelle (Phase 3)
+export {
+  genererFacturationVariable,
+  genererFacturationClient,
+  getPeriodesDisponibles,
+  getDatesEffetVariables,
+  syncProduitsPennylane
+} from './facturationVariableService.js';
+
+// Export facturation variable
+export { exportFacturationVariableExcel } from './exportFacturationVariable.js';

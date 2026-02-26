@@ -268,3 +268,13 @@ export async function fetchAllDataForSync(apiKey, onProgress = null) {
 
   return { customers, subscriptions };
 }
+
+/**
+ * Récupère tous les produits Pennylane (paginé)
+ * @param {string} apiKey - Clé API Pennylane
+ * @param {function} [onProgress] - Callback de progression (page, total)
+ * @returns {Promise<Object[]>} Liste des produits PL
+ */
+export async function getAllProducts(apiKey, onProgress = null) {
+  return getAllPaginated(apiKey, '/products', {}, onProgress);
+}

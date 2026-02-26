@@ -374,6 +374,21 @@
           "Export Excel restructuration (4 onglets)"
         ]
       },
+      "FacturationVariablePanel.jsx": {
+        "lines": 508,
+        "role": "Phase 3 — UI de facturation variable mensuelle (Silae → Excel PL brouillons)",
+        "features": [
+          "Mode 'Un client (test)' avec recherche par nom/SIREN",
+          "Mode 'Tous les clients' avec batch generation et progress",
+          "Sync produits PL (API /products) avant chaque export",
+          "Export Excel 1 fichier PAR CABINET (AUP/ZF) au format PL brouillons",
+          "Nommage fichiers : 'AUP Janvier 26 a importer dans PL.xlsx'",
+          "Période ajoutée au nom produit : 'Etablissement de bulletin de salaire Janvier 26'",
+          "KPI cards : clients, avec/sans Silae, complets, total HT",
+          "Vue détaillée par client avec lignes (source Silae/Manuel, qté, PU, montant)"
+        ],
+        "props": ["clients", "accent", "filterCabinet", "apiKeysMap"]
+      },
       "DiagnosticModal.jsx": {
         "lines": 343,
         "role": "Modal de diagnostic des anomalies avant augmentation",
@@ -664,8 +679,47 @@
               "Détail croisé : vue complète par client × abonnement × ligne × décision"
             ]
           },
+          "facturationVariableService.js": {
+            "lines": 632,
+            "role": "Phase 3 — Service de facturation variable mensuelle (croisement Silae × tarifs de référence)",
+            "exports": [
+              "genererFacturationVariable({supabase, periode, dateEffet, cabinet}) — Génère la facturation variable pour tous les clients",
+              "genererFacturationClient({supabase, clientId, periode, dateEffet}) — Génère la facturation pour un client",
+              "getPeriodesDisponibles(supabase) — Retourne les périodes Silae importées",
+              "getDatesEffetVariables(supabase) — Retourne les dates d'effet des tarifs de référence",
+              "syncProduitsPennylane({supabase, cabinet, plProducts}) — Sync produits PL API → table produits_pennylane"
+            ],
+            "data_flow": [
+              "1. Charge silae_productions pour la période sélectionnée",
+              "2. Charge tarifs_reference pour la date d'effet (prix unitaires)",
+              "3. Charge produits_pennylane (UUIDs pour identifiant produit PL)",
+              "4. Croise : pour chaque client, pour chaque produit variable, calcule qté × PU HT",
+              "5. Produits VARIABLES uniquement (type_recurrence='variable'), les FIXES restent en abonnement PL"
+            ]
+          },
+          "exportFacturationVariable.js": {
+            "lines": 224,
+            "role": "Phase 3 — Export Excel au format STRICT d'import PL brouillons (1 fichier par cabinet)",
+            "exports": [
+              "exportFacturationVariableExcel({resultat, client, periode}) — Génère 1 fichier XLSX par cabinet"
+            ],
+            "format_excel": {
+              "sheet_name": "Feuil1",
+              "columns": "A:Raison sociale, B:SIREN(nombre), C:UUID produit, D:Nom produit+période, E:vide, F:Quantité, G:unité, H:PU HT, I:TVA(0.00%), J:Prestations de services, K:Date serial(m/d/yy), L:vide",
+              "naming": "'{AUP|ZF} {Mois} {AA} a importer dans PL.xlsx'",
+              "rules": [
+                "Cellules construites manuellement (t/v/z) pour contrôle exact des types",
+                "SIREN en nombre (t:n), pas texte",
+                "TVA en nombre 0.2 avec format z:'0.00%'",
+                "Date en serial Excel avec format z:'m/d/yy'",
+                "Colonnes E et L absentes (pas de cellule créée)",
+                "Lignes manuelles exclues (quantite null/undefined)",
+                "Période ajoutée au nom produit : 'Janvier 26'"
+              ]
+            }
+          },
           "index.js": {
-            "lines": 98,
+            "lines": 109,
             "role": "Export centralisé du module honoraires",
             "exports": [
               "syncCustomersAndSubscriptions, getHonorairesResume, testConnection, fetchAllDataForSync",
@@ -676,7 +730,9 @@
               "genererDiagnostic, auditAbonnements",
               "sauvegarderTarifsBaseline, sauvegarderTarifsReference, chargerTarifsReference, getDatesEffetDisponibles, chargerProduitsPennylane, supprimerTarifsReference",
               "analyserClient, analyserTousLesClients, calculerStatistiques",
-              "exportAugmentationExcel, exportDiagnosticExcel, exportRestructurationExcel"
+              "exportAugmentationExcel, exportDiagnosticExcel, exportRestructurationExcel",
+              "genererFacturationVariable, genererFacturationClient, getPeriodesDisponibles, getDatesEffetVariables, syncProduitsPennylane, getAllProducts",
+              "exportFacturationVariableExcel"
             ]
           }
         }
@@ -837,6 +893,10 @@
       "src/utils/honoraires/subscriptionRestructuration.test.js": {
         "tests": 12,
         "coverage": "analyserClient HFC INVEST (séparation fixe/variable, totaux HT, décision inchangé/a_supprimer, prix 2026, action supprimer, axes variables, client sans abonnements, abonnement mixte a_modifier), calculerStatistiques (agrégation, par cabinet, tableau vide)"
+      },
+      "src/utils/honoraires/facturationVariable.test.js": {
+        "tests": "à compléter",
+        "coverage": "Tests du service de facturation variable et de l'export Excel Phase 3"
       },
       "src/utils/testsComptables/tests/doubleSaisie.test.js": {
         "tests": 14,
@@ -1394,7 +1454,18 @@
       "index.js: exports analyserClient, analyserTousLesClients, calculerStatistiques, exportRestructurationExcel",
       "Ajout subscriptionRestructuration.test.js (12 tests): HFC INVEST, séparation fixe/variable, décisions, prix 2026, stats",
       "Test client HFC INVEST: 5 fixes + 6 variables, 4 abonnements, décision correcte (3 inchangés + 1 à supprimer)",
-      "Total tests: 433 → 445"
+      "Total tests: 433 → 445",
+      "feat(honoraires): Phase 3 — Facturation variable mensuelle (Silae → Excel PL brouillons)",
+      "facturationVariableService.js: croisement Silae × tarifs × produits PL, génération facturation par client",
+      "exportFacturationVariable.js: export Excel format STRICT PL brouillons, 1 fichier par cabinet (AUP/ZF)",
+      "FacturationVariablePanel.jsx: UI Phase 3 avec mode single/batch, sync produits PL, export",
+      "pennylaneCustomersApi.js: ajout getAllProducts (GET /products paginé)",
+      "silaeService.js: ajout colonne editique (col L Silae) dans parseur + import",
+      "HonorairesPage.jsx: ajout onglet Facturation (6 onglets total: vue, augmentation, restructuration, facturation, audit, reconciliation)",
+      "index.js: exports Phase 3 (genererFacturationVariable, syncProduitsPennylane, exportFacturationVariableExcel, getAllProducts)",
+      "Migration 013: ALTER TABLE silae_productions ADD COLUMN editique",
+      "Format Excel validé en import PL: SIREN nombre, TVA 0.00%, date serial m/d/yy, feuille Feuil1",
+      "Nommage fichiers: 'AUP Janvier 26 a importer dans PL.xlsx', période ajoutée au nom produit"
     ]
   }
 }

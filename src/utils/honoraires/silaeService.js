@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
  * @property {number} bulletins - Bulletins originaux non 0 (col F)
  * @property {number} bulletinsTotal - Total général bulletins (col M)
  * @property {number} coffreFort - Bulletins déposés coffre-fort (col K)
+ * @property {number} editique - Dont éditique / publi-postage (col L)
  * @property {number} entrees - Entrées salariés (col O)
  * @property {number} sorties - Sorties salariés (col P)
  * @property {number} declarations - Déclarations (col Q)
@@ -88,6 +89,7 @@ export function parseSilaeExcel(fileBuffer) {
       bulletins: parseInt(row[5]) || 0,         // Col F (index 5)
       bulletinsTotal: parseInt(row[12]) || 0,    // Col M (index 12)
       coffreFort: parseInt(row[10]) || 0,        // Col K (index 10)
+      editique: parseInt(row[11]) || 0,          // Col L (index 11) — "...dont éditique"
       entrees: parseInt(row[14]) || 0,           // Col O (index 14)
       sorties: parseInt(row[15]) || 0,           // Col P (index 15)
       declarations: parseInt(row[16]) || 0,      // Col Q (index 16)
@@ -293,6 +295,7 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
         bulletins: row.bulletins,
         bulletins_total: row.bulletinsTotal,
         coffre_fort: row.coffreFort,
+        editique: row.editique,
         entrees: row.entrees,
         sorties: row.sorties,
         declarations: row.declarations,
