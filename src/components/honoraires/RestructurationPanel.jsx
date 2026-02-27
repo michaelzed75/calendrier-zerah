@@ -6,7 +6,9 @@ import {
   analyserClient,
   analyserTousLesClients,
   calculerStatistiques,
-  exportRestructurationExcel
+  exportRestructurationExcel,
+  getAllProducts,
+  syncProduitsPennylane
 } from '../../utils/honoraires';
 
 /**
@@ -35,6 +37,10 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
   const [stats, setStats] = useState(null); // Statistiques agrégées
   const [expandedClients, setExpandedClients] = useState(new Set());
   const [expandedAbos, setExpandedAbos] = useState(new Set());
+
+  // Sync produits PL
+  const [syncingProduits, setSyncingProduits] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   // Clés API write (sessionStorage — survivent au changement d'onglet et F5, disparaissent à la fermeture du navigateur)
   const [writeKeyAup, setWriteKeyAupState] = useState(() => sessionStorage.getItem('pl_write_key_aup') || '');
@@ -127,6 +133,38 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
     });
   }, [plans, stats, mode]);
 
+  // === Sync produits PL (clés lecture via apiKeysMap) ===
+  const handleSyncProduits = useCallback(async () => {
+    setSyncingProduits(true);
+    setSyncResult(null);
+    let totalCreated = 0;
+    let totalUpdated = 0;
+    const errors = [];
+
+    for (const cabinetName of ['Audit Up', 'Zerah Fiduciaire']) {
+      const keyInfo = apiKeysMap?.[cabinetName];
+      if (!keyInfo?.api_key) {
+        errors.push(`${cabinetName} : clé API non configurée`);
+        continue;
+      }
+      try {
+        const plProducts = await getAllProducts(keyInfo.api_key);
+        const result = await syncProduitsPennylane({ supabase, cabinet: cabinetName, plProducts });
+        totalCreated += result.created;
+        totalUpdated += result.updated;
+      } catch (err) {
+        errors.push(`${cabinetName} : ${err.message}`);
+      }
+    }
+
+    setSyncResult({
+      created: totalCreated,
+      updated: totalUpdated,
+      errors
+    });
+    setSyncingProduits(false);
+  }, [apiKeysMap]);
+
   // === Toggle expand ===
   const toggleClient = (clientId) => {
     setExpandedClients(prev => {
@@ -155,15 +193,29 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
             <Scissors size={20} className="text-amber-400" />
             <h3 className="text-lg font-semibold text-white">Phase 2 — Restructuration des abonnements</h3>
           </div>
-          {plans && stats && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+              onClick={handleSyncProduits}
+              disabled={syncingProduits}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white rounded-lg transition text-sm"
             >
-              <Download size={16} />
-              Export Excel
+              {syncingProduits ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Sync produits PL
             </button>
-          )}
+            {plans && stats && (
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+              >
+                <Download size={16} />
+                Export Excel
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-white text-sm">
           Sépare les produits <span className="text-emerald-400 font-medium">FIXES</span> (restent en abonnement PL)
@@ -171,6 +223,23 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
           qui seront facturés via import mensuel.
         </p>
       </div>
+
+      {/* Résultat sync produits */}
+      {syncResult && (
+        <div className={`border rounded-xl p-3 flex items-start gap-3 ${
+          syncResult.errors.length > 0 ? 'bg-amber-900/30 border-amber-700' : 'bg-emerald-900/30 border-emerald-700'
+        }`}>
+          <Check size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="text-white">
+              Sync produits : <span className="font-medium text-emerald-400">{syncResult.created} créés</span>, <span className="font-medium text-blue-400">{syncResult.updated} mis à jour</span>
+            </p>
+            {syncResult.errors.map((err, i) => (
+              <p key={i} className="text-red-400 text-xs mt-1">{err}</p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Clés API write temporaires */}
       <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4">
