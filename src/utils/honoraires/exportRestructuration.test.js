@@ -31,7 +31,7 @@ vi.mock('xlsx-js-style', () => ({
   writeFile: (wb, fileName) => { lastFileName = fileName; }
 }));
 
-import { exportRestructurationExcel } from './exportRestructuration.js';
+import { exportRestructurationExcel, mapFrequence, mapJourFacturation, mapModesFinalisation } from './exportRestructuration.js';
 
 // === Test Data ===
 
@@ -907,5 +907,307 @@ describe('Cas limites', () => {
 
     const row = getSheetData('Import PL AUP')[1];
     expect(row[8]).toBe(1.02); // col 8 = HT
+  });
+});
+
+// ── Mapping valeurs PL dropdown ─────────────────────────────────────────────
+
+describe('mapFrequence — conversion API → dropdown PL', () => {
+  it('mappe "monthly" → "mois"', () => {
+    expect(mapFrequence('monthly')).toBe('mois');
+  });
+
+  it('mappe "yearly" → "ans"', () => {
+    expect(mapFrequence('yearly')).toBe('ans');
+  });
+
+  it('mappe "weekly" → "semaines"', () => {
+    expect(mapFrequence('weekly')).toBe('semaines');
+  });
+
+  it('retourne "mois" par défaut si null/undefined', () => {
+    expect(mapFrequence(null)).toBe('mois');
+    expect(mapFrequence(undefined)).toBe('mois');
+  });
+
+  it('retourne la valeur brute si inconnue (passthrough)', () => {
+    expect(mapFrequence('quarterly')).toBe('quarterly');
+  });
+});
+
+describe('mapJourFacturation — conversion jour → dropdown PL', () => {
+  it('mappe 31 → "Dernier jour du mois"', () => {
+    expect(mapJourFacturation(31)).toBe('Dernier jour du mois');
+  });
+
+  it('mappe "31" (string) → "Dernier jour du mois"', () => {
+    expect(mapJourFacturation('31')).toBe('Dernier jour du mois');
+  });
+
+  it('mappe null/undefined → "Dernier jour du mois"', () => {
+    expect(mapJourFacturation(null)).toBe('Dernier jour du mois');
+    expect(mapJourFacturation(undefined)).toBe('Dernier jour du mois');
+  });
+
+  it('mappe tout autre jour → "Meme que la date du debut d\'abonnement"', () => {
+    expect(mapJourFacturation(1)).toBe("Meme que la date du debut d'abonnement");
+    expect(mapJourFacturation(15)).toBe("Meme que la date du debut d'abonnement");
+  });
+});
+
+describe('mapModesFinalisation — conversion API → dropdown PL', () => {
+  it('mappe "awaiting_validation" → "Un brouillon de facture"', () => {
+    expect(mapModesFinalisation('awaiting_validation')).toBe('Un brouillon de facture');
+  });
+
+  it('mappe "auto_finalized" → "Une facture finalisee"', () => {
+    expect(mapModesFinalisation('auto_finalized')).toBe('Une facture finalisee');
+  });
+
+  it('retourne "Un brouillon de facture" par défaut si null/undefined', () => {
+    expect(mapModesFinalisation(null)).toBe('Un brouillon de facture');
+    expect(mapModesFinalisation(undefined)).toBe('Un brouillon de facture');
+  });
+
+  it('retourne la valeur brute si inconnue (passthrough)', () => {
+    expect(mapModesFinalisation('some_other_mode')).toBe('some_other_mode');
+  });
+});
+
+// ── Cohérence totaux export ↔ tarifs_reference ──────────────────────────────
+
+describe('Cohérence totaux — somme HT export = somme des tarifs', () => {
+  it('le total HT de l\'export correspond exactement à la somme des nouveauPuHt', () => {
+    const lignes = [
+      makeLigneFixe({ ligneId: 1, label: 'Mission comptable', nouveauPuHt: 800 }),
+      makeLigneFixe({ ligneId: 2, label: 'Bilan', nouveauPuHt: 535 }),
+      makeLigneFixe({ ligneId: 3, label: 'Social', nouveauPuHt: 538.13 })
+    ];
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({ lignesFixes: lignes })],
+      nbFixes: 3
+    });
+
+    const validLigneIds = new Set([1, 2, 3]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    const totalExport = data.slice(1).reduce((sum, row) => sum + row[8], 0);
+    const totalAttendu = lignes.reduce((sum, l) => sum + Math.round(l.nouveau_pu_ht * 100) / 100, 0);
+    expect(Math.round(totalExport * 100) / 100).toBe(Math.round(totalAttendu * 100) / 100);
+  });
+
+  it('le filtrage validLigneIds ne modifie pas le total des lignes valides', () => {
+    const lignesValides = [
+      makeLigneFixe({ ligneId: 10, label: 'Compta', nouveauPuHt: 500 }),
+      makeLigneFixe({ ligneId: 20, label: 'Bilan', nouveauPuHt: 1200 })
+    ];
+    const ligneInvalide = makeLigneFixe({ ligneId: 99, label: 'Compta ancien', nouveauPuHt: 480 });
+
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        makeAbo({ lignesFixes: lignesValides }),
+        makeAbo({ id: 200, plSubId: 308000, lignesFixes: [ligneInvalide] })
+      ],
+      nbFixes: 3
+    });
+
+    const validLigneIds = new Set([10, 20]); // seules les lignes valides
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(3); // header + 2 lignes valides (pas la 3e)
+    const totalExport = data.slice(1).reduce((sum, row) => sum + row[8], 0);
+    expect(totalExport).toBe(1700); // 500 + 1200, pas 500 + 1200 + 480
+  });
+
+  it('les totaux par cabinet sont indépendants', () => {
+    const aupPlan = makePlan({
+      nom: 'AUP', cabinet: 'Audit Up', plCustomerId: 'C1',
+      abonnements: [makeAbo({
+        lignesFixes: [
+          makeLigneFixe({ ligneId: 1, nouveauPuHt: 800 }),
+          makeLigneFixe({ ligneId: 2, nouveauPuHt: 535 })
+        ]
+      })],
+      nbFixes: 2
+    });
+    const zfPlan = makePlan({
+      nom: 'ZF', cabinet: 'Zerah Fiduciaire', plCustomerId: 'C2',
+      abonnements: [makeAbo({
+        lignesFixes: [
+          makeLigneFixe({ ligneId: 3, nouveauPuHt: 300 }),
+          makeLigneFixe({ ligneId: 4, nouveauPuHt: 250 })
+        ]
+      })],
+      nbFixes: 2
+    });
+
+    const validLigneIds = new Set([1, 2, 3, 4]);
+    exportRestructurationExcel({ plans: [aupPlan, zfPlan], stats: makeStats([aupPlan, zfPlan]), validLigneIds });
+
+    const aupData = getSheetData('Import PL AUP');
+    const zfData = getSheetData('Import PL ZF');
+
+    const totalAup = aupData.slice(1).reduce((sum, row) => sum + row[8], 0);
+    const totalZf = zfData.slice(1).reduce((sum, row) => sum + row[8], 0);
+
+    expect(totalAup).toBe(1335); // 800 + 535
+    expect(totalZf).toBe(550); // 300 + 250
+    expect(totalAup + totalZf).toBe(1885);
+  });
+
+  it('un plan multi-abos accumule correctement les totaux', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        makeAbo({
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 1, label: 'Mission comptable', nouveauPuHt: 175.50 }),
+            makeLigneFixe({ ligneId: 2, label: 'Logiciel', nouveauPuHt: 41.25 })
+          ]
+        }),
+        makeAbo({
+          id: 200, plSubId: 2307900,
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 3, label: 'Bilan', nouveauPuHt: 537.50 })
+          ]
+        })
+      ],
+      nbFixes: 3
+    });
+
+    const validLigneIds = new Set([1, 2, 3]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(4); // header + 3 lignes
+    const total = data.slice(1).reduce((sum, row) => sum + row[8], 0);
+    expect(Math.round(total * 100) / 100).toBe(754.25); // 175.50 + 41.25 + 537.50
+  });
+
+  it('les arrondis centimes sont préservés sans perte', () => {
+    // Montants typiques après arrondirDemiCentime
+    const lignes = [
+      makeLigneFixe({ ligneId: 1, nouveauPuHt: 16.19 }),
+      makeLigneFixe({ ligneId: 2, nouveauPuHt: 538.13 }),
+      makeLigneFixe({ ligneId: 3, nouveauPuHt: 0.41 })
+    ];
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({ lignesFixes: lignes })],
+      nbFixes: 3
+    });
+
+    const validLigneIds = new Set([1, 2, 3]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data[1][8]).toBe(16.19);
+    expect(data[2][8]).toBe(538.13);
+    expect(data[3][8]).toBe(0.41);
+    // Vérifie qu'aucune perte d'arrondi sur la somme
+    const total = data.slice(1).reduce((sum, row) => sum + row[8], 0);
+    expect(Math.round(total * 100) / 100).toBe(554.73);
+  });
+});
+
+// ── Conformité format template PL ───────────────────────────────────────────
+
+describe('Conformité format template PL officiel', () => {
+  const VALEURS_DROPDOWN_PL = {
+    millesimes: [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030],
+    modeFacturation: ['Forfait par abonnement', 'A l\'acte'],
+    frequence: ['mois', 'ans', 'semaines'],
+    jourFacturation: ['Dernier jour du mois', 'Meme que la date du debut d\'abonnement'],
+    modeFinalisation: ['Un brouillon de facture', 'Une facture finalisee']
+  };
+
+  it('le millésime 2026 est dans la liste PL', () => {
+    expect(VALEURS_DROPDOWN_PL.millesimes).toContain(2026);
+  });
+
+  it('"Forfait par abonnement" est une valeur dropdown PL valide', () => {
+    expect(VALEURS_DROPDOWN_PL.modeFacturation).toContain('Forfait par abonnement');
+  });
+
+  it('toutes les fréquences mappées sont des valeurs dropdown PL valides', () => {
+    expect(VALEURS_DROPDOWN_PL.frequence).toContain(mapFrequence('monthly'));
+    expect(VALEURS_DROPDOWN_PL.frequence).toContain(mapFrequence('yearly'));
+    expect(VALEURS_DROPDOWN_PL.frequence).toContain(mapFrequence('weekly'));
+  });
+
+  it('tous les jours de facturation mappés sont des valeurs dropdown PL valides', () => {
+    expect(VALEURS_DROPDOWN_PL.jourFacturation).toContain(mapJourFacturation(31));
+    expect(VALEURS_DROPDOWN_PL.jourFacturation).toContain(mapJourFacturation(1));
+    expect(VALEURS_DROPDOWN_PL.jourFacturation).toContain(mapJourFacturation(null));
+  });
+
+  it('tous les modes de finalisation mappés sont des valeurs dropdown PL valides', () => {
+    expect(VALEURS_DROPDOWN_PL.modeFinalisation).toContain(mapModesFinalisation('awaiting_validation'));
+    expect(VALEURS_DROPDOWN_PL.modeFinalisation).toContain(mapModesFinalisation('auto_finalized'));
+    expect(VALEURS_DROPDOWN_PL.modeFinalisation).toContain(mapModesFinalisation(null));
+  });
+
+  it('un export complet ne contient que des valeurs PL valides', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({
+        frequence: 'monthly', jourFacturation: 31,
+        lignesFixes: [makeLigneFixe({ ligneId: 1, nouveauPuHt: 500 })]
+      })],
+      nbFixes: 1
+    });
+
+    const validLigneIds = new Set([1]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const row = getSheetData('Import PL AUP')[1];
+    // col 3 = Millésime
+    expect(VALEURS_DROPDOWN_PL.millesimes).toContain(row[3]);
+    // col 10 = Mode de facturation
+    expect(VALEURS_DROPDOWN_PL.modeFacturation).toContain(row[10]);
+    // col 14 = Fréquence
+    expect(VALEURS_DROPDOWN_PL.frequence).toContain(row[14]);
+    // col 15 = Jour de facturation
+    expect(VALEURS_DROPDOWN_PL.jourFacturation).toContain(row[15]);
+    // col 17 = Mode de finalisation
+    expect(VALEURS_DROPDOWN_PL.modeFinalisation).toContain(row[17]);
+  });
+
+  it('les 18 colonnes sont dans l\'ordre exact du template PL', () => {
+    const HEADERS_PL_OFFICIELS = [
+      'Raison sociale (optionnel)',
+      'Identifiant client',
+      'SIREN',
+      'Millesime',
+      'Mission (optionnel)',
+      'Identifiant produit (obligatoire)',
+      'Nom du produit (optionnel)',
+      'Description du produit (optionnel)',
+      'Honoraires (HT)',
+      'Temps estime (HH:mm) (optionnel)',
+      'Mode de facturation',
+      "Date de debut de l'abonnement (valable si abonnement)",
+      "Date de fin de l'abonnement (valable si abonnement)",
+      'Interval de facturation (valable si abonnement)',
+      'Frequence de facturation (valable si abonnement)',
+      'Jour de facturation (valable si abonnement)',
+      'Identifiant du modele de facturation (valable si abonnement)',
+      'Mode de finalisation (valable si abonnement)'
+    ];
+
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
+      nbFixes: 1
+    });
+
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
+
+    const headers = getSheetData('Import PL AUP')[0];
+    expect(headers).toEqual(HEADERS_PL_OFFICIELS);
   });
 });

@@ -357,7 +357,7 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
  * Convertit la fréquence API Pennylane en valeur de liste déroulante PL.
  * Template PL attend : "mois", "ans", "semaines"
  */
-function mapFrequence(frequence) {
+export function mapFrequence(frequence) {
   const mapping = {
     'monthly': 'mois',
     'yearly': 'ans',
@@ -370,7 +370,7 @@ function mapFrequence(frequence) {
  * Convertit le jour de facturation en valeur de liste déroulante PL.
  * Template PL attend : "Dernier jour du mois" ou "Meme que la date du debut d'abonnement"
  */
-function mapJourFacturation(jour) {
+export function mapJourFacturation(jour) {
   if (jour === 31 || jour === '31' || !jour) return 'Dernier jour du mois';
   return 'Meme que la date du debut d\'abonnement';
 }
@@ -379,7 +379,7 @@ function mapJourFacturation(jour) {
  * Convertit le mode de finalisation API en valeur de liste déroulante PL.
  * Template PL attend : "Un brouillon de facture" ou "Une facture finalisee"
  */
-function mapModesFinalisation(mode) {
+export function mapModesFinalisation(mode) {
   const mapping = {
     'awaiting_validation': 'Un brouillon de facture',
     'auto_finalized': 'Une facture finalisee'
