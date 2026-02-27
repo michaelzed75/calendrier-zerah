@@ -10,8 +10,8 @@
  * 4. A SUPPRIMER — Liste des lignes variables à retirer de PL
  * 5. Détail croisé — Vue complète par client : abonnements × lignes × décision
  *
- * Format PL 2026 (nouveau) : 1 ligne = 1 abonnement, colonnes fixes + N groupes
- * de 4 colonnes produit (Identifiant produit, Nom, Description, Honoraires HT).
+ * Format PL 2026 (nouveau) : 1 ligne = 1 produit. Un abonnement avec N produits
+ * génère N lignes, chacune répétant les 10 colonnes fixes + 4 colonnes produit.
  *
  * Utilisé pour :
  * - Valider visuellement la restructuration avant exécution
@@ -267,8 +267,9 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
       }
     }
 
-    // Colonnes fixes d'abonnement (format PL 2026)
-    const fixedHeaders = [
+    // Format PL 2026 : 14 colonnes fixes (10 abo + 4 produit)
+    // 1 ligne Excel = 1 produit (colonnes abo répétées)
+    const headers = [
       'Raison sociale',
       'Identifiant client',
       'SIREN',
@@ -278,29 +279,14 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
       'Interval de facturation',
       'Frequence de facturation',
       'Jour de facturation',
-      'Mode de finalisation'
+      'Mode de finalisation',
+      'Identifiant produit',
+      'Nom du produit',
+      'Description',
+      'Honoraires HT'
     ];
 
-    let maxLines = 0;
-    for (const plan of cabinetPlans) {
-      for (const abo of plan.abonnements) {
-        if (abo.lignes_fixes.length > maxLines) maxLines = abo.lignes_fixes.length;
-      }
-    }
-    maxLines = Math.max(maxLines, 1);
-
-    // Colonnes par ligne produit (4 colonnes par ligne)
-    const lineHeaders = [];
-    for (let l = 1; l <= maxLines; l++) {
-      lineHeaders.push(`Ligne ${l} - Identifiant produit`);
-      lineHeaders.push(`Ligne ${l} - Nom du produit`);
-      lineHeaders.push(`Ligne ${l} - Description`);
-      lineHeaders.push(`Ligne ${l} - Honoraires HT`);
-    }
-
-    const headers = [...fixedHeaders, ...lineHeaders];
     const data = [];
-
     const sortedPlans = [...cabinetPlans].sort((a, b) => a.client_nom.localeCompare(b.client_nom, 'fr'));
 
     for (const plan of sortedPlans) {
@@ -309,51 +295,40 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
 
         const dateDebut = formatDatePennylane(abo.date_debut);
 
-        const row = [
-          plan.client_nom,
-          plan.pennylane_customer_id,
-          plan.siren || '',
-          2026,
-          'abonnement',
-          dateDebut,
-          abo.intervalle || 1,
-          abo.frequence || 'monthly',
-          abo.jour_facturation || 31,
-          abo.mode_finalisation || 'awaiting_validation'
-        ];
+        for (const ligne of abo.lignes_fixes) {
+          const produit = trouverProduitFixe(ligne.label, produitsIndex);
 
-        for (let l = 0; l < maxLines; l++) {
-          if (l < abo.lignes_fixes.length) {
-            const ligne = abo.lignes_fixes[l];
-            const produit = trouverProduitFixe(ligne.label, produitsIndex);
-
-            row.push(produit ? produit.pennylane_product_id : '');
-            row.push(ligne.label);
-            row.push(ligne.description || '');
-            row.push(ligne.nouveau_pu_ht);
-          } else {
-            row.push('', '', '', '');
-          }
+          data.push([
+            plan.client_nom,
+            plan.pennylane_customer_id,
+            plan.siren || '',
+            2026,
+            'abonnement',
+            dateDebut,
+            abo.intervalle || 1,
+            abo.frequence || 'monthly',
+            abo.jour_facturation || 31,
+            abo.mode_finalisation || 'awaiting_validation',
+            produit ? produit.pennylane_product_id : '',
+            ligne.label,
+            ligne.description || '',
+            ligne.nouveau_pu_ht
+          ]);
         }
-
-        data.push(row);
       }
     }
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
-    const colWidths = [
+    ws['!cols'] = [
       { wch: 30 }, { wch: 38 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
-      { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 20 }
+      { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 20 },
+      { wch: 38 }, { wch: 45 }, { wch: 30 }, { wch: 14 }
     ];
-    for (let l = 0; l < maxLines; l++) {
-      colWidths.push({ wch: 38 }, { wch: 45 }, { wch: 30 }, { wch: 14 });
-    }
-    ws['!cols'] = colWidths;
 
     for (let c = 0; c < headers.length; c++) {
       const ref = `${colLetter(c)}1`;
-      if (ws[ref]) ws[ref].s = c < fixedHeaders.length ? styleHeader : styleHeaderGarder;
+      if (ws[ref]) ws[ref].s = c < 10 ? styleHeader : styleHeaderGarder;
     }
 
     XLSX.utils.book_append_sheet(wb, ws, `Import PL ${shortName}`);
