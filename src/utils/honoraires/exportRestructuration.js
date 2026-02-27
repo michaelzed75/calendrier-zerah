@@ -319,11 +319,11 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
             Math.round(ligne.nouveau_pu_ht * 100) / 100,
             '',  // Temps estimé (optionnel)
             'Forfait par abonnement',
-            dateDebut,
-            '',  // Date de fin (optionnel)
+            forcerDate2026(dateDebut),
+            '31/12/2099',  // Date de fin : loin dans le futur (abonnement permanent)
             abo.intervalle || 1,
             mapFrequence(abo.frequence),
-            mapJourFacturation(abo.jour_facturation),
+            31,  // Jour de facturation : toujours dernier jour du mois
             '',  // Identifiant modèle de facturation (optionnel)
             mapModesFinalisation(abo.mode_finalisation)
           ]);
@@ -332,6 +332,16 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
     }
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+
+    // Forcer les colonnes date (L=début, M=fin) en type texte
+    // xlsx-js-style auto-parse les dates dd/mm/yyyy → serial number → ISO
+    // PL attend du texte au format JJ/MM/AAAA, pas une date Excel
+    for (let r = 2; r <= data.length + 1; r++) {
+      const refL = `${colLetter(11)}${r}`;  // col L = Date début
+      const refM = `${colLetter(12)}${r}`;  // col M = Date fin
+      if (ws[refL]) { ws[refL].t = 's'; ws[refL].z = '@'; }
+      if (ws[refM]) { ws[refM].t = 's'; ws[refM].z = '@'; }
+    }
 
     ws['!cols'] = [
       { wch: 30 }, { wch: 38 }, { wch: 12 }, { wch: 10 },  // A-D: Raison, ID client, SIREN, Millésime
@@ -368,11 +378,11 @@ export function mapFrequence(frequence) {
 
 /**
  * Convertit le jour de facturation en valeur de liste déroulante PL.
- * Template PL attend : "Dernier jour du mois" ou "Meme que la date du debut d'abonnement"
+ * Note : PL rejette "Meme que la date du debut d'abonnement" à l'import,
+ * seul "Dernier jour du mois" est accepté en pratique.
  */
 export function mapJourFacturation(jour) {
-  if (jour === 31 || jour === '31' || !jour) return 'Dernier jour du mois';
-  return 'Meme que la date du debut d\'abonnement';
+  return 'Dernier jour du mois';
 }
 
 /**
@@ -591,6 +601,21 @@ function buildDetailCroiseSheet(wb, { plans }) {
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
   XLSX.utils.book_append_sheet(wb, ws, 'Détail croisé');
+}
+
+/**
+ * Force une date au format dd/mm/yyyy à être au minimum le 01/01/2026.
+ * PL rejette les dates dans le passé. Si la date est antérieure à 2026,
+ * on la remplace par 01/01/2026 (début d'exercice).
+ */
+export function forcerDate2026(dateStr) {
+  if (!dateStr) return '01/01/2026';
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const annee = parseInt(parts[2], 10);
+    if (annee < 2026) return '01/01/2026';
+  }
+  return dateStr;
 }
 
 /**
