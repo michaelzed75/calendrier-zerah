@@ -269,8 +269,8 @@ describe('Import PL — split par cabinet', () => {
 
 // ── Import PL — format 14 colonnes PL 2026 ─────────────────────────────────
 
-describe('Import PL — format 14 colonnes PL 2026', () => {
-  it('contient exactement 14 colonnes (10 abo + 4 produit)', () => {
+describe('Import PL — format 18 colonnes template PL', () => {
+  it('contient exactement 18 colonnes (format template PL officiel)', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
@@ -280,10 +280,10 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const headers = getSheetData('Import PL AUP')[0];
-    expect(headers.length).toBe(14);
+    expect(headers.length).toBe(18);
   });
 
-  it('contient les 10 colonnes abonnement', () => {
+  it('contient les colonnes client/produit (A-J)', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
@@ -293,19 +293,19 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const headers = getSheetData('Import PL AUP')[0];
-    expect(headers[0]).toBe('Raison sociale');
+    expect(headers[0]).toBe('Raison sociale (optionnel)');
     expect(headers[1]).toBe('Identifiant client');
     expect(headers[2]).toBe('SIREN');
     expect(headers[3]).toBe('Millesime');
-    expect(headers[4]).toBe('Mode de facturation');
-    expect(headers[5]).toBe("Date de debut de l'abonnement");
-    expect(headers[6]).toBe('Interval de facturation');
-    expect(headers[7]).toBe('Frequence de facturation');
-    expect(headers[8]).toBe('Jour de facturation');
-    expect(headers[9]).toBe('Mode de finalisation');
+    expect(headers[4]).toBe('Mission (optionnel)');
+    expect(headers[5]).toBe('Identifiant produit (obligatoire)');
+    expect(headers[6]).toBe('Nom du produit (optionnel)');
+    expect(headers[7]).toBe('Description du produit (optionnel)');
+    expect(headers[8]).toBe('Honoraires (HT)');
+    expect(headers[9]).toBe('Temps estime (HH:mm) (optionnel)');
   });
 
-  it('contient les 4 colonnes produit sans préfixe "Ligne N"', () => {
+  it('contient les colonnes abonnement (K-R)', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
@@ -315,10 +315,14 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const headers = getSheetData('Import PL AUP')[0];
-    expect(headers[10]).toBe('Identifiant produit');
-    expect(headers[11]).toBe('Nom du produit');
-    expect(headers[12]).toBe('Description');
-    expect(headers[13]).toBe('Honoraires HT');
+    expect(headers[10]).toBe('Mode de facturation');
+    expect(headers[11]).toBe("Date de debut de l'abonnement (valable si abonnement)");
+    expect(headers[12]).toBe("Date de fin de l'abonnement (valable si abonnement)");
+    expect(headers[13]).toBe('Interval de facturation (valable si abonnement)');
+    expect(headers[14]).toBe('Frequence de facturation (valable si abonnement)');
+    expect(headers[15]).toBe('Jour de facturation (valable si abonnement)');
+    expect(headers[16]).toBe('Identifiant du modele de facturation (valable si abonnement)');
+    expect(headers[17]).toBe('Mode de finalisation (valable si abonnement)');
   });
 
   it('génère 1 ligne par produit (3 produits = 3 rows)', () => {
@@ -339,16 +343,16 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     const data = getSheetData('Import PL AUP');
     // Header + 3 data rows
     expect(data.length).toBe(4);
-    // Toujours 14 colonnes
-    expect(data[0].length).toBe(14);
+    // Toujours 18 colonnes
+    expect(data[0].length).toBe(18);
     // Chaque row a le même client
     expect(data[1][0]).toBe('CLIENT TEST');
     expect(data[2][0]).toBe('CLIENT TEST');
     expect(data[3][0]).toBe('CLIENT TEST');
-    // Mais un produit différent
-    expect(data[1][11]).toBe('Mission comptable');
-    expect(data[2][11]).toBe('Mise à disposition logiciel');
-    expect(data[3][11]).toBe('Etablissement du P&L');
+    // Mais un produit différent (col 6 = Nom du produit)
+    expect(data[1][6]).toBe('Mission comptable');
+    expect(data[2][6]).toBe('Mise à disposition logiciel');
+    expect(data[3][6]).toBe('Etablissement du P&L');
   });
 
   it('génère N lignes pour 2 abos × 2 produits distincts = 4 rows', () => {
@@ -431,7 +435,7 @@ describe('Import PL — filtrage par validLigneIds', () => {
 
     const data = getSheetData('Import PL AUP');
     expect(data.length).toBe(2); // header + 1 row (seule la ligne 1001)
-    expect(data[1][13]).toBe(500);
+    expect(data[1][8]).toBe(500); // col 8 = Honoraires (HT)
   });
 
   it('élimine les doublons d\'anciens abonnements (prix 2025)', () => {
@@ -465,10 +469,10 @@ describe('Import PL — filtrage par validLigneIds', () => {
 
     const data = getSheetData('Import PL AUP');
     expect(data.length).toBe(3); // header + 2 rows (nouveau abo seulement)
-    expect(data[1][13]).toBe(175); // prix 2026, pas 170
-    expect(data[2][13]).toBe(205);
-    expect(data[1][10]).toBe('UUID-MISSION-COMPTA');
-    expect(data[2][10]).toBe('UUID-PL');
+    expect(data[1][8]).toBe(175); // prix 2026, pas 170 (col 8 = HT)
+    expect(data[2][8]).toBe(205);
+    expect(data[1][5]).toBe('UUID-MISSION-COMPTA'); // col 5 = Identifiant produit
+    expect(data[2][5]).toBe('UUID-PL');
   });
 
   it('élimine les placeholders à 1€ quand le vrai abo existe', () => {
@@ -495,8 +499,8 @@ describe('Import PL — filtrage par validLigneIds', () => {
 
     const data = getSheetData('Import PL AUP');
     expect(data.length).toBe(2); // header + 1 row
-    expect(data[1][13]).toBe(337.5); // vrai montant, pas 1€
-    expect(data[1][7]).toBe('yearly'); // fréquence du vrai abo
+    expect(data[1][8]).toBe(337.5); // vrai montant, pas 1€ (col 8 = HT)
+    expect(data[1][14]).toBe('ans'); // fréquence mappée du vrai abo (col 14)
   });
 
   it('conserve les lignes multiples du même abo si toutes sont dans validLigneIds', () => {
@@ -517,8 +521,8 @@ describe('Import PL — filtrage par validLigneIds', () => {
 
     const data = getSheetData('Import PL AUP');
     expect(data.length).toBe(3); // header + 2 rows
-    expect(data[1][13]).toBe(465);
-    expect(data[2][13]).toBe(1200);
+    expect(data[1][8]).toBe(465); // col 8 = HT
+    expect(data[2][8]).toBe(1200);
   });
 
   it('utilise les métadonnées du bon abo pour chaque ligne', () => {
@@ -542,12 +546,12 @@ describe('Import PL — filtrage par validLigneIds', () => {
 
     const data = getSheetData('Import PL AUP');
     expect(data.length).toBe(3);
-    // Ligne 1 : métadonnées du 1er abo (monthly)
-    expect(data[1][7]).toBe('monthly');
-    expect(data[1][5]).toBe('01/01/2025');
-    // Ligne 2 : métadonnées du 2e abo (yearly)
-    expect(data[2][7]).toBe('yearly');
-    expect(data[2][5]).toBe('15/06/2025');
+    // Ligne 1 : métadonnées du 1er abo (monthly → mois)
+    expect(data[1][14]).toBe('mois'); // col 14 = Fréquence
+    expect(data[1][11]).toBe('01/01/2025'); // col 11 = Date début
+    // Ligne 2 : métadonnées du 2e abo (yearly → ans)
+    expect(data[2][14]).toBe('ans');
+    expect(data[2][11]).toBe('15/06/2025');
   });
 });
 
@@ -566,10 +570,10 @@ describe('Import PL — données ligne PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[13]).toBe(102.5); // Honoraires HT
+    expect(row[8]).toBe(102.5); // col 8 = Honoraires (HT)
   });
 
-  it('écrit les métadonnées abonnement dans les 10 colonnes fixes', () => {
+  it('écrit les métadonnées avec les valeurs PL template', () => {
     const plan = makePlan({
       nom: 'SAINT JAMES', cabinet: 'Zerah Fiduciaire', siren: '838444347', plCustomerId: 'C2STJAMES',
       abonnements: [makeAbo({
@@ -583,16 +587,21 @@ describe('Import PL — données ligne PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL ZF')[1];
+    // Colonnes client (A-D)
     expect(row[0]).toBe('SAINT JAMES');
     expect(row[1]).toBe('C2STJAMES');
     expect(row[2]).toBe('838444347');
     expect(row[3]).toBe(2026);
-    expect(row[4]).toBe('abonnement');
-    expect(row[5]).toBe('15/06/2024');
-    expect(row[6]).toBe(1);
-    expect(row[7]).toBe('monthly');
-    expect(row[8]).toBe(31);
-    expect(row[9]).toBe('awaiting_validation');
+    expect(row[4]).toBe(''); // Mission (optionnel)
+    // Colonnes abonnement (K-R) avec valeurs PL dropdown
+    expect(row[10]).toBe('Forfait par abonnement');
+    expect(row[11]).toBe('15/06/2024');
+    expect(row[12]).toBe(''); // Date fin (optionnel)
+    expect(row[13]).toBe(1);
+    expect(row[14]).toBe('mois');
+    expect(row[15]).toBe('Dernier jour du mois');
+    expect(row[16]).toBe(''); // ID modèle (optionnel)
+    expect(row[17]).toBe('Un brouillon de facture');
   });
 
   it('écrit le label et la description dans les colonnes produit', () => {
@@ -607,8 +616,8 @@ describe('Import PL — données ligne PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[11]).toBe('Mission comptable');
-    expect(row[12]).toBe('');
+    expect(row[6]).toBe('Mission comptable'); // col 6 = Nom du produit
+    expect(row[7]).toBe(''); // col 7 = Description
   });
 
   it('écrit le SIREN comme chaîne vide si absent', () => {
@@ -645,11 +654,11 @@ describe('Import PL — données ligne PL 2026', () => {
     expect(data[2][0]).toBe('MULTI PROD');
     expect(data[1][1]).toBe('C1MULTI');
     expect(data[2][1]).toBe('C1MULTI');
-    expect(data[1][5]).toBe('01/03/2024');
-    expect(data[2][5]).toBe('01/03/2024');
-    // Mais des produits différents
-    expect(data[1][13]).toBe(500);
-    expect(data[2][13]).toBe(100);
+    expect(data[1][11]).toBe('01/03/2024'); // col 11 = Date début
+    expect(data[2][11]).toBe('01/03/2024');
+    // Mais des produits différents (col 8 = HT)
+    expect(data[1][8]).toBe(500);
+    expect(data[2][8]).toBe(100);
   });
 });
 
@@ -669,7 +678,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[10]).toBe('UUID-MISSION-COMPTA');
+    expect(row[5]).toBe('UUID-MISSION-COMPTA'); // col 5 = Identifiant produit
   });
 
   it('écrit une chaîne vide si aucun produit PL ne correspond', () => {
@@ -685,7 +694,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[10]).toBe('');
+    expect(row[5]).toBe('');
   });
 
   it('matche P&L par mot-clé', () => {
@@ -701,7 +710,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[10]).toBe('UUID-PL');
+    expect(row[5]).toBe('UUID-PL');
   });
 
   it('matche Rendez-vous / RDV', () => {
@@ -717,7 +726,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[10]).toBe('UUID-RDV');
+    expect(row[5]).toBe('UUID-RDV');
   });
 
   it('ne mélange pas les produits entre cabinets', () => {
@@ -736,7 +745,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits });
 
     const row = getSheetData('Import PL ZF')[1];
-    expect(row[10]).toBe('UUID-ZF-MISSION');
+    expect(row[5]).toBe('UUID-ZF-MISSION');
   });
 
   it('fonctionne sans produitsPennylane (UUID vide)', () => {
@@ -751,7 +760,7 @@ describe('Import PL — matching UUID produits', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[10]).toBe('');
+    expect(row[5]).toBe('');
   });
 });
 
@@ -768,7 +777,7 @@ describe('Import PL — formatDatePennylane', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[5]).toBe('01/01/2024');
+    expect(row[11]).toBe('01/01/2024'); // col 11 = Date début
   });
 
   it('gère une date avec composant horaire (ISO+T)', () => {
@@ -781,7 +790,7 @@ describe('Import PL — formatDatePennylane', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[5]).toBe('31/12/2025');
+    expect(row[11]).toBe('31/12/2025');
   });
 
   it('laisse une date déjà au format dd/mm/yyyy inchangée', () => {
@@ -794,7 +803,7 @@ describe('Import PL — formatDatePennylane', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[5]).toBe('15/06/2024');
+    expect(row[11]).toBe('15/06/2024');
   });
 });
 
@@ -868,7 +877,7 @@ describe('Cas limites', () => {
     }).not.toThrow();
   });
 
-  it('gère un abonnement yearly', () => {
+  it('gère un abonnement yearly → "ans"', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({
@@ -881,8 +890,8 @@ describe('Cas limites', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[7]).toBe('yearly');
-    expect(row[13]).toBe(1200);
+    expect(row[14]).toBe('ans'); // col 14 = Fréquence, mappé de yearly → ans
+    expect(row[8]).toBe(1200); // col 8 = HT
   });
 
   it('gère un prix symbolique 1€', () => {
@@ -897,6 +906,6 @@ describe('Cas limites', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[13]).toBe(1.02);
+    expect(row[8]).toBe(1.02); // col 8 = HT
   });
 });

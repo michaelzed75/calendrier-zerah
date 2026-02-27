@@ -268,23 +268,27 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
       }
     }
 
-    // Format PL 2026 : 14 colonnes fixes (10 abo + 4 produit)
+    // Format PL 2026 : 18 colonnes alignées sur le template officiel Pennylane
     // 1 ligne Excel = 1 produit (colonnes abo répétées)
     const headers = [
-      'Raison sociale',
+      'Raison sociale (optionnel)',
       'Identifiant client',
       'SIREN',
       'Millesime',
+      'Mission (optionnel)',
+      'Identifiant produit (obligatoire)',
+      'Nom du produit (optionnel)',
+      'Description du produit (optionnel)',
+      'Honoraires (HT)',
+      'Temps estime (HH:mm) (optionnel)',
       'Mode de facturation',
-      'Date de debut de l\'abonnement',
-      'Interval de facturation',
-      'Frequence de facturation',
-      'Jour de facturation',
-      'Mode de finalisation',
-      'Identifiant produit',
-      'Nom du produit',
-      'Description',
-      'Honoraires HT'
+      'Date de debut de l\'abonnement (valable si abonnement)',
+      'Date de fin de l\'abonnement (valable si abonnement)',
+      'Interval de facturation (valable si abonnement)',
+      'Frequence de facturation (valable si abonnement)',
+      'Jour de facturation (valable si abonnement)',
+      'Identifiant du modele de facturation (valable si abonnement)',
+      'Mode de finalisation (valable si abonnement)'
     ];
 
     const data = [];
@@ -308,16 +312,20 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
             plan.pennylane_customer_id,
             plan.siren || '',
             2026,
-            'abonnement',
-            dateDebut,
-            abo.intervalle || 1,
-            abo.frequence || 'monthly',
-            abo.jour_facturation || 31,
-            abo.mode_finalisation || 'awaiting_validation',
+            '',  // Mission (optionnel)
             produit ? produit.pennylane_product_id : '',
             ligne.label,
             ligne.description || '',
-            Math.round(ligne.nouveau_pu_ht * 100) / 100
+            Math.round(ligne.nouveau_pu_ht * 100) / 100,
+            '',  // Temps estimé (optionnel)
+            'Forfait par abonnement',
+            dateDebut,
+            '',  // Date de fin (optionnel)
+            abo.intervalle || 1,
+            mapFrequence(abo.frequence),
+            mapJourFacturation(abo.jour_facturation),
+            '',  // Identifiant modèle de facturation (optionnel)
+            mapModesFinalisation(abo.mode_finalisation)
           ]);
         }
       }
@@ -326,18 +334,57 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
     ws['!cols'] = [
-      { wch: 30 }, { wch: 38 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
-      { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 20 },
-      { wch: 38 }, { wch: 45 }, { wch: 30 }, { wch: 14 }
+      { wch: 30 }, { wch: 38 }, { wch: 12 }, { wch: 10 },  // A-D: Raison, ID client, SIREN, Millésime
+      { wch: 12 },  // E: Mission
+      { wch: 38 }, { wch: 45 }, { wch: 30 }, { wch: 14 },  // F-I: Produit ID, Nom, Description, HT
+      { wch: 12 },  // J: Temps estimé
+      { wch: 24 }, { wch: 14 }, { wch: 14 },  // K-M: Mode factu, Date début, Date fin
+      { wch: 10 }, { wch: 12 }, { wch: 24 },  // N-P: Intervalle, Fréquence, Jour
+      { wch: 20 }, { wch: 24 }  // Q-R: ID modèle, Mode finalisation
     ];
 
     for (let c = 0; c < headers.length; c++) {
       const ref = `${colLetter(c)}1`;
-      if (ws[ref]) ws[ref].s = c < 10 ? styleHeader : styleHeaderGarder;
+      // Colonnes produit (F-I = index 5-8) en vert, le reste en bleu
+      if (ws[ref]) ws[ref].s = (c >= 5 && c <= 8) ? styleHeaderGarder : styleHeader;
     }
 
     XLSX.utils.book_append_sheet(wb, ws, `Import PL ${shortName}`);
   }
+}
+
+/**
+ * Convertit la fréquence API Pennylane en valeur de liste déroulante PL.
+ * Template PL attend : "mois", "ans", "semaines"
+ */
+function mapFrequence(frequence) {
+  const mapping = {
+    'monthly': 'mois',
+    'yearly': 'ans',
+    'weekly': 'semaines'
+  };
+  return mapping[frequence] || frequence || 'mois';
+}
+
+/**
+ * Convertit le jour de facturation en valeur de liste déroulante PL.
+ * Template PL attend : "Dernier jour du mois" ou "Meme que la date du debut d'abonnement"
+ */
+function mapJourFacturation(jour) {
+  if (jour === 31 || jour === '31' || !jour) return 'Dernier jour du mois';
+  return 'Meme que la date du debut d\'abonnement';
+}
+
+/**
+ * Convertit le mode de finalisation API en valeur de liste déroulante PL.
+ * Template PL attend : "Un brouillon de facture" ou "Une facture finalisee"
+ */
+function mapModesFinalisation(mode) {
+  const mapping = {
+    'awaiting_validation': 'Un brouillon de facture',
+    'auto_finalized': 'Une facture finalisee'
+  };
+  return mapping[mode] || mode || 'Un brouillon de facture';
 }
 
 /**
