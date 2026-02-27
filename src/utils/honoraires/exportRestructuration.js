@@ -307,10 +307,12 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
 
           const produit = trouverProduitFixe(ligne.label, produitsIndex);
 
+          const dateDebutForcee = forcerDate2026(dateDebut);
+
           data.push([
             plan.client_nom,
             plan.pennylane_customer_id,
-            plan.siren || '',
+            String(plan.siren || ''),  // SIREN toujours string (type s)
             2026,
             '',  // Mission (optionnel)
             produit ? produit.pennylane_product_id : '',
@@ -319,11 +321,11 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
             Math.round(ligne.nouveau_pu_ht * 100) / 100,
             '',  // Temps estimé (optionnel)
             'Forfait par abonnement',
-            forcerDate2026(dateDebut),
-            '31/12/2099',  // Date de fin : loin dans le futur (abonnement permanent)
+            dateToExcelSerial(dateDebutForcee),  // Serial Excel (ex: 46023 = 01/01/2026)
+            DATE_FIN_SERIAL,  // 73050 = 31/12/2099 (abonnement permanent)
             abo.intervalle || 1,
             mapFrequence(abo.frequence),
-            31,  // Jour de facturation : toujours dernier jour du mois
+            mapJourFacturation(abo.jour_facturation, dateDebutForcee),
             '',  // Identifiant modèle de facturation (optionnel)
             mapModesFinalisation(abo.mode_finalisation)
           ]);
@@ -333,14 +335,13 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
-    // Forcer les colonnes date (L=début, M=fin) en type texte
-    // xlsx-js-style auto-parse les dates dd/mm/yyyy → serial number → ISO
-    // PL attend du texte au format JJ/MM/AAAA, pas une date Excel
+    // Forcer les colonnes date (L=début, M=fin) en type number avec format m/d/yy
+    // Le fichier PL qui marche utilise des serial Excel (type n) + format m/d/yy
     for (let r = 2; r <= data.length + 1; r++) {
       const refL = `${colLetter(11)}${r}`;  // col L = Date début
       const refM = `${colLetter(12)}${r}`;  // col M = Date fin
-      if (ws[refL]) { ws[refL].t = 's'; ws[refL].z = '@'; }
-      if (ws[refM]) { ws[refM].t = 's'; ws[refM].z = '@'; }
+      if (ws[refL]) { ws[refL].t = 'n'; ws[refL].z = 'm/d/yy'; }
+      if (ws[refM]) { ws[refM].t = 'n'; ws[refM].z = 'm/d/yy'; }
     }
 
     ws['!cols'] = [
@@ -378,10 +379,13 @@ export function mapFrequence(frequence) {
 
 /**
  * Convertit le jour de facturation en valeur de liste déroulante PL.
- * Note : PL rejette "Meme que la date du debut d'abonnement" à l'import,
- * seul "Dernier jour du mois" est accepté en pratique.
+ * Si la date de début est le 01/01/2026 (ou absente) → "Dernier jour du mois"
+ * Sinon → "Même que la date du début d'abonnement" (avec accents, accepté par PL)
  */
-export function mapJourFacturation(jour) {
+export function mapJourFacturation(jour, dateDebut) {
+  if (dateDebut && dateDebut !== '01/01/2026') {
+    return 'Même que la date du début d\'abonnement';
+  }
   return 'Dernier jour du mois';
 }
 
@@ -617,6 +621,29 @@ export function forcerDate2026(dateStr) {
   }
   return dateStr;
 }
+
+/**
+ * Convertit une date dd/mm/yyyy en numéro série Excel (days since 1899-12-30).
+ * Excel utilise le système 1900 avec le bug Lotus (29 fév 1900 existe).
+ * Le fichier PL qui marche utilise des serial numbers (ex: 46081 = 28/02/2026).
+ */
+export function dateToExcelSerial(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return null;
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const year = parseInt(parts[2], 10);
+  // Date JS (mois 0-based)
+  const dt = new Date(year, month - 1, day);
+  // Epoch Excel = 1899-12-30 (avec le bug Lotus 1900)
+  const excelEpoch = new Date(1899, 11, 30);
+  const msPerDay = 86400000;
+  return Math.round((dt - excelEpoch) / msPerDay);
+}
+
+// Date fin permanente : 31/12/2099 = serial 73050
+export const DATE_FIN_SERIAL = 73050;
 
 /**
  * Formate une date ISO (YYYY-MM-DD) en dd/mm/yyyy pour Pennylane.

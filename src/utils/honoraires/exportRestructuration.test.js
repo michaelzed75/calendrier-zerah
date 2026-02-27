@@ -31,7 +31,7 @@ vi.mock('xlsx-js-style', () => ({
   writeFile: (wb, fileName) => { lastFileName = fileName; }
 }));
 
-import { exportRestructurationExcel, mapFrequence, mapJourFacturation, mapModesFinalisation, forcerDate2026 } from './exportRestructuration.js';
+import { exportRestructurationExcel, mapFrequence, mapJourFacturation, mapModesFinalisation, forcerDate2026, dateToExcelSerial, DATE_FIN_SERIAL } from './exportRestructuration.js';
 
 // === Test Data ===
 
@@ -548,10 +548,10 @@ describe('Import PL — filtrage par validLigneIds', () => {
     expect(data.length).toBe(3);
     // Ligne 1 : métadonnées du 1er abo (monthly → mois)
     expect(data[1][14]).toBe('mois'); // col 14 = Fréquence
-    expect(data[1][11]).toBe('01/01/2026'); // col 11 = Date début (forcée car 2025 < 2026)
+    expect(data[1][11]).toBe(dateToExcelSerial('01/01/2026')); // col 11 = Date début serial (forcée car 2025 < 2026)
     // Ligne 2 : métadonnées du 2e abo (yearly → ans)
     expect(data[2][14]).toBe('ans');
-    expect(data[2][11]).toBe('01/01/2026'); // forcée car 2025 < 2026
+    expect(data[2][11]).toBe(dateToExcelSerial('01/01/2026')); // serial, forcée car 2025 < 2026
   });
 });
 
@@ -595,11 +595,11 @@ describe('Import PL — données ligne PL 2026', () => {
     expect(row[4]).toBe(''); // Mission (optionnel)
     // Colonnes abonnement (K-R) avec valeurs PL dropdown
     expect(row[10]).toBe('Forfait par abonnement');
-    expect(row[11]).toBe('01/01/2026'); // forcée car 2024 < 2026
-    expect(row[12]).toBe('31/12/2099'); // Date fin permanente
+    expect(row[11]).toBe(dateToExcelSerial('01/01/2026')); // serial Excel, forcée car 2024 < 2026
+    expect(row[12]).toBe(DATE_FIN_SERIAL); // 73050 = 31/12/2099
     expect(row[13]).toBe(1);
     expect(row[14]).toBe('mois');
-    expect(row[15]).toBe(31); // Jour de facturation = 31 (dernier jour)
+    expect(row[15]).toBe('Dernier jour du mois'); // date début = 01/01/2026 → "Dernier jour du mois"
     expect(row[16]).toBe(''); // ID modèle (optionnel)
     expect(row[17]).toBe('Un brouillon de facture');
   });
@@ -654,8 +654,8 @@ describe('Import PL — données ligne PL 2026', () => {
     expect(data[2][0]).toBe('MULTI PROD');
     expect(data[1][1]).toBe('C1MULTI');
     expect(data[2][1]).toBe('C1MULTI');
-    expect(data[1][11]).toBe('01/01/2026'); // col 11 = Date début (forcée car 2024 < 2026)
-    expect(data[2][11]).toBe('01/01/2026');
+    expect(data[1][11]).toBe(dateToExcelSerial('01/01/2026')); // serial, forcée car 2024 < 2026
+    expect(data[2][11]).toBe(dateToExcelSerial('01/01/2026'));
     // Mais des produits différents (col 8 = HT)
     expect(data[1][8]).toBe(500);
     expect(data[2][8]).toBe(100);
@@ -777,7 +777,7 @@ describe('Import PL — formatDatePennylane + forcerDate2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[11]).toBe('01/01/2026'); // col 11 = Date début, forcée car 2024 < 2026
+    expect(row[11]).toBe(dateToExcelSerial('01/01/2026')); // serial, forcée car 2024 < 2026
   });
 
   it('gère une date ISO+T < 2026 → forcée à 01/01/2026', () => {
@@ -790,7 +790,7 @@ describe('Import PL — formatDatePennylane + forcerDate2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[11]).toBe('01/01/2026'); // forcée car 2025 < 2026
+    expect(row[11]).toBe(dateToExcelSerial('01/01/2026')); // serial, forcée car 2025 < 2026
   });
 
   it('conserve une date 2026+ telle quelle', () => {
@@ -803,7 +803,7 @@ describe('Import PL — formatDatePennylane + forcerDate2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[11]).toBe('15/03/2026'); // date 2026, conservée
+    expect(row[11]).toBe(dateToExcelSerial('15/03/2026')); // serial, date 2026 conservée
   });
 
   it('laisse une date dd/mm/yyyy < 2026 → forcée à 01/01/2026', () => {
@@ -816,10 +816,10 @@ describe('Import PL — formatDatePennylane + forcerDate2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[11]).toBe('01/01/2026'); // forcée car 2024 < 2026
+    expect(row[11]).toBe(dateToExcelSerial('01/01/2026')); // serial, forcée car 2024 < 2026
   });
 
-  it('écrit 31/12/2099 comme date de fin permanente', () => {
+  it('écrit DATE_FIN_SERIAL (73050) comme date de fin permanente', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
@@ -829,7 +829,7 @@ describe('Import PL — formatDatePennylane + forcerDate2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[12]).toBe('31/12/2099'); // col 12 = Date fin permanente
+    expect(row[12]).toBe(DATE_FIN_SERIAL); // col 12 = 73050 = 31/12/2099
   });
 });
 
@@ -961,29 +961,50 @@ describe('mapFrequence — conversion API → dropdown PL', () => {
   });
 });
 
-describe('mapJourFacturation — toujours "Dernier jour du mois"', () => {
-  it('retourne toujours "Dernier jour du mois" quel que soit l\'input', () => {
-    expect(mapJourFacturation(31)).toBe('Dernier jour du mois');
-    expect(mapJourFacturation('31')).toBe('Dernier jour du mois');
-    expect(mapJourFacturation(1)).toBe('Dernier jour du mois');
-    expect(mapJourFacturation(15)).toBe('Dernier jour du mois');
-    expect(mapJourFacturation(null)).toBe('Dernier jour du mois');
-    expect(mapJourFacturation(undefined)).toBe('Dernier jour du mois');
+describe('mapJourFacturation — conditionnel selon date début', () => {
+  it('retourne "Dernier jour du mois" quand date début est 01/01/2026', () => {
+    expect(mapJourFacturation(31, '01/01/2026')).toBe('Dernier jour du mois');
+    expect(mapJourFacturation(15, '01/01/2026')).toBe('Dernier jour du mois');
   });
 
-  it('l\'export utilise 31 (nombre) directement, pas mapJourFacturation', () => {
-    // Note : dans l'export, on écrit 31 en dur (col 15)
-    // mapJourFacturation n'est plus appelé dans buildImportFixeSheet
+  it('retourne "Dernier jour du mois" quand date début est null/undefined', () => {
+    expect(mapJourFacturation(31, null)).toBe('Dernier jour du mois');
+    expect(mapJourFacturation(31, undefined)).toBe('Dernier jour du mois');
+    expect(mapJourFacturation(31)).toBe('Dernier jour du mois');
+  });
+
+  it('retourne "Même que la date du début d\'abonnement" quand date début ≠ 01/01/2026', () => {
+    expect(mapJourFacturation(31, '15/03/2026')).toBe('Même que la date du début d\'abonnement');
+    expect(mapJourFacturation(15, '01/06/2026')).toBe('Même que la date du début d\'abonnement');
+    expect(mapJourFacturation(1, '28/02/2027')).toBe('Même que la date du début d\'abonnement');
+  });
+
+  it('l\'export utilise "Dernier jour du mois" quand date début forcée = 01/01/2026', () => {
+    // dateDebut 2024 → forcée à 01/01/2026 → "Dernier jour du mois"
     const plan = makePlan({
       cabinet: 'Audit Up',
-      abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
+      abonnements: [makeAbo({ dateDebut: '2024-01-01', lignesFixes: [makeLigneFixe()] })],
       nbFixes: 1
     });
 
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[15]).toBe(31); // nombre, pas texte dropdown
+    expect(row[15]).toBe('Dernier jour du mois');
+  });
+
+  it('l\'export utilise "Même que la date du début d\'abonnement" quand date début 2026+ ≠ 01/01', () => {
+    // dateDebut 2026-03-15 → 15/03/2026 → "Même que la date du début d'abonnement"
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({ dateDebut: '2026-03-15', lignesFixes: [makeLigneFixe()] })],
+      nbFixes: 1
+    });
+
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
+
+    const row = getSheetData('Import PL AUP')[1];
+    expect(row[15]).toBe('Même que la date du début d\'abonnement');
   });
 });
 
@@ -1153,7 +1174,7 @@ describe('Conformité format template PL officiel', () => {
     millesimes: [2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030],
     modeFacturation: ['Forfait par abonnement', 'A l\'acte'],
     frequence: ['mois', 'ans', 'semaines'],
-    jourFacturation: ['Dernier jour du mois', 'Meme que la date du debut d\'abonnement'],
+    jourFacturation: ['Dernier jour du mois', 'Même que la date du début d\'abonnement'],
     modeFinalisation: ['Un brouillon de facture', 'Une facture finalisee']
   };
 
@@ -1171,8 +1192,8 @@ describe('Conformité format template PL officiel', () => {
     expect(VALEURS_DROPDOWN_PL.frequence).toContain(mapFrequence('weekly'));
   });
 
-  it('le jour de facturation est 31 (nombre) dans l\'export PL', () => {
-    // PL accepte le nombre 31 pour "dernier jour du mois"
+  it('le jour de facturation est "Dernier jour du mois" quand date début = 01/01/2026', () => {
+    // dateDebut 2024 → forcée à 01/01/2026 → "Dernier jour du mois"
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [makeAbo({ lignesFixes: [makeLigneFixe()] })],
@@ -1180,7 +1201,7 @@ describe('Conformité format template PL officiel', () => {
     });
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
     const row = getSheetData('Import PL AUP')[1];
-    expect(row[15]).toBe(31);
+    expect(row[15]).toBe('Dernier jour du mois');
   });
 
   it('tous les modes de finalisation mappés sont des valeurs dropdown PL valides', () => {
@@ -1209,14 +1230,14 @@ describe('Conformité format template PL officiel', () => {
     expect(VALEURS_DROPDOWN_PL.modeFacturation).toContain(row[10]);
     // col 14 = Fréquence
     expect(VALEURS_DROPDOWN_PL.frequence).toContain(row[14]);
-    // col 15 = Jour de facturation → 31 (nombre, accepté par PL)
-    expect(row[15]).toBe(31);
+    // col 15 = Jour de facturation → texte dropdown PL
+    expect(VALEURS_DROPDOWN_PL.jourFacturation).toContain(row[15]);
     // col 17 = Mode de finalisation
     expect(VALEURS_DROPDOWN_PL.modeFinalisation).toContain(row[17]);
-    // col 11 = Date début ≥ 2026
-    expect(row[11]).toMatch(/\/2026$|\/20[2-9]\d$/);
-    // col 12 = Date fin = 31/12/2099
-    expect(row[12]).toBe('31/12/2099');
+    // col 11 = Date début = serial Excel (number)
+    expect(row[11]).toBe(dateToExcelSerial('01/01/2026'));
+    // col 12 = Date fin = DATE_FIN_SERIAL (73050)
+    expect(row[12]).toBe(DATE_FIN_SERIAL);
   });
 
   it('la date de fin est toujours 31/12/2099 (abonnement permanent)', () => {
@@ -1235,9 +1256,9 @@ describe('Conformité format template PL officiel', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
 
     const data = getSheetData('Import PL AUP');
-    // Toutes les lignes ont 31/12/2099 en date fin
-    expect(data[1][12]).toBe('31/12/2099');
-    expect(data[2][12]).toBe('31/12/2099');
+    // Toutes les lignes ont DATE_FIN_SERIAL (73050) en date fin
+    expect(data[1][12]).toBe(DATE_FIN_SERIAL);
+    expect(data[2][12]).toBe(DATE_FIN_SERIAL);
   });
 
   it('les 18 colonnes sont dans l\'ordre exact du template PL', () => {
@@ -1308,5 +1329,55 @@ describe('forcerDate2026 — force les dates < 2026 à 01/01/2026', () => {
 
   it('undefined → retourne 01/01/2026', () => {
     expect(forcerDate2026(undefined)).toBe('01/01/2026');
+  });
+});
+
+// ── dateToExcelSerial — conversion date → serial Excel ──────────────────────
+
+describe('dateToExcelSerial — conversion date dd/mm/yyyy → serial Excel', () => {
+  it('01/01/2026 → 46023', () => {
+    expect(dateToExcelSerial('01/01/2026')).toBe(46023);
+  });
+
+  it('28/02/2026 → 46081', () => {
+    expect(dateToExcelSerial('28/02/2026')).toBe(46081);
+  });
+
+  it('15/03/2026 → 46096', () => {
+    expect(dateToExcelSerial('15/03/2026')).toBe(46096);
+  });
+
+  it('31/12/2099 → 73050 (DATE_FIN_SERIAL)', () => {
+    expect(dateToExcelSerial('31/12/2099')).toBe(73050);
+    expect(dateToExcelSerial('31/12/2099')).toBe(DATE_FIN_SERIAL);
+  });
+
+  it('01/01/2024 → 45292', () => {
+    expect(dateToExcelSerial('01/01/2024')).toBe(45292);
+  });
+
+  it('null → null', () => {
+    expect(dateToExcelSerial(null)).toBeNull();
+  });
+
+  it('chaîne vide → null', () => {
+    expect(dateToExcelSerial('')).toBeNull();
+  });
+
+  it('format invalide → null', () => {
+    expect(dateToExcelSerial('2026-01-01')).toBeNull();
+    expect(dateToExcelSerial('abc')).toBeNull();
+  });
+});
+
+// ── DATE_FIN_SERIAL ─────────────────────────────────────────────────────────
+
+describe('DATE_FIN_SERIAL — constante 31/12/2099', () => {
+  it('vaut 73050', () => {
+    expect(DATE_FIN_SERIAL).toBe(73050);
+  });
+
+  it('correspond au serial Excel de 31/12/2099', () => {
+    expect(DATE_FIN_SERIAL).toBe(dateToExcelSerial('31/12/2099'));
   });
 });
