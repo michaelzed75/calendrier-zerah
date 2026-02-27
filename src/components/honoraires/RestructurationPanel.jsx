@@ -106,12 +106,24 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
   }, [filterCabinet]);
 
   // === Export Excel ===
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (!plans || !stats) return;
+    // Charger les produits PL pour les UUID (identifiant produit obligatoire)
+    let produitsPennylane = [];
+    try {
+      const { data } = await supabase
+        .from('produits_pennylane')
+        .select('cabinet,pennylane_product_id,denomination,label_normalise')
+        .eq('actif', true);
+      produitsPennylane = data || [];
+    } catch (err) {
+      console.warn('Impossible de charger produits_pennylane:', err.message);
+    }
     exportRestructurationExcel({
       plans,
       stats,
-      singleClient: mode === 'single' && plans.length === 1
+      singleClient: mode === 'single' && plans.length === 1,
+      produitsPennylane
     });
   }, [plans, stats, mode]);
 

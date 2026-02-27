@@ -116,13 +116,13 @@
 | Tarifs reference | 19 | tarifsReferenceService.test.js |
 | Classification axes | 46 | classificationAxes.test.js |
 | Restructuration (logique) | 12 | subscriptionRestructuration.test.js |
-| Restructuration (export) | 24 | exportRestructuration.test.js |
+| Restructuration (export) | 32 | exportRestructuration.test.js |
 | Facturation variable | 59 | facturationVariable.test.js |
 | Sync honoraires | 35 | syncHonoraires.test.js |
 | Sync preview | 47 | syncPreview.test.js |
 | Reconciliation | 21 | reconciliation.test.js |
-| **Total module honoraires** | **334** | |
-| **Total projet** | **528** | |
+| **Total module honoraires** | **342** | |
+| **Total projet** | **536** | |
 
 ---
 

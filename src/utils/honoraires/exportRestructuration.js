@@ -5,10 +5,13 @@
  *
  * Génère un fichier Excel avec 5 onglets :
  * 1. Résumé — Vue d'ensemble : nb clients, lignes fixes/variables, montants
- * 2. Import PL AUP — Abonnements fixes Audit Up avec prix 2026
- * 3. Import PL ZF — Abonnements fixes Zerah Fiduciaire avec prix 2026
+ * 2. Import PL AUP — Abonnements fixes Audit Up avec prix 2026 (format PL 2026)
+ * 3. Import PL ZF — Abonnements fixes Zerah Fiduciaire avec prix 2026 (format PL 2026)
  * 4. A SUPPRIMER — Liste des lignes variables à retirer de PL
  * 5. Détail croisé — Vue complète par client : abonnements × lignes × décision
+ *
+ * Format PL 2026 (nouveau) : 1 ligne = 1 abonnement, colonnes fixes + N groupes
+ * de 4 colonnes produit (Identifiant produit, Nom, Description, Honoraires HT).
  *
  * Utilisé pour :
  * - Valider visuellement la restructuration avant exécution
@@ -131,21 +134,22 @@ function setCell(ws, ref, value, style) {
  * @param {import('./subscriptionRestructuration.js').PlanRestructurationClient[]} params.plans
  * @param {Object} params.stats - Résultat de calculerStatistiques
  * @param {boolean} [params.singleClient] - true si export pour un seul client (test)
+ * @param {Array<{cabinet: string, pennylane_product_id: string, denomination: string, label_normalise: string}>} [params.produitsPennylane] - Produits PL pour UUID
  */
-export function exportRestructurationExcel({ plans, stats, singleClient = false }) {
+export function exportRestructurationExcel({ plans, stats, singleClient = false, produitsPennylane = [] }) {
   const wb = XLSX.utils.book_new();
   const dateStr = new Date().toLocaleDateString('fr-FR');
 
   // Onglet 1 : Résumé
   buildResumeSheet(wb, { stats, dateStr, singleClient, plans });
 
-  // Onglet 2 : Import PL (abonnements FIXES avec prix 2026)
-  buildImportFixeSheet(wb, { plans });
+  // Onglet 2+ : Import PL par cabinet (abonnements FIXES avec prix 2026)
+  buildImportFixeSheet(wb, { plans, produitsPennylane });
 
-  // Onglet 3 : Produits à SUPPRIMER
+  // Onglet : Produits à SUPPRIMER
   buildSupprimerSheet(wb, { plans });
 
-  // Onglet 4 : Détail croisé
+  // Onglet : Détail croisé
   buildDetailCroiseSheet(wb, { plans });
 
   // Télécharger
@@ -243,7 +247,7 @@ function buildResumeSheet(wb, { stats, dateStr, singleClient, plans }) {
  * Onglet Import PL : format import Pennylane avec les abonnements FIXES uniquement.
  * Même format que buildPennylaneSheets dans exportAugmentation.js.
  */
-function buildImportFixeSheet(wb, { plans }) {
+function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
   // Séparer les plans par cabinet → un onglet par cabinet
   const cabinets = new Map();
   for (const plan of plans) {
@@ -255,16 +259,26 @@ function buildImportFixeSheet(wb, { plans }) {
   for (const [cabinet, cabinetPlans] of cabinets) {
     const shortName = cabinet === 'Audit Up' ? 'AUP' : cabinet === 'Zerah Fiduciaire' ? 'ZF' : cabinet;
 
+    // Index produits PL par label_normalise+cabinet pour matching UUID
+    const produitsIndex = new Map();
+    for (const p of produitsPennylane) {
+      if (p.cabinet === cabinet) {
+        produitsIndex.set(p.label_normalise, p);
+      }
+    }
+
+    // Colonnes fixes d'abonnement (format PL 2026)
     const fixedHeaders = [
-      'Intervalle de frequence',
-      "Frequence d'abonnement",
-      'Mode de finalisation',
-      'Date de creation',
-      'Jour du mois de facturation',
-      'Nom',
-      'Identifiant du client',
-      'Conditions de paiement',
-      'Moyen de paiement'
+      'Raison sociale',
+      'Identifiant client',
+      'SIREN',
+      'Millesime',
+      'Mode de facturation',
+      'Date de debut de l\'abonnement',
+      'Interval de facturation',
+      'Frequence de facturation',
+      'Jour de facturation',
+      'Mode de finalisation'
     ];
 
     let maxLines = 0;
@@ -275,13 +289,13 @@ function buildImportFixeSheet(wb, { plans }) {
     }
     maxLines = Math.max(maxLines, 1);
 
+    // Colonnes par ligne produit (4 colonnes par ligne)
     const lineHeaders = [];
     for (let l = 1; l <= maxLines; l++) {
-      lineHeaders.push(`Ligne ${l} - Label`);
-      lineHeaders.push(`Ligne ${l} - Quantite`);
-      lineHeaders.push(`Ligne ${l} - TTC`);
-      lineHeaders.push(`Ligne ${l} - Taux TVA`);
-      lineHeaders.push(`Ligne ${l} - description`);
+      lineHeaders.push(`Ligne ${l} - Identifiant produit`);
+      lineHeaders.push(`Ligne ${l} - Nom du produit`);
+      lineHeaders.push(`Ligne ${l} - Description`);
+      lineHeaders.push(`Ligne ${l} - Honoraires HT`);
     }
 
     const headers = [...fixedHeaders, ...lineHeaders];
@@ -293,32 +307,32 @@ function buildImportFixeSheet(wb, { plans }) {
       for (const abo of plan.abonnements) {
         if (abo.lignes_fixes.length === 0) continue;
 
-        const dateCreation = formatDatePennylane(abo.date_debut);
+        const dateDebut = formatDatePennylane(abo.date_debut);
 
         const row = [
-          abo.intervalle || 1,
-          abo.frequence || 'monthly',
-          abo.mode_finalisation || 'awaiting_validation',
-          dateCreation,
-          abo.jour_facturation || 31,
           plan.client_nom,
           plan.pennylane_customer_id,
-          abo.conditions_paiement || 'upon_receipt',
-          abo.moyen_paiement || 'offline'
+          plan.siren || '',
+          2026,
+          'abonnement',
+          dateDebut,
+          abo.intervalle || 1,
+          abo.frequence || 'monthly',
+          abo.jour_facturation || 31,
+          abo.mode_finalisation || 'awaiting_validation'
         ];
 
         for (let l = 0; l < maxLines; l++) {
           if (l < abo.lignes_fixes.length) {
             const ligne = abo.lignes_fixes[l];
-            const ttcUnitaire = Math.round(ligne.nouveau_pu_ht * 1.2 * 100) / 100;
+            const produit = trouverProduitFixe(ligne.label, produitsIndex);
 
+            row.push(produit ? produit.pennylane_product_id : '');
             row.push(ligne.label);
-            row.push(ligne.quantite);
-            row.push(ttcUnitaire);
-            row.push('FR_200');
             row.push(ligne.description || '');
+            row.push(ligne.nouveau_pu_ht);
           } else {
-            row.push('', '', '', '', '');
+            row.push('', '', '', '');
           }
         }
 
@@ -329,11 +343,11 @@ function buildImportFixeSheet(wb, { plans }) {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
     const colWidths = [
-      { wch: 10 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 8 },
-      { wch: 30 }, { wch: 38 }, { wch: 16 }, { wch: 10 }
+      { wch: 30 }, { wch: 38 }, { wch: 12 }, { wch: 10 }, { wch: 14 },
+      { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 20 }
     ];
     for (let l = 0; l < maxLines; l++) {
-      colWidths.push({ wch: 40 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 30 });
+      colWidths.push({ wch: 38 }, { wch: 45 }, { wch: 30 }, { wch: 14 });
     }
     ws['!cols'] = colWidths;
 
@@ -344,6 +358,81 @@ function buildImportFixeSheet(wb, { plans }) {
 
     XLSX.utils.book_append_sheet(wb, ws, `Import PL ${shortName}`);
   }
+}
+
+/**
+ * Trouve le produit PL correspondant à un label de ligne fixe.
+ * Matching simplifié : cherche dans denomination (contient le label).
+ */
+function trouverProduitFixe(label, produitsIndex) {
+  const labelLower = label.toLowerCase();
+
+  // Matching direct par label_normalise connu
+  for (const [labelNorm, produit] of produitsIndex) {
+    const denom = produit.denomination.toLowerCase();
+    // Matching exact ou par inclusion
+    if (denom.includes(labelLower) || labelLower.includes(denom.replace(/\s*\{\{.*?\}\}\s*/g, '').trim())) {
+      return produit;
+    }
+  }
+
+  // Matching par mots-clés
+  if (labelLower.includes('mission comptable') && labelLower.includes('social')) {
+    return produitsIndex.get('mission_comptable_social') || null;
+  }
+  if (labelLower.includes('mission comptable') && labelLower.includes('logiciel')) {
+    return produitsIndex.get('mission_comptable_logiciel') || null;
+  }
+  if (labelLower.includes('mission comptable') && labelLower.includes('hôtel')) {
+    return produitsIndex.get('mission_comptable_hotel') || null;
+  }
+  if (labelLower.includes('mission comptable') && labelLower.includes('restaurant')) {
+    return produitsIndex.get('mission_comptable_restaurant') || null;
+  }
+  if (labelLower.includes('mission comptable') && labelLower.includes('trimestr')) {
+    return produitsIndex.get('mission_comptable_trim') || null;
+  }
+  if (labelLower.includes('mission comptable') || labelLower.includes('mission compta')) {
+    return produitsIndex.get('mission_comptable') || null;
+  }
+  if (labelLower.includes('surveillance')) {
+    return produitsIndex.get('mission_surveillance') || null;
+  }
+  if (labelLower.includes('p&l') || labelLower.includes('p & l')) {
+    return produitsIndex.get('pl') || null;
+  }
+  if (labelLower.includes('quote-part') || labelLower.includes('quote part') || labelLower.includes('bilan') && !labelLower.includes('établissement')) {
+    return produitsIndex.get('quote_part_bilan') || null;
+  }
+  if (labelLower.includes('bilan')) {
+    return produitsIndex.get('bilan') || null;
+  }
+  if (labelLower.includes('rendez-vous') || labelLower.includes('rdv')) {
+    return produitsIndex.get('rdv_analyse') || null;
+  }
+  if (labelLower.includes('social') && labelLower.includes('trimestr')) {
+    return produitsIndex.get('social_forfait_trim') || null;
+  }
+  if (labelLower.includes('social') || labelLower.includes('paie')) {
+    return produitsIndex.get('social_forfait') || null;
+  }
+  if (labelLower.includes('redevance') && labelLower.includes('logiciel')) {
+    return produitsIndex.get('redevance_logiciel_hotel') || null;
+  }
+  if (labelLower.includes('licence') && labelLower.includes('informatique')) {
+    return produitsIndex.get('licences_info') || null;
+  }
+  if (labelLower.includes('logiciel') || labelLower.includes('mise à disposition')) {
+    return produitsIndex.get('logiciel') || null;
+  }
+  if (labelLower.includes('juridique') && labelLower.includes('approbation')) {
+    return produitsIndex.get('juridique_approbation') || null;
+  }
+  if (labelLower.includes('secrétariat juridique') || labelLower.includes('secretariat juridique')) {
+    return produitsIndex.get('juridique_approbation') || null;
+  }
+
+  return null;
 }
 
 /**

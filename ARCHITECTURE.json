@@ -680,7 +680,7 @@
               "Détail croisé : vue complète par client × abonnement × ligne × décision"
             ],
             "split_cabinet": "Génère 1 onglet Import PL par cabinet (AUP/ZF) — trié par nom client",
-            "tests": "exportRestructuration.test.js (24 tests)"
+            "tests": "exportRestructuration.test.js (32 tests)"
           },
           "facturationVariableService.js": {
             "lines": 632,
@@ -898,8 +898,8 @@
         "coverage": "analyserClient HFC INVEST (séparation fixe/variable, totaux HT, décision inchangé/a_supprimer, prix 2026, action supprimer, axes variables, client sans abonnements, abonnement mixte a_modifier), calculerStatistiques (agrégation, par cabinet, tableau vide)"
       },
       "src/utils/honoraires/exportRestructuration.test.js": {
-        "tests": 24,
-        "coverage": "Structure générale (5 onglets 2 cabinets, 4 onglets 1 cabinet, nommage fichier, singleClient), split AUP/ZF (séparation clients, tri alphabétique, abo sans lignes fixes ignoré), format colonnes (9 fixes PL, colonnes produit, multi-lignes), données ligne (TTC = HT×1.2, arrondis, TVA FR_200, métadonnées abo), formatDatePennylane (ISO→dd/mm/yyyy, ISO+T, passthrough), onglet A SUPPRIMER, Détail croisé, cas limites (0 abos, plans vide, yearly 1€)"
+        "tests": 32,
+        "coverage": "Structure générale (5 onglets 2 cabinets, 4 onglets 1 cabinet, nommage fichier, singleClient), split AUP/ZF (séparation clients, tri alphabétique, abo sans lignes fixes ignoré), format colonnes PL 2026 (10 fixes, 4 cols/ligne produit, multi-lignes), données ligne PL 2026 (prix HT direct, métadonnées 10 cols, SIREN), matching UUID produits (mission comptable, P&L, RDV, isolation cabinet, sans produits), formatDatePennylane (ISO→dd/mm/yyyy, ISO+T, passthrough), onglet A SUPPRIMER, Détail croisé, cas limites (0 abos, plans vide, yearly, prix symbolique, colonnes vides padding)"
       },
       "src/utils/honoraires/facturationVariable.test.js": {
         "tests": 59,
@@ -914,7 +914,7 @@
         "coverage": "Constantes, calculerCoutTotal, calculerTauxHoraireBrut, calculerTauxHoraireCharge, calculerAugmentation, estimerChargesPatronales, calculerMasseSalariale, simulerAugmentationGlobale, formatMontant, formatTauxHoraire, calculerEvolution, scénarios métier rentabilité"
       }
     },
-    "total_tests": 528
+    "total_tests": 536
   },
   "database_tables": {
     "collaborateurs": {
@@ -1482,7 +1482,10 @@
       "Nettoyage PL 2025→2026: Op1 (40 brouillons supprimés), Op2 (72 prix brouillons mis à jour), Op3 (42 abos variables supprimés), Op4a (235 abos fixes supprimés)",
       "exportRestructuration.js: split Import PL en 2 onglets par cabinet (Import PL AUP + Import PL ZF), trié par nom",
       "Ajout exportRestructuration.test.js (24 tests): structure, split cabinet, format colonnes, données, dates, cas limites",
-      "Total tests: 504 → 528"
+      "Total tests: 504 → 528",
+      "exportRestructuration.js: nouveau format PL 2026 (10 cols fixes + 4 cols/ligne produit, HT direct, UUID produit, SIREN, Millésime)",
+      "exportRestructuration.test.js: réécrit pour format PL 2026 (24 → 32 tests, +8 tests UUID matching)",
+      "Total tests: 528 → 536"
     ]
   }
 }
