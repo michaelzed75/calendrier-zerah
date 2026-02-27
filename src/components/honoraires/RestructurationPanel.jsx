@@ -125,11 +125,35 @@ export default function RestructurationPanel({ clients, accent, filterCabinet, a
     } catch (err) {
       console.warn('Impossible de charger produits_pennylane:', err.message);
     }
+    // Charger les abonnement_ligne_id valides depuis tarifs_reference (2026, fixe)
+    // Élimine les doublons provenant d'anciens abonnements non supprimés
+    let validLigneIds = null;
+    try {
+      let allTarifs = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data } = await supabase
+          .from('tarifs_reference')
+          .select('abonnement_ligne_id')
+          .eq('date_effet', '2026-01-01')
+          .eq('type_recurrence', 'fixe')
+          .range(from, from + pageSize - 1);
+        if (!data || data.length === 0) break;
+        allTarifs = allTarifs.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      validLigneIds = new Set(allTarifs.map(t => t.abonnement_ligne_id));
+    } catch (err) {
+      console.warn('Impossible de charger tarifs_reference pour filtrage:', err.message);
+    }
     exportRestructurationExcel({
       plans,
       stats,
       singleClient: mode === 'single' && plans.length === 1,
-      produitsPennylane
+      produitsPennylane,
+      validLigneIds
     });
   }, [plans, stats, mode]);
 

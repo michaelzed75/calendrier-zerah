@@ -80,8 +80,9 @@ function makeAbo({
   };
 }
 
-function makeLigneFixe({ label = 'Mission comptable', quantite = 1, ancienPuHt = 100, nouveauPuHt = 102.5, axe = 'compta_mensuelle', famille = 'comptabilite' } = {}) {
+function makeLigneFixe({ ligneId = null, label = 'Mission comptable', quantite = 1, ancienPuHt = 100, nouveauPuHt = 102.5, axe = 'compta_mensuelle', famille = 'comptabilite' } = {}) {
   return {
+    ligne_id: ligneId,
     label, quantite, ancien_pu_ht: ancienPuHt, nouveau_pu_ht: nouveauPuHt,
     axe, type_recurrence: 'fixe', famille, description: '', action: 'garder'
   };
@@ -350,7 +351,7 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     expect(data[3][11]).toBe('Etablissement du P&L');
   });
 
-  it('génère N lignes pour 2 abos × 2 produits = 4 rows', () => {
+  it('génère N lignes pour 2 abos × 2 produits distincts = 4 rows', () => {
     const plan = makePlan({
       cabinet: 'Audit Up',
       abonnements: [
@@ -374,8 +375,179 @@ describe('Import PL — format 14 colonnes PL 2026', () => {
     exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
 
     const data = getSheetData('Import PL AUP');
-    // Header + 4 data rows
+    // Header + 4 data rows (produits tous différents)
     expect(data.length).toBe(5);
+  });
+});
+
+// ── Import PL — filtrage par validLigneIds (tarifs_reference) ────────────────
+
+describe('Import PL — filtrage par validLigneIds', () => {
+  it('sans validLigneIds, inclut toutes les lignes fixes', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        makeAbo({
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 1001, label: 'Mission comptable', nouveauPuHt: 500 }),
+            makeLigneFixe({ ligneId: 1002, label: 'Logiciel', nouveauPuHt: 200 })
+          ]
+        }),
+        makeAbo({
+          id: 200, plSubId: 2307849,
+          lignesFixes: [makeLigneFixe({ ligneId: 1003, label: 'Mission comptable', nouveauPuHt: 300 })]
+        })
+      ],
+      nbFixes: 3
+    });
+
+    // Sans validLigneIds → pas de filtrage, toutes les 3 lignes incluses
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]) });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(4); // header + 3 rows
+  });
+
+  it('filtre les lignes dont le ligne_id n\'est pas dans validLigneIds', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        makeAbo({
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 1001, label: 'Mission comptable', nouveauPuHt: 500 })
+          ]
+        }),
+        makeAbo({
+          id: 200, plSubId: 2307849,
+          lignesFixes: [makeLigneFixe({ ligneId: 1002, label: 'Mission comptable', nouveauPuHt: 300 })]
+        })
+      ],
+      nbFixes: 2
+    });
+
+    // Seule la ligne 1001 est valide → l'ancien abo (1002) est éliminé
+    const validLigneIds = new Set([1001]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(2); // header + 1 row (seule la ligne 1001)
+    expect(data[1][13]).toBe(500);
+  });
+
+  it('élimine les doublons d\'anciens abonnements (prix 2025)', () => {
+    const produits = makeProduitsPennylane('Audit Up');
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        // Nouveau abo 2026 avec prix augmenté
+        makeAbo({
+          plSubId: 2307848,
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 1001, label: 'Mission comptable', nouveauPuHt: 175 }),
+            makeLigneFixe({ ligneId: 1002, label: 'Etablissement du P&L', nouveauPuHt: 205 })
+          ]
+        }),
+        // Ancien abo 2025 (à éliminer)
+        makeAbo({
+          id: 200, plSubId: 308022,
+          lignesFixes: [
+            makeLigneFixe({ ligneId: 2001, label: 'Mission comptable', nouveauPuHt: 170 }),
+            makeLigneFixe({ ligneId: 2002, label: 'Etablissement du P&L', nouveauPuHt: 200 })
+          ]
+        })
+      ],
+      nbFixes: 4
+    });
+
+    // Seules les lignes du nouveau abo sont dans tarifs_reference
+    const validLigneIds = new Set([1001, 1002]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), produitsPennylane: produits, validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(3); // header + 2 rows (nouveau abo seulement)
+    expect(data[1][13]).toBe(175); // prix 2026, pas 170
+    expect(data[2][13]).toBe(205);
+    expect(data[1][10]).toBe('UUID-MISSION-COMPTA');
+    expect(data[2][10]).toBe('UUID-PL');
+  });
+
+  it('élimine les placeholders à 1€ quand le vrai abo existe', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        // Placeholder mensuel à 1€
+        makeAbo({
+          plSubId: 2307804, frequence: 'monthly',
+          lignesFixes: [makeLigneFixe({ ligneId: 3001, label: 'Mission comptable', nouveauPuHt: 1 })]
+        }),
+        // Vrai abo annuel
+        makeAbo({
+          id: 200, plSubId: 2307803, frequence: 'yearly',
+          lignesFixes: [makeLigneFixe({ ligneId: 3002, label: 'Mission comptable', nouveauPuHt: 337.5 })]
+        })
+      ],
+      nbFixes: 2
+    });
+
+    // tarifs_reference pointe vers le vrai abo (3002)
+    const validLigneIds = new Set([3002]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(2); // header + 1 row
+    expect(data[1][13]).toBe(337.5); // vrai montant, pas 1€
+    expect(data[1][7]).toBe('yearly'); // fréquence du vrai abo
+  });
+
+  it('conserve les lignes multiples du même abo si toutes sont dans validLigneIds', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [makeAbo({
+        lignesFixes: [
+          makeLigneFixe({ ligneId: 4001, label: 'Mission comptable', nouveauPuHt: 465 }),
+          makeLigneFixe({ ligneId: 4002, label: 'Mission comptable', nouveauPuHt: 1200 })
+        ]
+      })],
+      nbFixes: 2
+    });
+
+    // Les deux lignes du même abo sont dans tarifs_reference
+    const validLigneIds = new Set([4001, 4002]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(3); // header + 2 rows
+    expect(data[1][13]).toBe(465);
+    expect(data[2][13]).toBe(1200);
+  });
+
+  it('utilise les métadonnées du bon abo pour chaque ligne', () => {
+    const plan = makePlan({
+      cabinet: 'Audit Up',
+      abonnements: [
+        makeAbo({
+          plSubId: 2307900, frequence: 'monthly', dateDebut: '2025-01-01',
+          lignesFixes: [makeLigneFixe({ ligneId: 5001, label: 'Mission comptable', nouveauPuHt: 500 })]
+        }),
+        makeAbo({
+          id: 200, plSubId: 2307901, frequence: 'yearly', dateDebut: '2025-06-15',
+          lignesFixes: [makeLigneFixe({ ligneId: 5002, label: 'Bilan', nouveauPuHt: 4000 })]
+        })
+      ],
+      nbFixes: 2
+    });
+
+    const validLigneIds = new Set([5001, 5002]);
+    exportRestructurationExcel({ plans: [plan], stats: makeStats([plan]), validLigneIds });
+
+    const data = getSheetData('Import PL AUP');
+    expect(data.length).toBe(3);
+    // Ligne 1 : métadonnées du 1er abo (monthly)
+    expect(data[1][7]).toBe('monthly');
+    expect(data[1][5]).toBe('01/01/2025');
+    // Ligne 2 : métadonnées du 2e abo (yearly)
+    expect(data[2][7]).toBe('yearly');
+    expect(data[2][5]).toBe('15/06/2025');
   });
 });
 

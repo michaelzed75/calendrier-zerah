@@ -135,8 +135,9 @@ function setCell(ws, ref, value, style) {
  * @param {Object} params.stats - Résultat de calculerStatistiques
  * @param {boolean} [params.singleClient] - true si export pour un seul client (test)
  * @param {Array<{cabinet: string, pennylane_product_id: string, denomination: string, label_normalise: string}>} [params.produitsPennylane] - Produits PL pour UUID
+ * @param {Set<number>} [params.validLigneIds] - Set des abonnement_ligne_id valides (depuis tarifs_reference 2026 fixe). Si fourni, seules les lignes dont le ligne_id est dans ce set sont exportées. Élimine les doublons provenant d'anciens abonnements.
  */
-export function exportRestructurationExcel({ plans, stats, singleClient = false, produitsPennylane = [] }) {
+export function exportRestructurationExcel({ plans, stats, singleClient = false, produitsPennylane = [], validLigneIds = null }) {
   const wb = XLSX.utils.book_new();
   const dateStr = new Date().toLocaleDateString('fr-FR');
 
@@ -144,7 +145,7 @@ export function exportRestructurationExcel({ plans, stats, singleClient = false,
   buildResumeSheet(wb, { stats, dateStr, singleClient, plans });
 
   // Onglet 2+ : Import PL par cabinet (abonnements FIXES avec prix 2026)
-  buildImportFixeSheet(wb, { plans, produitsPennylane });
+  buildImportFixeSheet(wb, { plans, produitsPennylane, validLigneIds });
 
   // Onglet : Produits à SUPPRIMER
   buildSupprimerSheet(wb, { plans });
@@ -247,7 +248,7 @@ function buildResumeSheet(wb, { stats, dateStr, singleClient, plans }) {
  * Onglet Import PL : format import Pennylane avec les abonnements FIXES uniquement.
  * Même format que buildPennylaneSheets dans exportAugmentation.js.
  */
-function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
+function buildImportFixeSheet(wb, { plans, produitsPennylane = [], validLigneIds = null }) {
   // Séparer les plans par cabinet → un onglet par cabinet
   const cabinets = new Map();
   for (const plan of plans) {
@@ -288,14 +289,18 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
 
     const data = [];
     const sortedPlans = [...cabinetPlans].sort((a, b) => a.client_nom.localeCompare(b.client_nom, 'fr'));
+    const hasFilter = validLigneIds && validLigneIds.size > 0;
 
     for (const plan of sortedPlans) {
       for (const abo of plan.abonnements) {
         if (abo.lignes_fixes.length === 0) continue;
-
         const dateDebut = formatDatePennylane(abo.date_debut);
 
         for (const ligne of abo.lignes_fixes) {
+          // Si filtre actif : ne garder que les lignes référencées par tarifs_reference
+          // Élimine les doublons provenant d'anciens abonnements (prix 2025)
+          if (hasFilter && !validLigneIds.has(ligne.ligne_id)) continue;
+
           const produit = trouverProduitFixe(ligne.label, produitsIndex);
 
           data.push([
@@ -312,7 +317,7 @@ function buildImportFixeSheet(wb, { plans, produitsPennylane = [] }) {
             produit ? produit.pennylane_product_id : '',
             ligne.label,
             ligne.description || '',
-            ligne.nouveau_pu_ht
+            Math.round(ligne.nouveau_pu_ht * 100) / 100
           ]);
         }
       }
