@@ -584,7 +584,7 @@ export async function commitSync(supabase, previewReport, cabinet, onProgress = 
     if (onProgress) onProgress({ step, message, current, total });
   };
 
-  const { _rawData, clientsMatches, clientsNew, clientsNoSubscription, lignesModified } = previewReport;
+  const { _rawData, clientsMatches, clientsNew, clientsNoSubscription, lignesModified, abonnementsDisappeared } = previewReport;
   const { subscriptions, linesMap, customerToClientMap, produitsFacturation } = _rawData;
 
   try {
@@ -594,6 +594,13 @@ export async function commitSync(supabase, previewReport, cabinet, onProgress = 
       const updateData = {
         pennylane_customer_id: match.customer.external_reference || null
       };
+      // Synchroniser le SIREN depuis Pennylane (reg_no)
+      if (match.customer.reg_no) {
+        const siren = match.customer.reg_no.replace(/\s/g, '').trim();
+        if (/^\d{9}$/.test(siren) || /^\d{14}$/.test(siren)) {
+          updateData.siren = siren.slice(0, 9);
+        }
+      }
       // Ne PAS écraser le cabinet — c'est une donnée stable assignée manuellement.
       // La sync détecte les cabinet_mismatch en anomalie mais ne les corrige pas.
       // Synchroniser l'email du customer Pennylane (premier email)
@@ -753,6 +760,32 @@ export async function commitSync(supabase, previewReport, cabinet, onProgress = 
         } else {
           result.historiquePrixCreated++;
         }
+      }
+    }
+
+    // ---- 5. Nettoyage des abonnements orphelins ----
+    // (abonnements locaux dont le pennylane_subscription_id n'existe plus dans PL)
+    if (abonnementsDisappeared && abonnementsDisappeared.length > 0) {
+      report('cleanup', `Nettoyage de ${abonnementsDisappeared.length} abonnement(s) orphelin(s)...`);
+      const orphelinIds = abonnementsDisappeared.map(o => o.existing.id);
+
+      // Supprimer les lignes des orphelins
+      await supabase
+        .from('abonnements_lignes')
+        .delete()
+        .in('abonnement_id', orphelinIds);
+
+      // Supprimer les abonnements orphelins
+      const { error: deleteError } = await supabase
+        .from('abonnements')
+        .delete()
+        .in('id', orphelinIds);
+
+      if (deleteError) {
+        result.errors.push(`Erreur suppression orphelins: ${deleteError.message}`);
+      } else {
+        result.abonnementsOrphelins = orphelinIds.length;
+        report('cleanup', `${orphelinIds.length} abonnement(s) orphelin(s) supprimé(s)`);
       }
     }
 

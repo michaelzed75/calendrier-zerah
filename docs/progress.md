@@ -8,6 +8,8 @@
 | Phase 2 | Restructuration abonnements PL | Terminee (recree manuellement) |
 | Phase 3 | Facturation variable mensuelle | Terminee |
 | Nettoyage PL | Transition 2025 → 2026 | Terminee (ISO verifie 02/03/2026) |
+| Phase 4 | Correction factures Janvier 2026 | En attente (corrections manuelles PL) |
+| **Phase 5** | **Dashboard Vue — Honoraires annuels estimes** | **Terminee (02/03/2026)** |
 
 ---
 
@@ -162,6 +164,62 @@
 
 ---
 
+## Phase 5 — Dashboard Vue (Honoraires annuels estimes)
+
+**Objectif :** Tableau de bord temps reel pour evaluer les honoraires annuels ajustes — savoir instantanement l'impact d'un gain ou d'une perte de client. Croise les abonnements PL (fixe) avec les donnees Silae reelles (social variable).
+
+**Composant :** `DashboardHonorairesPanel.jsx` (~600 lignes)
+
+### Structure arbre
+
+```
+TOTAL HONORAIRES (2 299 128 EUR)
++-- Comptabilite (75.6%)
+|   +-- Compta mensuelle (46.1%)
+|   +-- Compta ann./sem./trim. (5.5%)
+|   +-- QP Bilan mensuel (3.3%)
+|   +-- Bilan annuel (20.7%)
++-- Social (17.9%)
+|   +-- Social au reel mensuel (Silae cumul + projection)
+|   +-- Social au forfait
+|   +-- Social ann./sem./trim.
++-- Juridique (1.4%)
++-- Logiciels (2.5%)
++-- Autres (2.5%)
+```
+
+### Fonctionnement
+
+1. **Calcul synchrone** (useMemo) : classifie chaque ligne d'abonnement PL via `classifierLigne()`, annualise via `getCoeffAnnualisation()`, route vers la bonne categorie
+2. **Calcul async** (useEffect) : charge les periodes Silae, appelle `genererFacturationVariable()` par periode, calcule cumul reel + projection (dernierMois x moisRestants)
+3. **Fusion PL + Silae** : pour les clients avec Silae, remplace `social_abo` par `social_reel` (vraies quantites bulletins). Clients sans Silae gardent le montant PL en fallback (`socialAboResiduel`)
+4. **Interactivite** : clic sur branche = filtre tableau detail, recherche client, export Excel
+
+### Corrections sync apportees
+
+| Correction | Fichier | Description |
+|---|---|---|
+| Sync SIREN | `syncPreview.js` (commitSync) | `customer.reg_no` de PL persiste dans `clients.siren` a chaque sync |
+| Nettoyage orphelins | `HonorairesPage.jsx` (handleSync) | Supprime auto les abonnements locaux dont le PL ID n'existe plus (39 orphelins nettoyes) |
+
+### Donnees qualite identifiees et resolues
+
+| Client | Probleme | Resolution |
+|---|---|---|
+| SAINT JAMES / RELAIS CHRISTINE | Silae sous "SNC CHRISTINE" (entite parente) | Compte via socialAboResiduel |
+| SEVENTEASE | Client parti | Passe en inactif |
+| RC ARTOIS / AUREL INVESTISSEMENTS | SIREN manquant dans PL | Ajoute par user + sync SIREN fix |
+| MIA CONCEPT PARIS | 0 bulletins Silae | Normal, compte via socialAboResiduel |
+
+### Fichiers cles
+- `DashboardHonorairesPanel.jsx` — composant principal dashboard
+- `HonorairesPage.jsx` — integration + nettoyage orphelins dans handleSync
+- `syncPreview.js` — sync SIREN dans commitSync
+- `classificationAxes.js` — classification des lignes en 8 axes
+- `facturationVariableService.js` — donnees Silae pour social au reel
+
+---
+
 ## Tests
 
 | Module | Tests | Fichier |
@@ -185,3 +243,21 @@
 - **BHG GESTION** : client Zerah Fiduciaire cree dans le cabinet Audit Up — a voir avec collaboratrice
 - **CalendarPage** : warning "Maximum update depth exceeded" pre-existant (non lie aux honoraires)
 - **15 clients inactifs** : exclus de l'export restructuration (VP BATI, VEGI LA FLAMME, PFA ASSOCIES, MELSAJE, GP BATIGNOLLES, GOODPIZZE, GD GESTION, BARY, KAFEGILO)
+- **SNC CHRISTINE** : regroupe SAINT JAMES + RELAIS CHRISTINE dans Silae — pas de detail par etablissement, le dashboard utilise le fallback PL (socialAboResiduel)
+
+## Lecons apprises
+
+### Flux sync Pennylane
+- Le bouton "Synchroniser Pennylane" utilise `previewSync()` → modal → `commitSync()` (dans syncPreview.js)
+- `syncCustomersAndSubscriptions()` dans syncHonoraires.js est un LEGACY non appele par l'UI
+- Toute modification de la logique sync doit aller dans `syncPreview.js`
+
+### HMR Vite
+- Les modules utilitaires (non-composants React) ne sont PAS toujours recharges par HMR
+- Apres modification d'un fichier utils (syncPreview.js, etc.), **hard refresh (Ctrl+F5) obligatoire**
+- Les composants React (.jsx) sont generalement recharges correctement par HMR
+
+### Abonnements orphelins
+- Quand un abo est supprime/remplace dans PL (nouvel ID), l'ancien reste en BDD locale
+- La sync ne supprimait PAS les orphelins → comptage en double dans les totaux
+- Fix : nettoyage auto dans `handleSync()` AVANT l'affichage du modal (pas dans commitSync qui necessite confirmation)

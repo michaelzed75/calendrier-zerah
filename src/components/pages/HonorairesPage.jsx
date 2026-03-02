@@ -7,6 +7,7 @@ import { getHonorairesResume, testConnection, setCompanyId, auditAbonnements, pr
 import AugmentationPanel from '../honoraires/AugmentationPanel';
 import RestructurationPanel from '../honoraires/RestructurationPanel';
 import FacturationVariablePanel from '../honoraires/FacturationVariablePanel';
+import DashboardHonorairesPanel from '../honoraires/DashboardHonorairesPanel';
 import SyncPreviewModal from '../honoraires/SyncPreviewModal';
 
 /**
@@ -69,8 +70,6 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   // Filtres
   const [filterCabinet, setFilterCabinet] = useState('tous');
   const [filterStatus, setFilterStatus] = useState('tous');
-  const [expandedClient, setExpandedClient] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Clés API Pennylane (persistées en base Supabase)
   const [apiKey, setApiKey] = useState('');
@@ -303,7 +302,22 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
         reports.push({ cabinet: cab.cabinet, report });
       }
 
-      setPreviewReport(mergePreviewReports(reports));
+      // Nettoyage automatique des abonnements orphelins (PL ID disparu)
+      const merged = mergePreviewReports(reports);
+      if (merged.abonnementsDisappeared && merged.abonnementsDisappeared.length > 0) {
+        setSyncProgress({ step: 'cleanup', message: `Nettoyage de ${merged.abonnementsDisappeared.length} abonnement(s) orphelin(s)...` });
+        const orphelinIds = merged.abonnementsDisappeared.map(o => o.existing.id);
+        // Supprimer les lignes puis les abonnements orphelins
+        await supabase.from('abonnements_lignes').delete().in('abonnement_id', orphelinIds);
+        await supabase.from('abonnements').delete().in('id', orphelinIds);
+        // Retirer des anomalies pour ne pas polluer le modal
+        merged.abonnementsDisappeared = [];
+        merged.anomalies = merged.anomalies.filter(a => a.type !== 'subscriptions_disappeared');
+        merged.summary.disappearedSubs = 0;
+        console.log(`[sync] ${orphelinIds.length} abonnement(s) orphelin(s) supprimé(s)`);
+      }
+
+      setPreviewReport(merged);
       setShowPreviewModal(true);
 
     } catch (err) {
@@ -388,118 +402,6 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     setAuditLoading(false);
   };
 
-  /**
-   * Regroupe les honoraires par client
-   */
-  const honorairesParClient = useMemo(() => {
-    // Exclure les clients inactifs de la facturation
-    const clientsActifsSet = new Set(clients.filter(c => c.actif).map(c => c.id));
-
-    // Filtrer par statut et par client actif
-    const filtered = honoraires.filter(h => {
-      // Exclure les abonnements de clients inactifs
-      if (!clientsActifsSet.has(h.client_id)) return false;
-      if (filterStatus !== 'tous' && h.status !== filterStatus) return false;
-      return true;
-    });
-
-    // Regrouper par client_id
-    const grouped = {};
-    filtered.forEach(h => {
-      const clientId = h.client_id;
-      const clientNom = h.clients?.nom || h.label;
-      const clientCabinet = h.clients?.cabinet || '-';
-
-      if (!grouped[clientId]) {
-        grouped[clientId] = {
-          client_id: clientId,
-          client_nom: clientNom,
-          client_cabinet: clientCabinet,
-          abonnements: [],
-          total_ttc: 0,
-          total_ht: 0,
-          totaux_par_famille: {
-            comptabilite: 0,
-            social: 0,
-            juridique: 0,
-            support: 0
-          },
-          // Pour le calcul mensuel
-          total_mensuel_ht: 0
-        };
-      }
-
-      grouped[clientId].abonnements.push(h);
-      grouped[clientId].total_ttc += h.total_ttc || 0;
-      grouped[clientId].total_ht += h.total_ht || 0;
-
-      // Ajouter les totaux par famille
-      if (h.totaux_par_famille) {
-        grouped[clientId].totaux_par_famille.comptabilite += h.totaux_par_famille.comptabilite || 0;
-        grouped[clientId].totaux_par_famille.social += h.totaux_par_famille.social || 0;
-        grouped[clientId].totaux_par_famille.juridique += h.totaux_par_famille.juridique || 0;
-        grouped[clientId].totaux_par_famille.support += h.totaux_par_famille.support || 0;
-      }
-
-      // Calcul mensuel : si annuel diviser par 12
-      const mensuel = h.frequence === 'yearly'
-        ? (h.total_ht || 0) / 12
-        : (h.total_ht || 0) / (h.intervalle || 1);
-      grouped[clientId].total_mensuel_ht += mensuel;
-    });
-
-    // Convertir en array et filtrer par cabinet et recherche
-    let result = Object.values(grouped);
-
-    if (filterCabinet !== 'tous') {
-      result = result.filter(c => c.client_cabinet === filterCabinet);
-    }
-
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      result = result.filter(c => c.client_nom.toLowerCase().includes(search));
-    }
-
-    // Trier par nom
-    result.sort((a, b) => a.client_nom.localeCompare(b.client_nom));
-
-    return result;
-  }, [honoraires, clients, filterCabinet, filterStatus, searchTerm]);
-
-  // Calculer les totaux
-  const totaux = useMemo(() => {
-    return honorairesParClient.reduce((acc, c) => {
-      acc.total_ht += c.total_ht || 0;
-      acc.total_mensuel += c.total_mensuel_ht || 0;
-      acc.comptabilite += c.totaux_par_famille?.comptabilite || 0;
-      acc.social += c.totaux_par_famille?.social || 0;
-      acc.juridique += c.totaux_par_famille?.juridique || 0;
-      acc.support += c.totaux_par_famille?.support || 0;
-      return acc;
-    }, { total_ht: 0, total_mensuel: 0, comptabilite: 0, social: 0, juridique: 0, support: 0 });
-  }, [honorairesParClient]);
-
-  // Clients actifs sans abonnement
-  const clientsSansAbonnement = useMemo(() => {
-    // IDs des clients qui ont au moins un abonnement
-    const clientsAvecAbonnement = new Set(honoraires.map(h => h.client_id));
-
-    // Filtrer les clients actifs qui n'ont pas d'abonnement
-    let result = clients.filter(c =>
-      c.actif && !clientsAvecAbonnement.has(c.id)
-    );
-
-    // Appliquer le filtre cabinet si sélectionné
-    if (filterCabinet !== 'tous') {
-      result = result.filter(c => c.cabinet === filterCabinet);
-    }
-
-    // Trier par nom
-    result.sort((a, b) => a.nom.localeCompare(b.nom));
-
-    return result;
-  }, [clients, honoraires, filterCabinet]);
-
   // Couleurs d'accent
   const accentClasses = {
     bg: `bg-${accent}-600`,
@@ -507,107 +409,6 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     bgLight: `bg-${accent}-900/30`,
     text: `text-${accent}-400`,
     border: `border-${accent}-800`
-  };
-
-  /**
-   * Export Excel des clients sans abonnement
-   */
-  const handleExportClientsSansAbo = () => {
-    const dataToExport = clientsSansAbonnement.map(client => ({
-      'Nom': client.nom,
-      'Cabinet': client.cabinet || '-',
-      'Statut Pennylane': client.pennylane_customer_id ? 'Lié à PL sans abonnement' : 'Non lié à Pennylane',
-      'Pennylane Customer ID': client.pennylane_customer_id || '-'
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Clients sans abonnement');
-
-    // Ajuster la largeur des colonnes
-    ws['!cols'] = [
-      { wch: 35 }, // Nom
-      { wch: 18 }, // Cabinet
-      { wch: 25 }, // Statut Pennylane
-      { wch: 40 }  // Pennylane Customer ID
-    ];
-
-    const date = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `clients_sans_abonnement_${date}.xlsx`);
-  };
-
-  /**
-   * Export Excel complet de la vue par client (tous les clients avec détails)
-   */
-  const handleExportVueClient = () => {
-    const wb = XLSX.utils.book_new();
-
-    // Onglet 1 : Résumé par client
-    const resumeData = honorairesParClient.map(c => ({
-      'Client': c.client_nom,
-      'Cabinet': c.client_cabinet,
-      'Nb Abon.': c.abonnements.length,
-      'Compta HT': Math.round((c.totaux_par_famille?.comptabilite || 0) * 100) / 100,
-      'Social HT': Math.round((c.totaux_par_famille?.social || 0) * 100) / 100,
-      'Juridique HT': Math.round((c.totaux_par_famille?.juridique || 0) * 100) / 100,
-      'Support HT': Math.round((c.totaux_par_famille?.support || 0) * 100) / 100,
-      'Total HT': Math.round((c.total_ht || 0) * 100) / 100,
-      'Total TTC': Math.round((c.total_ttc || 0) * 100) / 100,
-      'Mensuel HT': Math.round((c.total_mensuel_ht || 0) * 100) / 100
-    }));
-    // Ligne de total
-    resumeData.push({
-      'Client': 'TOTAL',
-      'Cabinet': '',
-      'Nb Abon.': honorairesParClient.reduce((s, c) => s + c.abonnements.length, 0),
-      'Compta HT': Math.round(totaux.comptabilite * 100) / 100,
-      'Social HT': Math.round(totaux.social * 100) / 100,
-      'Juridique HT': Math.round(totaux.juridique * 100) / 100,
-      'Support HT': Math.round(totaux.support * 100) / 100,
-      'Total HT': Math.round(totaux.total_ht * 100) / 100,
-      'Total TTC': '',
-      'Mensuel HT': Math.round(totaux.total_mensuel * 100) / 100
-    });
-
-    const wsResume = XLSX.utils.json_to_sheet(resumeData);
-    wsResume['!cols'] = [
-      { wch: 35 }, { wch: 18 }, { wch: 8 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsResume, 'Résumé par client');
-
-    // Onglet 2 : Détail des lignes
-    const lignesData = [];
-    for (const c of honorairesParClient) {
-      for (const abo of c.abonnements) {
-        for (const ligne of (abo.abonnements_lignes || [])) {
-          lignesData.push({
-            'Client': c.client_nom,
-            'Cabinet': c.client_cabinet,
-            'Abonnement': abo.label || '-',
-            'Statut': abo.status,
-            'Fréquence': abo.frequence === 'yearly' ? 'Annuel' : `${abo.intervalle || 1}m`,
-            'Produit': ligne.label,
-            'Famille': ligne.famille || '-',
-            'Quantité': ligne.quantite || 1,
-            'Montant HT': Math.round((ligne.montant_ht || 0) * 100) / 100,
-            'Montant TTC': Math.round((ligne.montant_ttc || 0) * 100) / 100,
-            'TVA': ligne.taux_tva || '20%'
-          });
-        }
-      }
-    }
-    const wsLignes = XLSX.utils.json_to_sheet(lignesData);
-    wsLignes['!cols'] = [
-      { wch: 35 }, { wch: 18 }, { wch: 20 }, { wch: 12 }, { wch: 10 },
-      { wch: 40 }, { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 8 }
-    ];
-    XLSX.utils.book_append_sheet(wb, wsLignes, 'Détail lignes');
-
-    const date = new Date().toISOString().split('T')[0];
-    const suffix = filterCabinet !== 'tous' ? `_${filterCabinet.replace(/\s+/g, '_')}` : '';
-    XLSX.writeFile(wb, `honoraires_vue_client${suffix}_${date}.xlsx`);
   };
 
   /**
@@ -1674,284 +1475,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
         </div>
       )}
 
-      {/* Contenu onglet Vue (existant) */}
-      {activeTab === 'vue' && (<>
-
-      {/* Badge en construction */}
-      <div className="mb-6 p-4 bg-orange-900/30 rounded-lg border border-orange-800 flex items-center gap-3">
-        <span className="text-2xl">🚧</span>
-        <div>
-          <p className="font-medium text-white">Page en construction</p>
-          <p className="text-sm text-white">
-            Utilisez l'onglet <span className="font-semibold">Augmentation</span> pour l'analyse complète des honoraires.
-          </p>
-        </div>
-      </div>
-
-      {/* Filtres */}
-      <div className="mb-6 flex flex-wrap gap-4">
-        <div>
-          <label className="block text-sm text-white mb-1">Rechercher</label>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Nom du client..."
-            className="px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg w-64"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-white mb-1">Cabinet</label>
-          <select
-            value={filterCabinet}
-            onChange={(e) => setFilterCabinet(e.target.value)}
-            className="px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg"
-          >
-            <option value="tous">Tous</option>
-            <option value="Zerah Fiduciaire">Zerah Fiduciaire</option>
-            <option value="Audit Up">Audit Up</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-white mb-1">Statut abonnements</label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg"
-          >
-            <option value="tous">Tous</option>
-            <option value="in_progress">En cours</option>
-            <option value="not_started">À venir</option>
-            <option value="stopped">Arrêté</option>
-          </select>
-        </div>
-        <div className="ml-auto self-end">
-          <button
-            onClick={handleExportVueClient}
-            disabled={honorairesParClient.length === 0}
-            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
-          >
-            <Download size={14} />
-            Export Excel
-          </button>
-        </div>
-      </div>
-
-      {/* Totaux */}
-      <div className="mb-6 grid grid-cols-2 md:grid-cols-6 gap-4">
-        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-          <p className="text-sm text-white">Clients</p>
-          <p className="text-2xl font-bold">{honorairesParClient.length}</p>
-        </div>
-        <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-          <p className="text-sm text-white">Total HT</p>
-          <p className="text-2xl font-bold">{totaux.total_ht.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
-        </div>
-        <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-800">
-          <p className="text-sm text-white">Comptabilité</p>
-          <p className="text-xl font-bold text-white">{totaux.comptabilite.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
-        </div>
-        <div className="p-4 bg-green-900/30 rounded-lg border border-green-800">
-          <p className="text-sm text-white">Social</p>
-          <p className="text-xl font-bold text-white">{totaux.social.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
-        </div>
-        <div className="p-4 bg-purple-900/30 rounded-lg border border-purple-800">
-          <p className="text-sm text-white">Juridique</p>
-          <p className="text-xl font-bold text-white">{totaux.juridique.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
-        </div>
-        <div className="p-4 bg-slate-700 rounded-lg border border-slate-700">
-          <p className="text-sm text-white">Support</p>
-          <p className="text-xl font-bold text-white">{totaux.support.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
-        </div>
-      </div>
-
-      {/* Liste des honoraires par client */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 size={32} className="animate-spin text-white" />
-        </div>
-      ) : honorairesParClient.length === 0 ? (
-        <div className="text-center py-12 text-white">
-          <p>Aucun client trouvé.</p>
-          <p className="text-sm mt-2">Lancez une synchronisation Pennylane pour importer les données.</p>
-        </div>
-      ) : (
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-          <table className="min-w-full">
-            <thead className="bg-slate-700 border-b">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-white">Client</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-white">Cabinet</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-white">Abon.</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-white">Compta</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-white">Social</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-white">Juridique</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-white">Total HT</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-white">Mensuel</th>
-                <th className="px-4 py-3 text-center text-sm font-medium text-white"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700">
-              {honorairesParClient.map(client => (
-                <React.Fragment key={client.client_id}>
-                  <tr className="hover:bg-slate-600">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{client.client_nom}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm">{client.client_cabinet}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="px-2 py-1 bg-slate-600 rounded text-sm">
-                        {client.abonnements.length}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-white">
-                      {(client.totaux_par_famille?.comptabilite || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-white">
-                      {(client.totaux_par_famille?.social || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-white">
-                      {(client.totaux_par_famille?.juridique || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium">
-                      {(client.total_ht || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-white">
-                      {(client.total_mensuel_ht || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €/mois
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setExpandedClient(expandedClient === client.client_id ? null : client.client_id)}
-                        className="p-1 hover:bg-slate-600 rounded"
-                      >
-                        {expandedClient === client.client_id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedClient === client.client_id && (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-3 bg-slate-700">
-                        <div className="text-sm">
-                          <h4 className="font-medium mb-3">Détail des abonnements ({client.abonnements.length})</h4>
-                          {client.abonnements.map(abo => (
-                            <div key={abo.id} className="mb-4 p-3 bg-slate-800 rounded border border-slate-600">
-                              <div className="flex justify-between items-center mb-2">
-                                <div>
-                                  <span className="font-medium">{abo.label}</span>
-                                  <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                                    abo.status === 'in_progress' ? 'bg-green-900/50 text-white' :
-                                    abo.status === 'not_started' ? 'bg-blue-900/50 text-white' :
-                                    'bg-slate-600 text-white'
-                                  }`}>
-                                    {abo.status === 'in_progress' ? 'En cours' :
-                                     abo.status === 'not_started' ? 'À venir' :
-                                     abo.status === 'stopped' ? 'Arrêté' : abo.status}
-                                  </span>
-                                </div>
-                                <div className="text-right">
-                                  <span className="font-medium">{(abo.total_ht || 0).toLocaleString('fr-FR')} € HT</span>
-                                  <span className="text-white ml-2">
-                                    ({abo.frequence === 'monthly' ? 'Mensuel' : 'Annuel'}
-                                    {abo.intervalle > 1 && ` x${abo.intervalle}`})
-                                  </span>
-                                </div>
-                              </div>
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="text-white text-xs">
-                                    <th className="text-left py-1">Produit</th>
-                                    <th className="text-left py-1">Famille</th>
-                                    <th className="text-right py-1">Qté</th>
-                                    <th className="text-right py-1">HT</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(abo.abonnements_lignes || []).map(ligne => (
-                                    <tr key={ligne.id}>
-                                      <td className="py-1">{ligne.label}</td>
-                                      <td className="py-1">
-                                        <span className={`px-2 py-0.5 rounded text-xs ${
-                                          ligne.famille === 'comptabilite' ? 'bg-blue-900/50 text-white' :
-                                          ligne.famille === 'social' ? 'bg-green-900/50 text-white' :
-                                          ligne.famille === 'juridique' ? 'bg-purple-900/50 text-white' :
-                                          'bg-slate-600 text-white'
-                                        }`}>
-                                          {ligne.famille}
-                                        </span>
-                                      </td>
-                                      <td className="py-1 text-right">{ligne.quantite}</td>
-                                      <td className="py-1 text-right">{(ligne.montant_ht || 0).toLocaleString('fr-FR')} €</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Contenu onglet Vue — Dashboard Honoraires */}
+      {activeTab === 'vue' && (
+        <DashboardHonorairesPanel
+          honoraires={honoraires}
+          clients={clients}
+          filterCabinet={filterCabinet}
+          filterStatus={filterStatus}
+          loading={loading}
+        />
       )}
-
-      {/* Clients sans abonnement */}
-      {clientsSansAbonnement.length > 0 && (
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle size={20} className="text-orange-500" />
-              <h2 className="text-lg font-semibold text-white">
-                Clients actifs sans abonnement ({clientsSansAbonnement.length})
-              </h2>
-            </div>
-            <button
-              onClick={handleExportClientsSansAbo}
-              className="px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center gap-2 text-sm"
-            >
-              <Download size={14} />
-              Export Excel
-            </button>
-          </div>
-          <div className="bg-orange-900/30 rounded-lg border border-orange-800 p-4">
-            <p className="text-sm text-white mb-4">
-              Ces clients sont actifs dans la base mais n'ont pas d'abonnement Pennylane synchronisé.
-              Vérifiez s'ils ont un abonnement dans Pennylane ou s'ils doivent être désactivés.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {clientsSansAbonnement.map(client => (
-                <div
-                  key={client.id}
-                  className={`px-3 py-2 rounded border text-sm ${
-                    client.pennylane_customer_id
-                      ? 'bg-yellow-900/30 border-yellow-700'
-                      : 'bg-slate-800 border-orange-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{client.nom}</span>
-                    {client.pennylane_customer_id ? (
-                      <span className="text-xs px-1.5 py-0.5 bg-yellow-900/50 text-white rounded" title="Client lié à Pennylane mais sans abonnement">
-                        PL sans abo
-                      </span>
-                    ) : (
-                      <span className="text-xs px-1.5 py-0.5 bg-slate-600 text-white rounded" title="Client non lié à Pennylane">
-                        Pas dans PL
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-white text-xs">{client.cabinet || '-'}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      </>)}
 
       {/* Modal de prévisualisation sync */}
       {showPreviewModal && previewReport && (

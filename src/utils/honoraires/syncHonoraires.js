@@ -278,10 +278,17 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
         customerToClientMap.set(customer.id, matchedClient.id);
         result.customersMatched++;
 
-        // Mettre à jour le client avec l'UUID Pennylane (external_reference)
+        // Mettre à jour le client avec l'UUID Pennylane + SIREN depuis PL
         const updateData = {
           pennylane_customer_id: customer.external_reference || null
         };
+        // Synchroniser le SIREN depuis Pennylane (reg_no)
+        if (customer.reg_no) {
+          const siren = customer.reg_no.replace(/\s/g, '').trim();
+          if (/^\d{9}$/.test(siren) || /^\d{14}$/.test(siren)) {
+            updateData.siren = siren.slice(0, 9); // Garder les 9 premiers chiffres (SIREN)
+          }
+        }
         // Ne PAS écraser le cabinet — c'est une donnée stable assignée manuellement.
         // La sync détecte les cabinet_mismatch en anomalie mais ne les corrige pas.
         // Synchroniser l'email du customer Pennylane (premier email)
@@ -425,6 +432,47 @@ export async function syncCustomersAndSubscriptions(supabase, apiKey, cabinet = 
 
       // Petite pause pour éviter le rate limiting
       await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // 7. Nettoyage des abonnements orphelins
+    // (abonnements locaux dont le pennylane_subscription_id n'existe plus dans PL)
+    report('cleanup', 'Nettoyage des abonnements orphelins...');
+    const matchedClientIds = new Set(customerToClientMap.values());
+    const plSubscriptionIds = new Set();
+    for (const sub of subscriptions) {
+      const clientId = customerToClientMap.get(sub.customer?.id);
+      if (clientId) plSubscriptionIds.add(sub.id);
+    }
+
+    const { data: localAbonnements } = await supabase
+      .from('abonnements')
+      .select('id, client_id, pennylane_subscription_id, label')
+      .not('pennylane_subscription_id', 'is', null);
+
+    const orphelins = (localAbonnements || []).filter(abo =>
+      matchedClientIds.has(abo.client_id) &&
+      !plSubscriptionIds.has(abo.pennylane_subscription_id)
+    );
+
+    result.abonnementsOrphelins = orphelins.length;
+    if (orphelins.length > 0) {
+      const orphelinIds = orphelins.map(o => o.id);
+      // Supprimer les lignes des orphelins
+      await supabase
+        .from('abonnements_lignes')
+        .delete()
+        .in('abonnement_id', orphelinIds);
+      // Supprimer les abonnements orphelins
+      const { error: deleteError } = await supabase
+        .from('abonnements')
+        .delete()
+        .in('id', orphelinIds);
+
+      if (deleteError) {
+        result.errors.push(`Erreur suppression orphelins: ${deleteError.message}`);
+      } else {
+        report('cleanup', `${orphelins.length} abonnement(s) orphelin(s) supprimé(s) : ${orphelins.map(o => o.label).join(', ')}`);
+      }
     }
 
     report('done', 'Synchronisation terminée !');
