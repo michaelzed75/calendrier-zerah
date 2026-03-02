@@ -13,6 +13,7 @@ import { getAllProducts, setCompanyId } from '../../utils/honoraires/pennylaneCu
 import { exportFacturationVariableExcel } from '../../utils/honoraires/exportFacturationVariable';
 import { parseSilaeExcel, importSilaeData, updateSilaeMapping, extractPeriodeFromFilename } from '../../utils/honoraires/silaeService';
 import SilaeMappingModal from './SilaeMappingModal';
+import FacturationGrid from './FacturationGrid';
 
 /**
  * Panel Phase 3 : Facturation variable mensuelle.
@@ -602,6 +603,9 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           accent={accent}
         />
       )}
+
+      {/* Grille Silae 12 mois */}
+      <FacturationGrid filterCabinet={filterCabinet} />
     </div>
   );
 }

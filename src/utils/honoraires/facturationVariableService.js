@@ -26,7 +26,8 @@ const SILAE_COLUMN_MAP = {
   entrees: 'entrees',
   sorties: 'sorties',
   declarations: 'declarations',
-  attestations_pe: 'attestations_pe'
+  attestations_pe: 'attestations_pe',
+  bulletins_refaits: 'bulletins_refaits'
 };
 
 /**
@@ -181,6 +182,12 @@ export async function genererFacturationVariable({ supabase, periode, dateEffet,
         }
       }
 
+      // Fallback bulletins manuels : si pas de bulletins Silae mais saisie manuelle
+      if (quantite === 0 && colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
+        quantite = silae.bulletins_manuels;
+        source = 'manuel';
+      }
+
       const puHt = tarif.pu_ht;
       const tvaRate = tarif.tva_rate || 0.20;
       const puTtc = Math.round(puHt * (1 + tvaRate) * 100) / 100;
@@ -224,6 +231,96 @@ export async function genererFacturationVariable({ supabase, periode, dateEffet,
       has_silae: hasSilae,
       complet
     });
+  }
+
+  // ── 9b. Clients FORFAIT avec coffre-fort / éditique ──
+  // Ces clients n'ont pas de tarifs variables mais doivent quand même
+  // être facturés pour coffre-fort et éditique si Silae a des données.
+  const processedClientIds = new Set(resultats.map(r => r.client_id));
+
+  // Récupérer le PU HT standard coffre-fort et éditique par cabinet
+  // (même prix pour tous les clients → on prend le premier tarif trouvé)
+  const prixStandard = {};
+  for (const t of tarifs) {
+    const clientCab = clientsById.get(t.client_id)?.cabinet;
+    if (!clientCab) continue;
+    const produit = trouverProduit(t, produitsByLabel, clientCab);
+    if (!produit) continue;
+    if (!prixStandard[clientCab]) prixStandard[clientCab] = {};
+    if (produit.colonne_silae === 'coffre_fort' && !prixStandard[clientCab].coffre_fort) {
+      prixStandard[clientCab].coffre_fort = { pu_ht: t.pu_ht, tva_rate: t.tva_rate || 0.20, produit };
+    }
+    if (produit.colonne_silae === 'editique' && !prixStandard[clientCab].editique) {
+      prixStandard[clientCab].editique = { pu_ht: t.pu_ht, tva_rate: t.tva_rate || 0.20, produit };
+    }
+  }
+
+  for (const s of silaeData) {
+    if (processedClientIds.has(s.client_id)) continue;
+    const coffreFort = s.coffre_fort || 0;
+    const editique = s.editique || 0;
+    if (coffreFort === 0 && editique === 0) continue;
+
+    const client = clientsById.get(s.client_id);
+    if (!client) continue;
+    const cab = client.cabinet;
+    const lignesForfait = [];
+    let totalHtForfait = 0;
+
+    if (coffreFort > 0 && prixStandard[cab]?.coffre_fort) {
+      const { pu_ht, tva_rate, produit } = prixStandard[cab].coffre_fort;
+      const montantHt = Math.round(pu_ht * coffreFort * 100) / 100;
+      totalHtForfait += montantHt;
+      lignesForfait.push({
+        label: produit.denomination || 'Coffre-fort',
+        label_normalise: produit.label_normalise,
+        pennylane_product_id: produit.pennylane_product_id || '',
+        denomination: produit.denomination || 'Coffre-fort',
+        pu_ht,
+        pu_ttc: Math.round(pu_ht * (1 + tva_rate) * 100) / 100,
+        quantite: coffreFort,
+        montant_ht: montantHt,
+        colonne_silae: 'coffre_fort',
+        source: 'silae',
+        tva_code: tva_rate === 0.20 ? 'FR_200' : `FR_${Math.round(tva_rate * 1000)}`,
+        tva_rate
+      });
+    }
+
+    if (editique > 0 && prixStandard[cab]?.editique) {
+      const { pu_ht, tva_rate, produit } = prixStandard[cab].editique;
+      const montantHt = Math.round(pu_ht * editique * 100) / 100;
+      totalHtForfait += montantHt;
+      lignesForfait.push({
+        label: produit.denomination || 'Éditique',
+        label_normalise: produit.label_normalise,
+        pennylane_product_id: produit.pennylane_product_id || '',
+        denomination: produit.denomination || 'Éditique',
+        pu_ht,
+        pu_ttc: Math.round(pu_ht * (1 + tva_rate) * 100) / 100,
+        quantite: editique,
+        montant_ht: montantHt,
+        colonne_silae: 'editique',
+        source: 'silae',
+        tva_code: tva_rate === 0.20 ? 'FR_200' : `FR_${Math.round(tva_rate * 1000)}`,
+        tva_rate
+      });
+    }
+
+    if (lignesForfait.length > 0) {
+      resultats.push({
+        client_id: s.client_id,
+        client_nom: client.nom,
+        cabinet: cab,
+        siren: client.siren || '',
+        pennylane_customer_id: client.pennylane_customer_id || '',
+        lignes: lignesForfait,
+        total_ht_auto: Math.round(totalHtForfait * 100) / 100,
+        total_ht_estimable: Math.round(totalHtForfait * 100) / 100,
+        has_silae: true,
+        complet: true
+      });
+    }
   }
 
   // Trier par cabinet puis par nom
@@ -325,6 +422,12 @@ export async function genererFacturationClient({ supabase, clientId, periode, da
         quantite = val;
         source = 'silae';
       }
+    }
+
+    // Fallback bulletins manuels : si pas de bulletins Silae mais saisie manuelle
+    if (quantite === 0 && colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
+      quantite = silae.bulletins_manuels;
+      source = 'manuel';
     }
 
     const puHt = tarif.pu_ht;
@@ -629,4 +732,184 @@ export async function syncProduitsPennylane({ supabase, cabinet, plProducts }) {
   }
 
   return { updated, created, total: plProducts.length };
+}
+
+// ═══════════════════════════ Grille Silae 12 mois ═══════════════════════════
+
+/**
+ * Charge les données pour la grille Silae annuelle.
+ * Retourne les clients "au réel", les clients "au forfait" avec coffre-fort/éditique,
+ * et les données Silae pivotées par client et par mois.
+ *
+ * @param {Object} params
+ * @param {Object} params.supabase - Client Supabase
+ * @param {number} params.year - Année (ex: 2026)
+ * @param {string} [params.cabinet] - Filtre cabinet ('Audit Up', 'Zerah Fiduciaire') ou undefined pour tous
+ * @returns {Promise<{
+ *   clientsReel: Array<{id: number, nom: string, cabinet: string, siren: string}>,
+ *   clientsForfait: Array<{id: number, nom: string, cabinet: string, siren: string}>,
+ *   silaeByClient: Map<number, Map<string, Object>>
+ * }>}
+ */
+export async function chargerDonneesGrille({ supabase, year, cabinet }) {
+  // 1. Clients "au réel" = ceux qui ont des tarifs type_recurrence='variable'
+  let queryTarifs = supabase
+    .from('tarifs_reference')
+    .select('client_id')
+    .eq('type_recurrence', 'variable');
+  if (cabinet) {
+    queryTarifs = queryTarifs.eq('cabinet', cabinet);
+  }
+  const { data: tarifsData, error: errTarifs } = await queryTarifs;
+  if (errTarifs) throw new Error(`Erreur chargement tarifs: ${errTarifs.message}`);
+
+  const reelClientIds = new Set((tarifsData || []).map(t => t.client_id));
+
+  // 2. Données Silae pour toute l'année (avec fallback si colonnes manuelles pas encore créées)
+  let silaeData;
+  const selectFull = 'client_id, periode, bulletins, coffre_fort, editique, entrees, sorties, declarations, attestations_pe, bulletins_manuels, bulletins_refaits, temps_passe, commentaires';
+  const selectBase = 'client_id, periode, bulletins, coffre_fort, editique, entrees, sorties, declarations, attestations_pe';
+
+  const { data: d1, error: e1 } = await supabase
+    .from('silae_productions')
+    .select(selectFull)
+    .gte('periode', `${year}-01`)
+    .lte('periode', `${year}-12`);
+
+  if (e1 && e1.message?.includes('does not exist')) {
+    // Migration 014 pas encore appliquée — fallback sans colonnes manuelles
+    const { data: d2, error: e2 } = await supabase
+      .from('silae_productions')
+      .select(selectBase)
+      .gte('periode', `${year}-01`)
+      .lte('periode', `${year}-12`);
+    if (e2) throw new Error(`Erreur chargement Silae: ${e2.message}`);
+    silaeData = d2;
+  } else if (e1) {
+    throw new Error(`Erreur chargement Silae: ${e1.message}`);
+  } else {
+    silaeData = d1;
+  }
+
+  // 3. Clients actifs
+  let queryClients = supabase
+    .from('clients')
+    .select('id, nom, cabinet, siren')
+    .eq('actif', true);
+  if (cabinet) {
+    queryClients = queryClients.eq('cabinet', cabinet);
+  }
+  const { data: clientsData, error: errClients } = await queryClients;
+  if (errClients) throw new Error(`Erreur chargement clients: ${errClients.message}`);
+
+  const clientsById = new Map();
+  for (const c of (clientsData || [])) {
+    clientsById.set(c.id, c);
+  }
+
+  // 4. Pivoter les données Silae : Map<clientId, Map<periode, silaeRow>>
+  const silaeByClient = new Map();
+  for (const row of (silaeData || [])) {
+    if (!clientsById.has(row.client_id)) continue; // ignorer clients inactifs ou hors cabinet
+    if (!silaeByClient.has(row.client_id)) {
+      silaeByClient.set(row.client_id, new Map());
+    }
+    silaeByClient.get(row.client_id).set(row.periode, row);
+  }
+
+  // 5. Construire la liste des clients au réel (triés cabinet + nom)
+  const clientsReel = [...reelClientIds]
+    .filter(id => clientsById.has(id))
+    .map(id => clientsById.get(id))
+    .sort((a, b) => {
+      if (a.cabinet !== b.cabinet) return a.cabinet.localeCompare(b.cabinet, 'fr');
+      return a.nom.localeCompare(b.nom, 'fr');
+    });
+
+  // 6. Clients au forfait AVEC coffre-fort ou éditique
+  const clientsForfait = [];
+  for (const [clientId, moisMap] of silaeByClient) {
+    if (reelClientIds.has(clientId)) continue; // déjà dans la liste réel
+    const client = clientsById.get(clientId);
+    if (!client) continue;
+
+    // Vérifier s'il y a au moins 1 mois avec coffre_fort > 0 ou editique > 0
+    let hasCoffreOuEditique = false;
+    for (const [, row] of moisMap) {
+      if ((row.coffre_fort || 0) > 0 || (row.editique || 0) > 0) {
+        hasCoffreOuEditique = true;
+        break;
+      }
+    }
+    if (hasCoffreOuEditique) {
+      clientsForfait.push(client);
+    }
+  }
+  clientsForfait.sort((a, b) => {
+    if (a.cabinet !== b.cabinet) return a.cabinet.localeCompare(b.cabinet, 'fr');
+    return a.nom.localeCompare(b.nom, 'fr');
+  });
+
+  return { clientsReel, clientsForfait, silaeByClient };
+}
+
+// ═══════════════════════════ Sauvegarde manuelle ═══════════════════════════
+
+/**
+ * Sauvegarde les données manuelles pour un client/période.
+ * Crée la ligne silae_productions si elle n'existe pas.
+ *
+ * @param {Object} params
+ * @param {import('@supabase/supabase-js').SupabaseClient} params.supabase
+ * @param {string} params.clientId - UUID du client
+ * @param {string} params.periode - 'YYYY-MM'
+ * @param {Object} params.data
+ * @param {number} [params.data.bulletins_manuels]
+ * @param {number} [params.data.bulletins_refaits]
+ * @param {number} [params.data.temps_passe]
+ * @param {string} [params.data.commentaires]
+ */
+export async function sauverDonneesManuelles({ supabase, clientId, periode, data }) {
+  // Vérifier si une ligne existe déjà
+  const { data: existing, error: errSelect } = await supabase
+    .from('silae_productions')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('periode', periode)
+    .maybeSingle();
+
+  if (errSelect) throw new Error(`Erreur lecture silae_productions: ${errSelect.message}`);
+
+  const manuelFields = {
+    bulletins_manuels: data.bulletins_manuels ?? 0,
+    bulletins_refaits: data.bulletins_refaits ?? 0,
+    temps_passe: data.temps_passe ?? 0,
+    commentaires: data.commentaires ?? ''
+  };
+
+  if (existing) {
+    // UPDATE uniquement les colonnes manuelles
+    const { error: errUpdate } = await supabase
+      .from('silae_productions')
+      .update(manuelFields)
+      .eq('id', existing.id);
+    if (errUpdate) throw new Error(`Erreur mise à jour manuelle: ${errUpdate.message}`);
+  } else {
+    // INSERT nouvelle ligne avec colonnes auto à 0 + colonnes manuelles
+    const { error: errInsert } = await supabase
+      .from('silae_productions')
+      .insert({
+        client_id: clientId,
+        periode,
+        bulletins: 0,
+        coffre_fort: 0,
+        editique: 0,
+        entrees: 0,
+        sorties: 0,
+        declarations: 0,
+        attestations_pe: 0,
+        ...manuelFields
+      });
+    if (errInsert) throw new Error(`Erreur insertion manuelle: ${errInsert.message}`);
+  }
 }

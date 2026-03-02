@@ -8,6 +8,7 @@
 | Phase 2 | Restructuration abonnements PL | Terminee (recree manuellement) |
 | Phase 3 | Facturation variable mensuelle | Terminee |
 | Nettoyage PL | Transition 2025 → 2026 | Terminee (ISO verifie 02/03/2026) |
+| Phase 3b | Saisie manuelle + grille Silae | Terminee |
 | Phase 4 | Correction factures Janvier 2026 | En attente (corrections manuelles PL) |
 | **Phase 5** | **Dashboard Vue — Honoraires annuels estimes** | **Terminee (02/03/2026)** |
 
@@ -164,6 +165,61 @@
 
 ---
 
+## Phase 3b — Saisie manuelle + Grille Silae annuelle
+
+**Objectif :** Completer la facturation variable avec les donnees absentes du fichier Silae (bulletins manuels SAINT JAMES/RELAIS CHRISTINE, bulletins refaits, coffre-fort forfait) et fournir une vue annuelle du suivi Silae.
+
+### Grille Silae 12 mois
+
+- **Table 1** : 52 clients au reel — bulletins mensuels + infobulle enrichie (coffre-fort, editique, entrees, sorties, declarations, attestations PE, donnees manuelles)
+- **Table 2** : clients au forfait avec coffre-fort/editique (ACF CONSEILS, IB PARIS, RELAIS CHRISTINE ZF)
+- Selecteur annee (2025-2030) + filtre cabinet
+- Ligne TOTAL par colonne et total general
+
+### Saisie manuelle
+
+**Popover (clic sur cellule)** :
+- Bulletins manuels (pour SAINT JAMES, RELAIS CHRISTINE — pas de detail Silae)
+- Bulletins refaits (info absente du fichier Silae)
+- Temps passe (heures, info interne)
+- Commentaires (info interne)
+- Sauvegarde directe dans `silae_productions` (colonnes manuelles)
+
+**Import/Export Excel** :
+- Bouton "Exporter modele" : template pre-rempli (clients actifs, R/F, SIREN, cabinet)
+- Bouton "Importer Excel" : parse fichier rempli, matching par SIREN, upsert en BDD
+- Selecteur mois pour choisir la periode d'import
+
+### Chaine complete vers export PL
+
+| Source | Colonne silae_productions | Produit PL | Export PL |
+|---|---|---|---|
+| Bulletins Silae auto | bulletins | bulletin_salaire | Oui (quantite > 0) |
+| Bulletins manuels | bulletins_manuels | bulletin_salaire (fallback) | Oui |
+| Bulletins refaits | bulletins_refaits | modification_bulletin | Oui |
+| Coffre-fort (reel) | coffre_fort | coffre_fort | Oui |
+| Coffre-fort (forfait) | coffre_fort | coffre_fort (2e passe) | Oui |
+| Editique (forfait) | editique | publipostage (2e passe) | Oui |
+| Temps passe | temps_passe | — | Non (interne) |
+| Commentaires | commentaires | — | Non (interne) |
+
+### Securite re-import Silae
+
+Les colonnes manuelles (`bulletins_manuels`, `bulletins_refaits`, `temps_passe`, `commentaires`) ne sont PAS mentionnees dans l'upsert `importSilaeData` → elles sont preservees lors d'un re-import Silae.
+
+### Migration BDD
+
+`014_silae_manuels.sql` : 4 colonnes + liaison `modification_bulletin.colonne_silae = 'bulletins_refaits'`
+
+### Fichiers cles
+- `facturationVariableService.js` — SILAE_COLUMN_MAP + fallback bulletins_manuels + sauverDonneesManuelles() + 2e passe forfait
+- `facturationManuelleService.js` — exportModeleManuel() + parseManuelExcel() + importManuelData()
+- `FacturationGrid.jsx` — grille 12 mois + popover + import/export Excel
+- `exportFacturationVariable.js` — filtre quantite 0 (lignes vides exclues)
+- `014_silae_manuels.sql` — migration colonnes manuelles
+
+---
+
 ## Phase 5 — Dashboard Vue (Honoraires annuels estimes)
 
 **Objectif :** Tableau de bord temps reel pour evaluer les honoraires annuels ajustes — savoir instantanement l'impact d'un gain ou d'une perte de client. Croise les abonnements PL (fixe) avec les donnees Silae reelles (social variable).
@@ -230,11 +286,12 @@ TOTAL HONORAIRES (2 299 128 EUR)
 | Restructuration (logique) | 12 | subscriptionRestructuration.test.js |
 | Restructuration (export) | 32 | exportRestructuration.test.js |
 | Facturation variable | 59 | facturationVariable.test.js |
+| Facturation manuelle | 22 | facturationManuelle.test.js |
 | Sync honoraires | 35 | syncHonoraires.test.js |
 | Sync preview | 47 | syncPreview.test.js |
 | Reconciliation | 21 | reconciliation.test.js |
-| **Total module honoraires** | **342** | |
-| **Total projet** | **536** | |
+| **Total module honoraires** | **364** | |
+| **Total projet** | **558** | |
 
 ---
 
@@ -243,7 +300,7 @@ TOTAL HONORAIRES (2 299 128 EUR)
 - **BHG GESTION** : client Zerah Fiduciaire cree dans le cabinet Audit Up — a voir avec collaboratrice
 - **CalendarPage** : warning "Maximum update depth exceeded" pre-existant (non lie aux honoraires)
 - **15 clients inactifs** : exclus de l'export restructuration (VP BATI, VEGI LA FLAMME, PFA ASSOCIES, MELSAJE, GP BATIGNOLLES, GOODPIZZE, GD GESTION, BARY, KAFEGILO)
-- **SNC CHRISTINE** : regroupe SAINT JAMES + RELAIS CHRISTINE dans Silae — pas de detail par etablissement, le dashboard utilise le fallback PL (socialAboResiduel)
+- **SNC CHRISTINE** : regroupe SAINT JAMES + RELAIS CHRISTINE dans Silae — pas de detail par etablissement. Resolution : saisie manuelle via popover ou import Excel (Phase 3b)
 
 ## Lecons apprises
 

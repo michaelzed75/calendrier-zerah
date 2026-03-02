@@ -158,8 +158,8 @@ function buildImportPLSheet(wb, clients, dateEmission, suffixePeriode) {
   let r = 1;
   for (const client of clients) {
     for (const ligne of client.lignes) {
-      // Exclure les lignes manuelles (pas de quantité)
-      if (ligne.quantite === null || ligne.quantite === undefined) continue;
+      // Exclure les lignes sans quantité ou à zéro
+      if (!ligne.quantite) continue;
 
       const siren = client.siren ? parseInt(client.siren, 10) : 0;
 
