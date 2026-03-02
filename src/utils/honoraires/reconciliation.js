@@ -36,7 +36,8 @@ function isFranceFormalites(name) {
 
 const MATCH_LEVEL_LABELS = {
   uuid: 'UUID',
-  siren: 'SIREN'
+  siren: 'SIREN',
+  siret: 'SIRET'
 };
 
 /**
@@ -47,18 +48,30 @@ const MATCH_LEVEL_LABELS = {
  * @returns {{ client: Object, level: string } | null}
  */
 function matchCustomerToClient(customer, clients, matchedClientIds = new Set()) {
-  // 1. SIREN (prioritaire — identifiant officiel INSEE, 9 chiffres)
+  // 1. SIREN/SIRET (prioritaire — identifiant officiel INSEE)
+  // Supporte SIREN (9 chiffres) et SIRET (14 chiffres = SIREN + NIC établissement).
+  // SIRET permet de distinguer les établissements d'un même groupe (ex: SAINT JAMES / RELAIS CHRISTINE).
   if (customer.reg_no) {
-    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
-    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
-      const candidates = clients.filter(c => c.siren && c.siren === sirenClean && !matchedClientIds.has(c.id));
+    const regNoClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (regNoClean && /^\d{9}(\d{5})?$/.test(regNoClean)) {
+      const siren9 = regNoClean.slice(0, 9);
+
+      // 1a. Match exact SIRET 14 chiffres (prioritaire pour multi-établissements)
+      if (regNoClean.length === 14) {
+        const siretMatch = clients.find(c => c.siren && c.siren === regNoClean && !matchedClientIds.has(c.id));
+        if (siretMatch) return { client: siretMatch, level: 'siret' };
+      }
+
+      // 1b. Match SIREN 9 chiffres (client local peut stocker SIREN ou SIRET)
+      const candidates = clients.filter(c => {
+        if (!c.siren || matchedClientIds.has(c.id)) return false;
+        const clientSiren9 = c.siren.slice(0, 9);
+        return clientSiren9 === siren9;
+      });
       if (candidates.length === 1) {
-        // SIREN unique → match direct
         return { client: candidates[0], level: 'siren' };
       }
       if (candidates.length > 1 && customer.external_reference) {
-        // SIREN ambigu (plusieurs établissements, ex: RELAIS CHRISTINE / SAINT JAMES)
-        // → utiliser l'UUID Pennylane pour désambiguïser parmi les candidats SIREN
         const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
         if (uuidMatch) return { client: uuidMatch, level: 'siren' };
       }

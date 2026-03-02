@@ -89,19 +89,35 @@ export function removeJuridicalSuffixes(name) {
  * @returns {Client|null} Client matché ou null
  */
 export function matchCustomerToClient(customer, clients) {
-  // 1. SIREN (CLÉ UNIVERSELLE, prioritaire) — identifiant officiel INSEE
+  // 1. SIREN/SIRET (CLÉ UNIVERSELLE, prioritaire) — identifiant officiel INSEE
+  // Supporte SIREN (9 chiffres) et SIRET (14 chiffres = SIREN + NIC établissement).
+  // SIRET permet de distinguer les établissements d'un même groupe (ex: SAINT JAMES / RELAIS CHRISTINE).
   // Prioritaire car le pennylane_customer_id peut être mal assigné en base
   // suite à un faux positif du matching par nom lors d'une sync précédente.
   if (customer.reg_no) {
-    const sirenClean = customer.reg_no.replace(/\s/g, '').trim();
-    if (sirenClean && /^\d{9}$/.test(sirenClean)) {
-      const candidates = clients.filter(c => c.siren && c.siren === sirenClean);
-      if (candidates.length === 1) {
-        return candidates[0];
+    const regNoClean = customer.reg_no.replace(/\s/g, '').trim();
+    if (regNoClean && /^\d{9}(\d{5})?$/.test(regNoClean)) {
+      const siren9 = regNoClean.slice(0, 9);
+
+      // 1a. Match exact SIRET 14 chiffres (prioritaire pour multi-établissements)
+      if (regNoClean.length === 14) {
+        const siretMatch = clients.find(c => c.siren && c.siren === regNoClean);
+        if (siretMatch) return siretMatch;
       }
-      if (candidates.length > 1 && customer.external_reference) {
-        // SIREN ambigu (plusieurs établissements, ex: RELAIS CHRISTINE / SAINT JAMES)
-        // → utiliser l'UUID Pennylane pour désambiguïser parmi les candidats SIREN
+
+      // 1b. Match SIREN 9 chiffres (client local peut stocker SIREN ou SIRET)
+      const candidates = clients.filter(c => c.siren && (c.siren === siren9 || c.siren.startsWith(siren9) && c.siren === regNoClean));
+      if (candidates.length === 0) {
+        // Fallback : chercher les clients dont le SIREN (9 premiers) correspond
+        const sirenCandidates = clients.filter(c => c.siren && c.siren.slice(0, 9) === siren9);
+        if (sirenCandidates.length === 1) return sirenCandidates[0];
+        if (sirenCandidates.length > 1 && customer.external_reference) {
+          const uuidMatch = sirenCandidates.find(c => c.pennylane_customer_id === customer.external_reference);
+          if (uuidMatch) return uuidMatch;
+        }
+      } else if (candidates.length === 1) {
+        return candidates[0];
+      } else if (candidates.length > 1 && customer.external_reference) {
         const uuidMatch = candidates.find(c => c.pennylane_customer_id === customer.external_reference);
         if (uuidMatch) return uuidMatch;
       }
