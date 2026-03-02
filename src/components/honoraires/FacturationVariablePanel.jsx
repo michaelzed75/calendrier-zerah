@@ -1,10 +1,9 @@
 // @ts-check
-import React, { useState, useCallback, useEffect } from 'react';
-import { Loader2, Download, Search, AlertTriangle, Check, FileSpreadsheet, Calculator, ChevronDown, ChevronRight, Calendar, Database, Upload } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { Loader2, Download, AlertTriangle, Check, FileSpreadsheet, Calculator, Calendar, Database, Upload, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import {
   genererFacturationVariable,
-  genererFacturationClient,
   getPeriodesDisponibles,
   getDatesEffetVariables,
   syncProduitsPennylane
@@ -12,13 +11,33 @@ import {
 import { getAllProducts, setCompanyId } from '../../utils/honoraires/pennylaneCustomersApi';
 import { exportFacturationVariableExcel } from '../../utils/honoraires/exportFacturationVariable';
 import { parseSilaeExcel, importSilaeData, updateSilaeMapping, extractPeriodeFromFilename } from '../../utils/honoraires/silaeService';
+import { exportModeleManuel, parseManuelExcel, importManuelData } from '../../utils/honoraires/facturationManuelleService';
 import SilaeMappingModal from './SilaeMappingModal';
 import FacturationGrid from './FacturationGrid';
 
+const MOIS_OPTIONS = [
+  { value: '01', label: 'Janvier' },
+  { value: '02', label: 'Février' },
+  { value: '03', label: 'Mars' },
+  { value: '04', label: 'Avril' },
+  { value: '05', label: 'Mai' },
+  { value: '06', label: 'Juin' },
+  { value: '07', label: 'Juillet' },
+  { value: '08', label: 'Août' },
+  { value: '09', label: 'Septembre' },
+  { value: '10', label: 'Octobre' },
+  { value: '11', label: 'Novembre' },
+  { value: '12', label: 'Décembre' }
+];
+
 /**
  * Panel Phase 3 : Facturation variable mensuelle.
- * Combine les quantités Silae + tarifs 2026 pour générer les brouillons
- * de factures variables à importer dans Pennylane.
+ * Workflow linéaire vertical en 5 sections :
+ * 1. Période + Tarifs
+ * 2. Import Silae
+ * 3. Saisie hors Silae (export modèle / import Excel)
+ * 4. Export Pennylane (bouton unifié)
+ * 5. Grille Silae annuelle
  *
  * @param {Object} props
  * @param {Object[]} props.clients - Clients de la BDD
@@ -28,27 +47,22 @@ import FacturationGrid from './FacturationGrid';
  */
 export default function FacturationVariablePanel({ clients, accent, filterCabinet, apiKeysMap }) {
   // === State ===
-  const [mode, setMode] = useState('single'); // 'single' | 'all'
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
 
-  // Paramètres
+  // Paramètres période + tarifs
   const [periode, setPeriode] = useState('');
   const [dateEffet, setDateEffet] = useState('');
   const [periodesDisponibles, setPeriodesDisponibles] = useState([]);
   const [datesEffetDisponibles, setDatesEffetDisponibles] = useState([]);
 
-  // Résultats
+  // Résultats export PL
   const [resultat, setResultat] = useState(null);
-  const [clientResult, setClientResult] = useState(null);
-  const [expandedClients, setExpandedClients] = useState(new Set());
 
-  // Sync produits
+  // Sync produits + export
   const [exporting, setExporting] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null); // { message, type: 'info'|'success'|'error' }
+  const [syncStatus, setSyncStatus] = useState(null);
 
   // Import Silae
   const [importingSilae, setImportingSilae] = useState(false);
@@ -61,6 +75,15 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const [importMonth, setImportMonth] = useState('');
   const [importYear, setImportYear] = useState('2026');
 
+  // Saisie hors Silae (import/export manuel)
+  const [importMois, setImportMois] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [importingManuel, setImportingManuel] = useState(false);
+  const [importManuelResult, setImportManuelResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Reload key pour la grille
+  const [reloadKey, setReloadKey] = useState(0);
+
   // === Chargement initial des périodes et dates ===
   useEffect(() => {
     (async () => {
@@ -71,8 +94,6 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         ]);
         setPeriodesDisponibles(periodes);
         setDatesEffetDisponibles(dates);
-
-        // Pré-sélectionner la plus récente
         if (periodes.length > 0) setPeriode(periodes[0]);
         if (dates.length > 0) setDateEffet(dates[0]);
       } catch (err) {
@@ -81,136 +102,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
     })();
   }, []);
 
-  // === Recherche client ===
-  const filteredClients = searchQuery.length >= 2
-    ? clients.filter(c => {
-        const q = searchQuery.toLowerCase();
-        return (
-          c.nom?.toLowerCase().includes(q) ||
-          c.siren?.includes(q) ||
-          c.pennylane_customer_id?.toLowerCase().includes(q)
-        );
-      }).slice(0, 15)
-    : [];
-
-  // === Générer pour un client ===
-  const handleGenererClient = useCallback(async (clientId) => {
-    if (!periode || !dateEffet) {
-      setError('Veuillez sélectionner une période et une date de tarifs.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setClientResult(null);
-    try {
-      const result = await genererFacturationClient({
-        supabase,
-        clientId,
-        periode,
-        dateEffet
-      });
-      if (!result) {
-        setError('Aucun tarif variable trouvé pour ce client.');
-      } else {
-        setClientResult(result);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [periode, dateEffet]);
-
-  // === Générer pour tous ===
-  const handleGenererTous = useCallback(async () => {
-    if (!periode || !dateEffet) {
-      setError('Veuillez sélectionner une période et une date de tarifs.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setResultat(null);
-    try {
-      const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
-      const result = await genererFacturationVariable({
-        supabase,
-        periode,
-        dateEffet,
-        cabinet,
-        onProgress: setProgress
-      });
-      setResultat(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      setProgress(null);
-    }
-  }, [periode, dateEffet, filterCabinet]);
-
-  /**
-   * Sync produits PL → base locale, puis re-génère les données client et exporte.
-   * @param {'single'|'batch'} exportMode
-   */
-  const handleSyncAndExport = useCallback(async (exportMode) => {
-    setExporting(true);
-    setSyncStatus({ message: 'Synchronisation des produits Pennylane…', type: 'info' });
-
-    try {
-      // Déterminer le(s) cabinet(s) à syncer
-      const cabinets = exportMode === 'single' && clientResult
-        ? [clientResult.cabinet]
-        : [...new Set((resultat?.clients || []).map(c => c.cabinet))];
-
-      // Sync produits pour chaque cabinet
-      for (const cab of cabinets) {
-        const keyInfo = apiKeysMap?.[cab];
-        if (!keyInfo?.api_key) {
-          console.warn(`[SyncExport] Pas de clé API pour ${cab}, skip sync`);
-          continue;
-        }
-
-        setSyncStatus({ message: `Récupération des produits ${cab}…`, type: 'info' });
-        if (keyInfo.company_id) setCompanyId(keyInfo.company_id);
-        const plProducts = await getAllProducts(keyInfo.api_key);
-
-        setSyncStatus({ message: `Mise à jour produits ${cab} (${plProducts.length})…`, type: 'info' });
-        const syncResult = await syncProduitsPennylane({ supabase, cabinet: cab, plProducts });
-        console.log(`[SyncExport] ${cab}: ${syncResult.created} créés, ${syncResult.updated} mis à jour`);
-      }
-
-      // Re-générer les données avec les produits à jour
-      setSyncStatus({ message: 'Régénération de la facturation…', type: 'info' });
-
-      if (exportMode === 'single' && selectedClientId) {
-        const freshClient = await genererFacturationClient({
-          supabase, clientId: selectedClientId, periode, dateEffet
-        });
-        if (freshClient) {
-          setClientResult(freshClient);
-          exportFacturationVariableExcel({ client: freshClient, periode });
-        }
-      } else if (exportMode === 'batch' && resultat) {
-        const freshResultat = await genererFacturationVariable({
-          supabase, periode, dateEffet,
-          cabinet: filterCabinet !== 'tous' ? filterCabinet : undefined
-        });
-        if (freshResultat) {
-          setResultat(freshResultat);
-          exportFacturationVariableExcel({ resultat: freshResultat, periode });
-        }
-      }
-
-      setSyncStatus({ message: 'Export terminé ✓', type: 'success' });
-      setTimeout(() => setSyncStatus(null), 3000);
-
-    } catch (err) {
-      console.error('[SyncExport] Erreur:', err);
-      setSyncStatus({ message: `Erreur: ${err.message}`, type: 'error' });
-    } finally {
-      setExporting(false);
-    }
-  }, [clientResult, resultat, selectedClientId, periode, dateEffet, filterCabinet, apiKeysMap]);
+  // Année extraite de la période sélectionnée (pour la saisie hors Silae)
+  const anneeFromPeriode = periode ? periode.split('-')[0] : String(new Date().getFullYear());
 
   // === Import Silae ===
   const handleSilaeFileSelect = useCallback(async (e) => {
@@ -223,7 +116,6 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       const buffer = await file.arrayBuffer();
       const rows = parseSilaeExcel(buffer);
 
-      // Période : sélection manuelle ou extraction du nom de fichier
       let periodeImport;
       if (importMonth && importYear) {
         periodeImport = `${importYear}-${importMonth}`;
@@ -243,10 +135,10 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
 
       setSilaeResult({ ...result, periode: periodeImport, filename: file.name });
 
-      // Rafraîchir les périodes disponibles et auto-sélectionner
       const freshPeriodes = await getPeriodesDisponibles(supabase);
       setPeriodesDisponibles(freshPeriodes);
       setPeriode(periodeImport);
+      setReloadKey(k => k + 1);
     } catch (err) {
       console.error('Erreur import Silae:', err);
       setSilaeResult({ errors: [err.message] });
@@ -270,10 +162,10 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           inserted: (prev?.inserted || 0) + result.inserted,
           matched: [...(prev?.matched || []), ...result.matched]
         }));
-        // Rafraîchir les périodes
         const freshPeriodes = await getPeriodesDisponibles(supabase);
         setPeriodesDisponibles(freshPeriodes);
         setPeriode(pendingSilaePeriode);
+        setReloadKey(k => k + 1);
       }
     } catch (err) {
       console.error('Erreur save mapping:', err);
@@ -285,53 +177,116 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
     setPendingSilaePeriode('');
   }, [unmatchedSilae, pendingSilaeRows, pendingSilaePeriode, clients]);
 
-  // === Toggle expand ===
-  const toggleClient = (id) => {
-    setExpandedClients(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  // === Saisie hors Silae — Export modèle ===
+  const handleExportModele = useCallback(async () => {
+    try {
+      const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
+      const periodeManuel = `${anneeFromPeriode}-${importMois}`;
+      await exportModeleManuel({ supabase, periode: periodeManuel, cabinet });
+    } catch (err) {
+      alert(`Erreur export : ${err.message}`);
+    }
+  }, [anneeFromPeriode, importMois, filterCabinet]);
+
+  // === Saisie hors Silae — Import fichier ===
+  const handleImportManuel = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setImportingManuel(true);
+    setImportManuelResult(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const rows = parseManuelExcel(buffer);
+
+      if (rows.length === 0) {
+        setImportManuelResult({ updated: 0, skipped: 0, unmatched: [], message: 'Aucune donnée à importer.' });
+        setImportingManuel(false);
+        return;
+      }
+
+      const { data: activeClients } = await supabase
+        .from('clients')
+        .select('id, nom, siren')
+        .eq('actif', true);
+
+      const periodeManuel = `${anneeFromPeriode}-${importMois}`;
+      const result = await importManuelData({ supabase, rows, periode: periodeManuel, clients: activeClients || [] });
+      setImportManuelResult(result);
+      setReloadKey(k => k + 1);
+    } catch (err) {
+      setImportManuelResult({ updated: 0, skipped: 0, unmatched: [], message: `Erreur : ${err.message}` });
+    } finally {
+      setImportingManuel(false);
+    }
+  }, [anneeFromPeriode, importMois]);
+
+  // === Export Pennylane (unifié : sync + génération + export) ===
+  const handleExportPL = useCallback(async () => {
+    if (!periode || !dateEffet) {
+      setError('Veuillez sélectionner une période et une date de tarifs.');
+      return;
+    }
+    setExporting(true);
+    setError(null);
+    setResultat(null);
+    setSyncStatus({ message: 'Synchronisation des produits Pennylane…', type: 'info' });
+
+    try {
+      // 1. Sync produits pour chaque cabinet
+      const cabinets = filterCabinet !== 'tous'
+        ? [filterCabinet]
+        : ['Audit Up', 'Zerah Fiduciaire'];
+
+      for (const cab of cabinets) {
+        const keyInfo = apiKeysMap?.[cab];
+        if (!keyInfo?.api_key) {
+          console.warn(`[ExportPL] Pas de clé API pour ${cab}, skip sync`);
+          continue;
+        }
+        setSyncStatus({ message: `Récupération des produits ${cab}…`, type: 'info' });
+        if (keyInfo.company_id) setCompanyId(keyInfo.company_id);
+        const plProducts = await getAllProducts(keyInfo.api_key);
+        setSyncStatus({ message: `Mise à jour produits ${cab} (${plProducts.length})…`, type: 'info' });
+        const syncResult = await syncProduitsPennylane({ supabase, cabinet: cab, plProducts });
+        console.log(`[ExportPL] ${cab}: ${syncResult.created} créés, ${syncResult.updated} mis à jour`);
+      }
+
+      // 2. Générer facturation
+      setSyncStatus({ message: 'Génération de la facturation…', type: 'info' });
+      const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
+      const result = await genererFacturationVariable({
+        supabase, periode, dateEffet, cabinet, onProgress: setProgress
+      });
+      setResultat(result);
+
+      // 3. Export Excel
+      setSyncStatus({ message: 'Export Excel…', type: 'info' });
+      exportFacturationVariableExcel({ resultat: result, periode });
+
+      setSyncStatus({ message: 'Export terminé ✓', type: 'success' });
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch (err) {
+      console.error('[ExportPL] Erreur:', err);
+      setSyncStatus({ message: `Erreur: ${err.message}`, type: 'error' });
+    } finally {
+      setExporting(false);
+      setProgress(null);
+    }
+  }, [periode, dateEffet, filterCabinet, apiKeysMap]);
 
   // ═══════════════════════ RENDER ═══════════════════════
 
   return (
     <div className="space-y-4">
-      {/* En-tête */}
+      {/* ── Section 1 : Période + Tarifs ── */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Calculator className="w-5 h-5 text-purple-400" />
-            <h3 className="text-lg font-semibold text-white">Facturation variable mensuelle</h3>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setMode('single'); setResultat(null); }}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition ${
-                mode === 'single'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-slate-700 text-white hover:bg-slate-600'
-              }`}
-            >
-              <Search className="w-4 h-4 inline mr-1" />
-              Un client
-            </button>
-            <button
-              onClick={() => { setMode('all'); setClientResult(null); }}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition ${
-                mode === 'all'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-slate-700 text-white hover:bg-slate-600'
-              }`}
-            >
-              <Database className="w-4 h-4 inline mr-1" />
-              Tous les clients
-            </button>
-          </div>
+        <div className="flex items-center gap-2 mb-3">
+          <Calculator className="w-5 h-5 text-purple-400" />
+          <h3 className="text-lg font-semibold text-white">Facturation variable mensuelle</h3>
         </div>
 
-        {/* Sélecteurs période + date d'effet */}
         <div className="grid grid-cols-2 gap-4 mb-3">
           <div>
             <label className="block text-sm font-medium text-white mb-1">
@@ -374,7 +329,7 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         </p>
       </div>
 
-      {/* Import Silae */}
+      {/* ── Section 2 : Import Silae ── */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <Upload className="w-4 h-4 text-orange-400" />
@@ -389,18 +344,9 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
               className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
             >
               <option value="">Auto (nom fichier)</option>
-              <option value="01">Janvier</option>
-              <option value="02">Février</option>
-              <option value="03">Mars</option>
-              <option value="04">Avril</option>
-              <option value="05">Mai</option>
-              <option value="06">Juin</option>
-              <option value="07">Juillet</option>
-              <option value="08">Août</option>
-              <option value="09">Septembre</option>
-              <option value="10">Octobre</option>
-              <option value="11">Novembre</option>
-              <option value="12">Décembre</option>
+              {MOIS_OPTIONS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -442,145 +388,122 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         </div>
       </div>
 
+      {/* ── Section 3 : Saisie hors Silae ── */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Database className="w-4 h-4 text-purple-400" />
+          <h4 className="text-white font-semibold text-sm">Saisie hors Silae (bulletins manuels, refaits, temps passé…)</h4>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <label className="block text-xs text-white mb-1">Mois</label>
+            <select
+              value={importMois}
+              onChange={e => setImportMois(e.target.value)}
+              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
+            >
+              {MOIS_OPTIONS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="text-xs text-white self-end pb-1.5">
+            Année : <strong>{anneeFromPeriode}</strong>
+          </div>
+
+          <button
+            onClick={handleExportModele}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Exporter modèle
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importingManuel}
+            className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {importingManuel
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Upload className="w-3.5 h-3.5" />}
+            Importer Excel
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImportManuel}
+            className="hidden"
+          />
+        </div>
+
+        {/* Résultat import manuel */}
+        {importManuelResult && (
+          <div className="mt-3 p-2 rounded text-sm border bg-slate-700/50 border-slate-600">
+            <div className="flex items-center justify-between">
+              <div className="text-white">
+                {importManuelResult.message || (
+                  <>
+                    Import : <span className="font-semibold">{importManuelResult.updated}</span> mis à jour,{' '}
+                    <span className="font-semibold">{importManuelResult.skipped}</span> ignorés
+                  </>
+                )}
+              </div>
+              <button onClick={() => setImportManuelResult(null)} className="text-white hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {importManuelResult.unmatched?.length > 0 && (
+              <div className="mt-1 text-white text-xs">
+                Non matchés : {importManuelResult.unmatched.join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 4 : Export Pennylane ── */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Download className="w-4 h-4 text-emerald-400" />
+          <h4 className="text-white font-semibold text-sm">Export pour Pennylane</h4>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleExportPL}
+            disabled={exporting || !periode || !dateEffet}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 text-white rounded font-medium transition"
+          >
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {exporting ? (progress || syncStatus?.message || 'En cours…') : 'Générer et Exporter Excel'}
+          </button>
+
+          {syncStatus && !exporting && (
+            <span className={`text-sm ${syncStatus.type === 'error' ? 'text-red-400' : syncStatus.type === 'success' ? 'text-emerald-400' : 'text-white'}`}>
+              {syncStatus.message}
+            </span>
+          )}
+        </div>
+
+        {/* Statistiques après génération */}
+        {resultat && (
+          <div className="grid grid-cols-5 gap-3 mt-3">
+            <StatCard label="Clients variables" value={resultat.stats.nb_clients} color="purple" />
+            <StatCard label="Avec Silae" value={resultat.stats.nb_avec_silae} color="emerald" />
+            <StatCard label="Sans Silae" value={resultat.stats.nb_sans_silae} color="red" />
+            <StatCard label="Complets" value={resultat.stats.nb_complets} color="blue" />
+            <StatCard label="Total HT auto" value={`${resultat.stats.total_ht_auto.toFixed(2)} €`} color="amber" />
+          </div>
+        )}
+      </div>
+
       {/* Erreur */}
       {error && (
         <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
           <span className="text-white text-sm">{error}</span>
-        </div>
-      )}
-
-      {/* Mode single : recherche client */}
-      {mode === 'single' && (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-white" />
-            <input
-              type="text"
-              placeholder="Rechercher un client (nom, SIREN, PL ID)..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded pl-10 pr-3 py-2"
-            />
-          </div>
-
-          {/* Résultats recherche */}
-          {filteredClients.length > 0 && !clientResult && (
-            <div className="space-y-1 max-h-60 overflow-y-auto">
-              {filteredClients.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => { setSelectedClientId(c.id); setSearchQuery(c.nom); handleGenererClient(c.id); }}
-                  className="w-full text-left px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm flex items-center justify-between"
-                >
-                  <span className="text-white font-medium">{c.nom}</span>
-                  <span className="text-white text-xs">{c.cabinet} • {c.siren || '—'}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Résultat client unique */}
-          {clientResult && (
-            <>
-              <div className="flex items-center justify-end gap-3 mb-2">
-                {syncStatus && (
-                  <span className={`text-xs ${syncStatus.type === 'error' ? 'text-red-400' : syncStatus.type === 'success' ? 'text-green-400' : 'text-white'}`}>
-                    {syncStatus.message}
-                  </span>
-                )}
-                <button
-                  onClick={() => handleSyncAndExport('single')}
-                  disabled={exporting}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 text-white rounded font-medium transition text-sm"
-                >
-                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {exporting ? 'Sync & Export…' : `Exporter ${periode} a importer dans PL.xlsx`}
-                </button>
-              </div>
-              <ClientDetail client={clientResult} />
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Mode all : tous les clients */}
-      {mode === 'all' && (
-        <div className="space-y-3">
-          {/* Boutons action */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleGenererTous}
-              disabled={loading || !periode || !dateEffet}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white rounded font-medium transition"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-              {loading ? (progress || 'Chargement...') : 'Générer la facturation'}
-            </button>
-
-            {resultat && (
-              <button
-                onClick={() => handleSyncAndExport('batch')}
-                disabled={exporting}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 text-white rounded font-medium transition"
-              >
-                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {exporting ? 'Sync & Export…' : 'Exporter Excel'}
-              </button>
-            )}
-          </div>
-
-          {/* Statistiques */}
-          {resultat && (
-            <div className="grid grid-cols-5 gap-3">
-              <StatCard label="Clients variables" value={resultat.stats.nb_clients} color="purple" />
-              <StatCard label="Avec Silae" value={resultat.stats.nb_avec_silae} color="emerald" />
-              <StatCard label="Sans Silae" value={resultat.stats.nb_sans_silae} color="red" />
-              <StatCard label="Complets" value={resultat.stats.nb_complets} color="blue" />
-              <StatCard label="Total HT auto" value={`${resultat.stats.total_ht_auto.toFixed(2)} €`} color="amber" />
-            </div>
-          )}
-
-          {/* Liste des clients */}
-          {resultat && resultat.clients.length > 0 && (
-            <div className="bg-slate-800 border border-slate-700 rounded-lg divide-y divide-slate-700">
-              {resultat.clients.map(client => (
-                <div key={client.client_id}>
-                  {/* Header client */}
-                  <button
-                    onClick={() => toggleClient(client.client_id)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-700/50 transition"
-                  >
-                    <div className="flex items-center gap-3">
-                      {expandedClients.has(client.client_id)
-                        ? <ChevronDown className="w-4 h-4 text-white" />
-                        : <ChevronRight className="w-4 h-4 text-white" />
-                      }
-                      <span className="text-white font-medium">{client.client_nom}</span>
-                      <span className="text-white text-xs bg-slate-700 px-2 py-0.5 rounded">{client.cabinet}</span>
-                      {client.has_silae
-                        ? <span className="text-white text-xs bg-emerald-900/50 px-2 py-0.5 rounded">Silae ✓</span>
-                        : <span className="text-white text-xs bg-red-900/50 px-2 py-0.5 rounded">Pas de Silae</span>
-                      }
-                      {client.complet
-                        ? <Check className="w-4 h-4 text-emerald-400" />
-                        : <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      }
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-white text-sm">{client.lignes.length} produits</span>
-                      <span className="text-white font-medium">{client.total_ht_auto.toFixed(2)} € HT</span>
-                    </div>
-                  </button>
-
-                  {/* Détail lignes */}
-                  {expandedClients.has(client.client_id) && (
-                    <ClientDetail client={client} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -604,8 +527,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         />
       )}
 
-      {/* Grille Silae 12 mois */}
-      <FacturationGrid filterCabinet={filterCabinet} />
+      {/* ── Section 5 : Grille Silae annuelle ── */}
+      <FacturationGrid filterCabinet={filterCabinet} externalReloadKey={reloadKey} />
     </div>
   );
 }
@@ -624,56 +547,6 @@ function StatCard({ label, value, color }) {
     <div className={`${colorMap[color] || colorMap.purple} border rounded-lg p-3 text-center`}>
       <div className="text-white text-lg font-bold">{value}</div>
       <div className="text-white text-xs">{label}</div>
-    </div>
-  );
-}
-
-function ClientDetail({ client }) {
-  return (
-    <div className="px-4 pb-3">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-600">
-            <th className="text-left py-2 text-white font-medium">Produit</th>
-            <th className="text-center py-2 text-white font-medium w-20">Source</th>
-            <th className="text-center py-2 text-white font-medium w-20">Quantité</th>
-            <th className="text-right py-2 text-white font-medium w-24">PU HT</th>
-            <th className="text-right py-2 text-white font-medium w-28">Montant HT</th>
-          </tr>
-        </thead>
-        <tbody>
-          {client.lignes.map((ligne, i) => (
-            <tr key={i} className="border-b border-slate-700/50">
-              <td className="py-2 text-white">{ligne.label}</td>
-              <td className="py-2 text-center">
-                {ligne.source === 'silae' ? (
-                  <span className="text-white text-xs bg-emerald-900/50 px-2 py-0.5 rounded">Silae</span>
-                ) : (
-                  <span className="text-white text-xs bg-amber-900/50 px-2 py-0.5 rounded">Manuel</span>
-                )}
-              </td>
-              <td className="py-2 text-center text-white font-medium">
-                {ligne.quantite !== null ? ligne.quantite : (
-                  <span className="text-amber-400 italic">à saisir</span>
-                )}
-              </td>
-              <td className="py-2 text-right text-white">{ligne.pu_ht.toFixed(2)} €</td>
-              <td className="py-2 text-right text-white font-medium">
-                {ligne.montant_ht !== null
-                  ? `${ligne.montant_ht.toFixed(2)} €`
-                  : <span className="text-amber-400 italic">—</span>
-                }
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-slate-600">
-            <td colSpan={4} className="py-2 text-right text-white font-bold">Total auto HT :</td>
-            <td className="py-2 text-right text-white font-bold">{client.total_ht_auto.toFixed(2)} €</td>
-          </tr>
-        </tfoot>
-      </table>
     </div>
   );
 }

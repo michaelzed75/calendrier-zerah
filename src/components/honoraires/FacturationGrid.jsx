@@ -1,9 +1,8 @@
 // @ts-check
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { Loader2, CalendarDays, AlertTriangle, Users, ShieldCheck, Download, Upload, X, Save } from 'lucide-react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { Loader2, CalendarDays, AlertTriangle, Users, ShieldCheck, X, Save } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { chargerDonneesGrille, sauverDonneesManuelles } from '../../utils/honoraires/facturationVariableService';
-import { exportModeleManuel, parseManuelExcel, importManuelData } from '../../utils/honoraires/facturationManuelleService';
 
 // ═══════════════════════════ Constantes ═══════════════════════════
 
@@ -99,7 +98,6 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
         className="bg-slate-900 border border-slate-600 rounded-lg p-4 shadow-xl w-80"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-white font-semibold text-sm truncate max-w-[220px]">{editCell.clientNom}</div>
@@ -110,14 +108,12 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
           </button>
         </div>
 
-        {/* Info Silae auto */}
         <div className="text-white text-xs mb-3 bg-slate-800 rounded p-2 border border-slate-700">
           {editCell.currentRow
             ? `Silae auto : ${editCell.currentRow.bulletins || 0} bulletins`
             : 'Pas de data Silae'}
         </div>
 
-        {/* Champs */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-white text-sm">Bulletins manuels</label>
@@ -138,7 +134,7 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
             />
           </div>
           <div className="flex items-center justify-between">
-            <label className="text-white text-sm">Temps passe (h)</label>
+            <label className="text-white text-sm">Temps passé (h)</label>
             <input
               type="number" min="0" step="0.5"
               value={editValues.temps_passe}
@@ -157,7 +153,6 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
           </div>
         </div>
 
-        {/* Boutons */}
         <div className="flex justify-end gap-2 mt-3">
           <button
             onClick={onCancel}
@@ -185,8 +180,9 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
  * Grille Silae 12 mois : suivi annuel des imports par client.
  * @param {Object} props
  * @param {string} props.filterCabinet - Filtre cabinet actif ('tous', 'Audit Up', 'Zerah Fiduciaire')
+ * @param {number} [props.externalReloadKey=0] - Clé de rechargement pilotée par le parent
  */
-export default function FacturationGrid({ filterCabinet }) {
+export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }) {
   const [gridYear, setGridYear] = useState(new Date().getFullYear());
   const [gridData, setGridData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -197,13 +193,7 @@ export default function FacturationGrid({ filterCabinet }) {
   const [editValues, setEditValues] = useState({ bulletins_manuels: 0, bulletins_refaits: 0, temps_passe: 0, commentaires: '' });
   const [saving, setSaving] = useState(false);
 
-  // Import/Export
-  const [importMois, setImportMois] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
-  const [importingManuel, setImportingManuel] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-  const fileInputRef = useRef(null);
-
-  // Reload counter to trigger re-fetch after save/import
+  // Reload counter interne (après sauvegarde popover)
   const [reloadKey, setReloadKey] = useState(0);
 
   // Chargement des données
@@ -223,7 +213,7 @@ export default function FacturationGrid({ filterCabinet }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [gridYear, filterCabinet, reloadKey]);
+  }, [gridYear, filterCabinet, reloadKey, externalReloadKey]);
 
   // ═══════════════════════ Popover handlers ═══════════════════════
 
@@ -268,53 +258,7 @@ export default function FacturationGrid({ filterCabinet }) {
     setEditCell(null);
   }, []);
 
-  // ═══════════════════════ Import/Export handlers ═══════════════════════
-
-  const handleExportModele = useCallback(async () => {
-    try {
-      const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
-      const periode = `${gridYear}-${importMois}`;
-      await exportModeleManuel({ supabase, periode, cabinet });
-    } catch (err) {
-      alert(`Erreur export : ${err.message}`);
-    }
-  }, [gridYear, importMois, filterCabinet]);
-
-  const handleImportFile = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-
-    setImportingManuel(true);
-    setImportResult(null);
-    try {
-      const buffer = await file.arrayBuffer();
-      const rows = parseManuelExcel(buffer);
-
-      if (rows.length === 0) {
-        setImportResult({ updated: 0, skipped: 0, unmatched: [], message: 'Aucune donnee a importer.' });
-        setImportingManuel(false);
-        return;
-      }
-
-      // Charger les clients actifs pour le matching
-      const { data: clients } = await supabase
-        .from('clients')
-        .select('id, nom, siren')
-        .eq('actif', true);
-
-      const periode = `${gridYear}-${importMois}`;
-      const result = await importManuelData({ supabase, rows, periode, clients: clients || [] });
-      setImportResult(result);
-      setReloadKey(k => k + 1);
-    } catch (err) {
-      setImportResult({ updated: 0, skipped: 0, unmatched: [], message: `Erreur : ${err.message}` });
-    } finally {
-      setImportingManuel(false);
-    }
-  }, [gridYear, importMois]);
-
-  // ═══════════════════════ Infobulle enrichie ═══════════════════════
+  // ═══════════════════════ Infobulles ═══════════════════════
 
   const renderTooltipReel = useCallback((row) => (
     <div className="space-y-0.5">
@@ -328,7 +272,6 @@ export default function FacturationGrid({ filterCabinet }) {
       <div>Sorties : <span className="font-medium">{row.sorties || 0}</span></div>
       <div>Declarations : <span className="font-medium">{row.declarations || 0}</span></div>
       <div>Attestations PE : <span className="font-medium">{row.attestations_pe || 0}</span></div>
-      {/* Séparateur données manuelles */}
       {((row.bulletins_manuels || 0) > 0 || (row.bulletins_refaits || 0) > 0 || (row.temps_passe || 0) > 0 || row.commentaires) && (
         <>
           <div className="border-t border-slate-600 my-1 pt-1 text-purple-400 font-semibold">Saisie manuelle</div>
@@ -339,7 +282,7 @@ export default function FacturationGrid({ filterCabinet }) {
             <div>Bulletins refaits : <span className="font-medium">{row.bulletins_refaits}</span></div>
           )}
           {(row.temps_passe || 0) > 0 && (
-            <div>Temps passe : <span className="font-medium">{row.temps_passe}h</span></div>
+            <div>Temps passé : <span className="font-medium">{row.temps_passe}h</span></div>
           )}
           {row.commentaires && (
             <div>Commentaires : <span className="font-medium">"{row.commentaires}"</span></div>
@@ -361,7 +304,6 @@ export default function FacturationGrid({ filterCabinet }) {
 
   // ═══════════════════════ Cell value helpers ═══════════════════════
 
-  /** Valeur affichée pour un client au réel */
   const getCellDisplay = useCallback((row) => {
     if (!row) return { value: null, isManuel: false, refaits: 0 };
     const auto = row.bulletins || 0;
@@ -397,103 +339,34 @@ export default function FacturationGrid({ filterCabinet }) {
 
   return (
     <div className="space-y-4">
-      {/* En-tete avec controles */}
+      {/* En-tete simplifié */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-purple-400" />
             <h3 className="text-lg font-semibold text-white">Suivi Silae annuel</h3>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Selecteur annee */}
-            <div className="flex items-center gap-1.5">
-              <label className="text-sm text-white font-medium">Annee :</label>
-              <select
-                value={gridYear}
-                onChange={e => setGridYear(Number(e.target.value))}
-                className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
-              >
-                {YEAR_OPTIONS.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Selecteur mois (pour import/export) */}
-            <div className="flex items-center gap-1.5">
-              <label className="text-sm text-white font-medium">Mois :</label>
-              <select
-                value={importMois}
-                onChange={e => setImportMois(e.target.value)}
-                className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={m}>{MOIS_FR[i]}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bouton Export modele */}
-            <button
-              onClick={handleExportModele}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5"
+          <div className="flex items-center gap-1.5">
+            <label className="text-sm text-white font-medium">Année :</label>
+            <select
+              value={gridYear}
+              onChange={e => setGridYear(Number(e.target.value))}
+              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
             >
-              <Download className="w-3.5 h-3.5" />
-              Exporter modele
-            </button>
-
-            {/* Bouton Import Excel */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importingManuel}
-              className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5 disabled:opacity-50"
-            >
-              {importingManuel
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <Upload className="w-3.5 h-3.5" />}
-              Importer Excel
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleImportFile}
-              className="hidden"
-            />
+              {YEAR_OPTIONS.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
           </div>
         </div>
-
-        {/* Resultat import */}
-        {importResult && (
-          <div className="mt-3 p-2 rounded text-sm border bg-slate-700/50 border-slate-600">
-            <div className="flex items-center justify-between">
-              <div className="text-white">
-                {importResult.message || (
-                  <>
-                    Import : <span className="font-semibold text-white">{importResult.updated}</span> mis a jour,{' '}
-                    <span className="font-semibold text-white">{importResult.skipped}</span> ignores
-                  </>
-                )}
-              </div>
-              <button onClick={() => setImportResult(null)} className="text-white hover:text-white">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {importResult.unmatched?.length > 0 && (
-              <div className="mt-1 text-white text-xs">
-                Non matches : {importResult.unmatched.join(', ')}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Table 1 : Clients au reel */}
+      {/* Table 1 : Clients au réel */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-4 h-4 text-emerald-400" />
           <h4 className="text-white font-semibold text-sm">
-            Clients au reel — Bulletins de salaire
+            Clients au réel — Bulletins de salaire
           </h4>
           <span className="text-white text-xs bg-emerald-900/50 px-2 py-0.5 rounded">
             {clientsReel.length} clients
@@ -501,7 +374,7 @@ export default function FacturationGrid({ filterCabinet }) {
         </div>
 
         {clientsReel.length === 0 ? (
-          <p className="text-white text-sm">Aucun client au reel trouve pour {gridYear}.</p>
+          <p className="text-white text-sm">Aucun client au réel trouvé pour {gridYear}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -575,12 +448,12 @@ export default function FacturationGrid({ filterCabinet }) {
         )}
       </div>
 
-      {/* Table 2 : Forfait avec coffre-fort / editique */}
+      {/* Table 2 : Forfait avec coffre-fort / éditique */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <ShieldCheck className="w-4 h-4 text-blue-400" />
           <h4 className="text-white font-semibold text-sm">
-            Clients au forfait — Coffre-fort / Editique
+            Clients au forfait — Coffre-fort / Éditique
           </h4>
           <span className="text-white text-xs bg-blue-900/50 px-2 py-0.5 rounded">
             {clientsForfait.length} clients
@@ -588,7 +461,7 @@ export default function FacturationGrid({ filterCabinet }) {
         </div>
 
         {clientsForfait.length === 0 ? (
-          <p className="text-white text-sm">Aucun client au forfait avec coffre-fort ou editique pour {gridYear}.</p>
+          <p className="text-white text-sm">Aucun client au forfait avec coffre-fort ou éditique pour {gridYear}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -659,7 +532,7 @@ export default function FacturationGrid({ filterCabinet }) {
         )}
       </div>
 
-      {/* Popover edition */}
+      {/* Popover édition */}
       <EditPopover
         editCell={editCell}
         editValues={editValues}
