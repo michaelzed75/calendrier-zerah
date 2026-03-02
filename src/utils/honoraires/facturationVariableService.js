@@ -67,6 +67,7 @@ const PRODUCT_ORDER = [
  * @property {string} client_nom
  * @property {string} cabinet
  * @property {string} siren
+ * @property {string} siret_complement - NIC (5 chiffres) pour former le SIRET complet
  * @property {string} pennylane_customer_id
  * @property {LigneFacturation[]} lignes
  * @property {number} total_ht_auto - Total HT des lignes automatiques (Silae)
@@ -182,8 +183,8 @@ export async function genererFacturationVariable({ supabase, periode, dateEffet,
         }
       }
 
-      // Fallback bulletins manuels : si pas de bulletins Silae mais saisie manuelle
-      if (quantite === 0 && colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
+      // Bulletins manuels : TOUJOURS prioritaire sur Silae auto
+      if (colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
         quantite = silae.bulletins_manuels;
         source = 'manuel';
       }
@@ -224,6 +225,7 @@ export async function genererFacturationVariable({ supabase, periode, dateEffet,
       client_nom: client.nom,
       cabinet: client.cabinet,
       siren: client.siren || '',
+      siret_complement: client.siret_complement || '',
       pennylane_customer_id: client.pennylane_customer_id || '',
       lignes,
       total_ht_auto: Math.round(totalHtAuto * 100) / 100,
@@ -313,6 +315,7 @@ export async function genererFacturationVariable({ supabase, periode, dateEffet,
         client_nom: client.nom,
         cabinet: cab,
         siren: client.siren || '',
+        siret_complement: client.siret_complement || '',
         pennylane_customer_id: client.pennylane_customer_id || '',
         lignes: lignesForfait,
         total_ht_auto: Math.round(totalHtForfait * 100) / 100,
@@ -363,7 +366,7 @@ export async function genererFacturationClient({ supabase, clientId, periode, da
   // Client
   const { data: client } = await supabase
     .from('clients')
-    .select('id, nom, cabinet, siren, pennylane_customer_id')
+    .select('id, nom, cabinet, siren, siret_complement, pennylane_customer_id')
     .eq('id', clientId)
     .single();
 
@@ -424,8 +427,8 @@ export async function genererFacturationClient({ supabase, clientId, periode, da
       }
     }
 
-    // Fallback bulletins manuels : si pas de bulletins Silae mais saisie manuelle
-    if (quantite === 0 && colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
+    // Bulletins manuels : TOUJOURS prioritaire sur Silae auto
+    if (colonneSilae === 'bulletins' && hasSilae && silae.bulletins_manuels > 0) {
       quantite = silae.bulletins_manuels;
       source = 'manuel';
     }
@@ -465,6 +468,7 @@ export async function genererFacturationClient({ supabase, clientId, periode, da
     client_nom: client.nom,
     cabinet: client.cabinet,
     siren: client.siren || '',
+    siret_complement: client.siret_complement || '',
     pennylane_customer_id: client.pennylane_customer_id || '',
     lignes,
     total_ht_auto: Math.round(totalHtAuto * 100) / 100,
@@ -533,7 +537,7 @@ async function chargerSilae(supabase, periode) {
 async function chargerClients(supabase, cabinet) {
   let query = supabase
     .from('clients')
-    .select('id, nom, cabinet, siren, pennylane_customer_id')
+    .select('id, nom, cabinet, siren, siret_complement, pennylane_customer_id')
     .eq('actif', true);
 
   if (cabinet) {
@@ -883,6 +887,10 @@ export async function sauverDonneesManuelles({ supabase, clientId, periode, data
   const manuelFields = {
     bulletins_manuels: data.bulletins_manuels ?? 0,
     bulletins_refaits: data.bulletins_refaits ?? 0,
+    entrees: data.entrees ?? 0,
+    sorties: data.sorties ?? 0,
+    coffre_fort: data.coffre_fort ?? 0,
+    editique: data.editique ?? 0,
     temps_passe: data.temps_passe ?? 0,
     commentaires: data.commentaires ?? ''
   };
@@ -902,10 +910,6 @@ export async function sauverDonneesManuelles({ supabase, clientId, periode, data
         client_id: clientId,
         periode,
         bulletins: 0,
-        coffre_fort: 0,
-        editique: 0,
-        entrees: 0,
-        sorties: 0,
         declarations: 0,
         attestations_pe: 0,
         ...manuelFields

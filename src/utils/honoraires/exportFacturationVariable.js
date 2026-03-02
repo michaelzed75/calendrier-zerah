@@ -14,7 +14,7 @@
  *
  * Colonnes :
  *   A  Raison sociale (optionnel)           — texte
- *   B  SIREN                                — NOMBRE (pas texte)
+ *   B  SIREN / SIRET                        — NOMBRE (SIRET 14 chiffres si NIC disponible, sinon SIREN 9)
  *   C  Identifiant produit (recommandé)     — texte UUID
  *   D  Nom du produit                       — texte + période (ex: "… Janvier 26")
  *   E  Description (optionnel)              — VIDE (cellule absente)
@@ -116,7 +116,19 @@ export function exportFacturationVariableExcel({ resultat, client, periode, date
 
     const abbrev = CABINET_ABBREV[cabinet] || cabinet.substring(0, 3).toUpperCase();
     const fileName = `${abbrev} ${suffixePeriode} a importer dans PL.xlsx`;
-    XLSX.writeFile(wb, fileName);
+
+    // XLSX.writeFile utilise fs.writeFileSync qui ne fonctionne pas dans le navigateur (Vite externalise fs).
+    // On utilise XLSX.write + Blob pour déclencher le téléchargement.
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -161,7 +173,11 @@ function buildImportPLSheet(wb, clients, dateEmission, suffixePeriode) {
       // Exclure les lignes sans quantité ou à zéro
       if (!ligne.quantite) continue;
 
-      const siren = client.siren ? parseInt(client.siren, 10) : 0;
+      // SIRET complet (14 chiffres) si NIC disponible, sinon SIREN (9 chiffres)
+      const sirenOuSiret = client.siret_complement
+        ? `${client.siren}${client.siret_complement}`
+        : client.siren;
+      const siren = sirenOuSiret ? parseInt(sirenOuSiret, 10) : 0;
 
       // A — Raison sociale (texte)
       ws[XLSX.utils.encode_cell({ r, c: 0 })] = { t: 's', v: client.client_nom };
@@ -221,4 +237,54 @@ function buildImportPLSheet(wb, clients, dateEmission, suffixePeriode) {
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Feuil1');
+}
+
+// ═══════════════════════════ Export anomalies ═══════════════════════════
+
+/**
+ * Exporte la liste des anomalies (prix manquants / produit PL manquant)
+ * dans un fichier Excel pour correction.
+ *
+ * @param {Array<{client_nom: string, cabinet: string, label: string, pu_ht: number, issues: string[]}>} anomalies
+ * @param {string} periode - 'YYYY-MM'
+ */
+export function exportManquantsExcel(anomalies, periode) {
+  if (!anomalies || anomalies.length === 0) return;
+
+  const suffixePeriode = formaterPeriodeFr(periode);
+  const wb = XLSX.utils.book_new();
+
+  const headers = ['Client', 'Cabinet', 'Produit', 'PU HT', 'Anomalie(s)'];
+  const rows = anomalies.map(a => [
+    a.client_nom,
+    a.cabinet,
+    a.label,
+    a.pu_ht ?? '',
+    a.issues.join(', ')
+  ]);
+
+  const data = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  ws['!cols'] = [
+    { wch: 35 },
+    { wch: 20 },
+    { wch: 50 },
+    { wch: 12 },
+    { wch: 35 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Anomalies');
+
+  const fileName = `Anomalies facturation ${suffixePeriode}.xlsx`;
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

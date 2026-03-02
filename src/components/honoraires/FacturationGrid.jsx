@@ -70,7 +70,7 @@ const TooltipCell = memo(function TooltipCell({ silaeRow, value, tooltipContent,
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
     >
-      <span className="text-white">{silaeRow ? value : ''}</span>
+      <span className={isManuel ? 'text-purple-300 font-semibold' : 'text-white'}>{silaeRow ? value : ''}</span>
       {refaits > 0 && (
         <span className="text-xs text-purple-400 ml-0.5">+{refaits}R</span>
       )}
@@ -109,39 +109,37 @@ function EditPopover({ editCell, editValues, setEditValues, onSave, onCancel, sa
         </div>
 
         <div className="text-white text-xs mb-3 bg-slate-800 rounded p-2 border border-slate-700">
-          {editCell.currentRow
-            ? `Silae auto : ${editCell.currentRow.bulletins || 0} bulletins`
-            : 'Pas de data Silae'}
+          {editCell.currentRow ? (
+            <div className="space-y-0.5">
+              <div>Silae auto : <strong>{editCell.currentRow.bulletins || 0}</strong> bull. | <strong>{editCell.currentRow.entrees || 0}</strong> ent. | <strong>{editCell.currentRow.sorties || 0}</strong> sort. | <strong>{editCell.currentRow.coffre_fort || 0}</strong> CF | <strong>{editCell.currentRow.editique || 0}</strong> édit.</div>
+              {(editCell.currentRow.bulletins_manuels || 0) > 0 && (
+                <div className="text-purple-300">Manuel : <strong>{editCell.currentRow.bulletins_manuels}</strong> bull. (override)</div>
+              )}
+            </div>
+          ) : 'Pas de data Silae'}
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-white text-sm">Bulletins manuels</label>
-            <input
-              type="number" min="0"
-              value={editValues.bulletins_manuels}
-              onChange={e => handleChange('bulletins_manuels', parseInt(e.target.value) || 0)}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-sm w-20 text-right"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <label className="text-white text-sm">Bulletins refaits</label>
-            <input
-              type="number" min="0"
-              value={editValues.bulletins_refaits}
-              onChange={e => handleChange('bulletins_refaits', parseInt(e.target.value) || 0)}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-sm w-20 text-right"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <label className="text-white text-sm">Temps passé (h)</label>
-            <input
-              type="number" min="0" step="0.5"
-              value={editValues.temps_passe}
-              onChange={e => handleChange('temps_passe', parseFloat(e.target.value) || 0)}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-sm w-20 text-right"
-            />
-          </div>
+          {[
+            { field: 'bulletins_manuels', label: 'Bulletins', type: 'int' },
+            { field: 'bulletins_refaits', label: 'Bulletins refaits', type: 'int' },
+            { field: 'entrees', label: 'Entrées', type: 'int' },
+            { field: 'sorties', label: 'Sorties', type: 'int' },
+            { field: 'extras', label: 'Extras', type: 'int' },
+            { field: 'coffre_fort', label: 'Coffre-fort', type: 'int' },
+            { field: 'editique', label: 'Éditique', type: 'int' },
+            { field: 'temps_passe', label: 'Temps passé (h)', type: 'float' },
+          ].map(({ field, label, type }) => (
+            <div key={field} className="flex items-center justify-between">
+              <label className="text-white text-sm">{label}</label>
+              <input
+                type="number" min="0" step={type === 'float' ? '0.5' : '1'}
+                value={editValues[field]}
+                onChange={e => handleChange(field, type === 'float' ? (parseFloat(e.target.value) || 0) : (parseInt(e.target.value) || 0))}
+                className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-sm w-20 text-right"
+              />
+            </div>
+          ))}
           <div>
             <label className="text-white text-sm block mb-1">Commentaires</label>
             <textarea
@@ -190,7 +188,7 @@ export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }
 
   // Popover
   const [editCell, setEditCell] = useState(null);
-  const [editValues, setEditValues] = useState({ bulletins_manuels: 0, bulletins_refaits: 0, temps_passe: 0, commentaires: '' });
+  const [editValues, setEditValues] = useState({ bulletins_manuels: 0, bulletins_refaits: 0, entrees: 0, sorties: 0, extras: 0, coffre_fort: 0, editique: 0, temps_passe: 0, commentaires: '' });
   const [saving, setSaving] = useState(false);
 
   // Reload counter interne (après sauvegarde popover)
@@ -227,9 +225,15 @@ export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }
       periodeFr: `${MOIS_FR[moisIndex]} ${gridYear}`,
       currentRow: row
     });
+    // Valeurs effectives : si manuel > 0 → prend le dessus, sinon Silae auto
     setEditValues({
-      bulletins_manuels: row?.bulletins_manuels || 0,
+      bulletins_manuels: (row?.bulletins_manuels || 0) > 0 ? row.bulletins_manuels : (row?.bulletins || 0),
       bulletins_refaits: row?.bulletins_refaits || 0,
+      entrees: row?.entrees || 0,
+      sorties: row?.sorties || 0,
+      extras: 0,
+      coffre_fort: row?.coffre_fort || 0,
+      editique: row?.editique || 0,
       temps_passe: row?.temps_passe || 0,
       commentaires: row?.commentaires || ''
     });
@@ -309,8 +313,9 @@ export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }
     const auto = row.bulletins || 0;
     const manuel = row.bulletins_manuels || 0;
     const refaits = row.bulletins_refaits || 0;
-    const value = auto > 0 ? auto : (manuel > 0 ? manuel : 0);
-    return { value, isManuel: auto === 0 && manuel > 0, refaits };
+    // Manuel prend le dessus sur auto (override)
+    const value = manuel > 0 ? manuel : auto;
+    return { value, isManuel: manuel > 0, refaits };
   }, []);
 
   // ═══════════════════════ RENDER ═══════════════════════
@@ -390,9 +395,15 @@ export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }
               </thead>
               <tbody>
                 {clientsReel.map(client => {
-                  const rowTotal = getRowTotal(silaeByClient, client.id, gridYear, 'bulletins');
-                  const rowManuel = getRowTotal(silaeByClient, client.id, gridYear, 'bulletins_manuels');
-                  const displayTotal = rowTotal > 0 ? rowTotal : (rowManuel > 0 ? rowManuel : 0);
+                  // Total effectif : pour chaque mois, prend manuel si > 0, sinon auto
+                  let displayTotal = 0;
+                  for (const m of MONTHS) {
+                    const r = getSilaeRow(silaeByClient, client.id, gridYear, m);
+                    if (r) {
+                      const man = r.bulletins_manuels || 0;
+                      displayTotal += man > 0 ? man : (r.bulletins || 0);
+                    }
+                  }
                   return (
                     <tr key={client.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
                       <td className="py-1.5 px-3 text-white font-medium sticky left-0 bg-slate-800 z-10 truncate max-w-[220px]" title={client.nom}>

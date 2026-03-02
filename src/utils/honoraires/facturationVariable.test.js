@@ -26,18 +26,35 @@ import * as XLSX from 'xlsx-js-style';
 //  1. EXPORT — Tests des helpers internes
 // ════════════════════════════════════════════════════════════════
 
-// On importe le module et on capture les appels XLSX.writeFile
-// xlsx-js-style est CJS → le default contient tout (utils, writeFile, etc.)
+// On importe le module et on capture les appels XLSX.write (Blob download)
+// xlsx-js-style est CJS → le default contient tout (utils, write, etc.)
+// Le code utilise XLSX.write(wb, opts) + Blob pour le téléchargement navigateur.
+// On mocke aussi document.createElement/body pour éviter les erreurs DOM en test.
 vi.mock('xlsx-js-style', async () => {
   const actual = await vi.importActual('xlsx-js-style');
   const mod = actual.default || actual;
-  const mockWriteFile = vi.fn();
+  const mockWrite = vi.fn(() => new Uint8Array(0));
   return {
-    default: { ...mod, writeFile: mockWriteFile },
+    default: { ...mod, write: mockWrite },
     ...mod,
-    writeFile: mockWriteFile
+    write: mockWrite
   };
 });
+
+// Mock DOM APIs pour le pattern Blob download (jsdom fournit document mais pas URL.createObjectURL)
+// On capture les fileNames via document.createElement → anchor.download → click()
+const _downloadedFiles = [];
+const _origCreateElement = document.createElement.bind(document);
+document.createElement = vi.fn(function(tag) {
+  if (tag === 'a') {
+    const a = _origCreateElement.call(document, 'a');
+    a.click = function() { _downloadedFiles.push(a.download); };
+    return a;
+  }
+  return _origCreateElement.call(document, tag);
+});
+if (!URL.createObjectURL) URL.createObjectURL = vi.fn(() => 'blob:mock');
+if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
 
 import { exportFacturationVariableExcel } from './exportFacturationVariable.js';
 
@@ -90,43 +107,43 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    expect(XLSX.writeFile).toHaveBeenCalledTimes(2);
+    expect(XLSX.write).toHaveBeenCalledTimes(2);
   });
 
   it('devrait nommer le fichier AUP correctement', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
+    _downloadedFiles.length = 0;
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [, fileName] = XLSX.writeFile.mock.calls[0];
-    expect(fileName).toBe('AUP Janvier 26 a importer dans PL.xlsx');
+    expect(_downloadedFiles[0]).toBe('AUP Janvier 26 a importer dans PL.xlsx');
   });
 
   it('devrait nommer le fichier ZF correctement', () => {
     const resultat = { clients: [CLIENT_ZF], stats: {} };
+    _downloadedFiles.length = 0;
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [, fileName] = XLSX.writeFile.mock.calls[0];
-    expect(fileName).toBe('ZF Janvier 26 a importer dans PL.xlsx');
+    expect(_downloadedFiles[0]).toBe('ZF Janvier 26 a importer dans PL.xlsx');
   });
 
   it('devrait nommer correctement pour février 2026', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
+    _downloadedFiles.length = 0;
 
     exportFacturationVariableExcel({ resultat, periode: '2026-02' });
 
-    const [, fileName] = XLSX.writeFile.mock.calls[0];
-    expect(fileName).toBe('AUP Février 26 a importer dans PL.xlsx');
+    expect(_downloadedFiles[0]).toBe('AUP Février 26 a importer dans PL.xlsx');
   });
 
   it('devrait nommer correctement pour décembre 2025', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
+    _downloadedFiles.length = 0;
 
     exportFacturationVariableExcel({ resultat, periode: '2025-12' });
 
-    const [, fileName] = XLSX.writeFile.mock.calls[0];
-    expect(fileName).toBe('AUP Décembre 25 a importer dans PL.xlsx');
+    expect(_downloadedFiles[0]).toBe('AUP Décembre 25 a importer dans PL.xlsx');
   });
 
   it('devrait ajouter la période au nom du produit (Janvier 26)', () => {
@@ -134,7 +151,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // D2 = premier produit (row 1 = data row 0)
@@ -147,7 +164,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const d2 = ws[XLSX.utils.encode_cell({ r: 1, c: 3 })];
@@ -159,7 +176,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // AUP a 3 lignes dont 1 manuelle → 2 lignes data + 1 header = 3 rows
@@ -174,7 +191,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     expect(wb.SheetNames).toContain('Feuil1');
   });
 
@@ -183,7 +200,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const b2 = ws[XLSX.utils.encode_cell({ r: 1, c: 1 })];
@@ -196,7 +213,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const i2 = ws[XLSX.utils.encode_cell({ r: 1, c: 8 })];
@@ -210,7 +227,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
@@ -225,7 +242,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // E2 (r:1, c:4) ne doit pas exister
@@ -238,7 +255,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // L2 (r:1, c:11) ne doit pas exister
@@ -251,7 +268,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const j2 = ws[XLSX.utils.encode_cell({ r: 1, c: 9 })];
@@ -264,7 +281,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const g2 = ws[XLSX.utils.encode_cell({ r: 1, c: 6 })];
@@ -277,7 +294,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const expectedHeaders = [
@@ -300,15 +317,15 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    expect(XLSX.writeFile).not.toHaveBeenCalled();
+    expect(XLSX.write).not.toHaveBeenCalled();
   });
 
   it('devrait fonctionner en mode client unique', () => {
+    _downloadedFiles.length = 0;
     exportFacturationVariableExcel({ client: CLIENT_ZF, periode: '2026-03' });
 
-    expect(XLSX.writeFile).toHaveBeenCalledTimes(1);
-    const [, fileName] = XLSX.writeFile.mock.calls[0];
-    expect(fileName).toBe('ZF Mars 26 a importer dans PL.xlsx');
+    expect(XLSX.write).toHaveBeenCalledTimes(1);
+    expect(_downloadedFiles[0]).toBe('ZF Mars 26 a importer dans PL.xlsx');
   });
 
   it('devrait calculer le serial Excel correct pour février 2026', () => {
@@ -316,7 +333,7 @@ describe('exportFacturationVariableExcel', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-02' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
@@ -524,7 +541,7 @@ describe('serial date Excel', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[XLSX.writeFile.mock.calls.length - 1];
+    const [wb] = XLSX.write.mock.calls[XLSX.write.mock.calls.length - 1];
     const ws = wb.Sheets['Feuil1'];
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
     expect(k2.v).toBe(46053);
@@ -535,7 +552,7 @@ describe('serial date Excel', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
     exportFacturationVariableExcel({ resultat, periode: '2026-02' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
     expect(k2.v).toBe(46081);
@@ -546,7 +563,7 @@ describe('serial date Excel', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
     exportFacturationVariableExcel({ resultat, periode: '2026-03' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
     expect(k2.v).toBe(46112);
@@ -557,7 +574,7 @@ describe('serial date Excel', () => {
     const resultat = { clients: [CLIENT_AUP], stats: {} };
     exportFacturationVariableExcel({ resultat, periode: '2025-12' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
     const k2 = ws[XLSX.utils.encode_cell({ r: 1, c: 10 })];
     // 46022 + 31 jours = 46053 (31 jan 2026) ✓
@@ -589,11 +606,11 @@ describe('formaterPeriodeFr (via noms de fichiers)', () => {
 
   for (const [periode, expected] of moisTests) {
     it(`${periode} → "${expected}"`, () => {
+      _downloadedFiles.length = 0;
       const resultat = { clients: [CLIENT_AUP], stats: {} };
       exportFacturationVariableExcel({ resultat, periode });
 
-      const [, fileName] = XLSX.writeFile.mock.calls[0];
-      expect(fileName).toBe(`AUP ${expected} a importer dans PL.xlsx`);
+      expect(_downloadedFiles[0]).toBe(`AUP ${expected} a importer dans PL.xlsx`);
       vi.clearAllMocks();
     });
   }
@@ -637,39 +654,39 @@ describe('split par cabinet', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('devrait séparer AUP et ZF dans 2 fichiers distincts', () => {
+    _downloadedFiles.length = 0;
     const resultat = { clients: [CLIENT_AUP, CLIENT_ZF], stats: {} };
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    expect(XLSX.writeFile).toHaveBeenCalledTimes(2);
-
-    const fileNames = XLSX.writeFile.mock.calls.map(c => c[1]);
-    expect(fileNames).toContain('AUP Janvier 26 a importer dans PL.xlsx');
-    expect(fileNames).toContain('ZF Janvier 26 a importer dans PL.xlsx');
+    expect(XLSX.write).toHaveBeenCalledTimes(2);
+    expect(_downloadedFiles).toContain('AUP Janvier 26 a importer dans PL.xlsx');
+    expect(_downloadedFiles).toContain('ZF Janvier 26 a importer dans PL.xlsx');
   });
 
   it('devrait mettre uniquement les clients AUP dans le fichier AUP', () => {
+    _downloadedFiles.length = 0;
     const resultat = { clients: [CLIENT_AUP, CLIENT_ZF], stats: {} };
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    // Trouver le workbook AUP
-    const aupCall = XLSX.writeFile.mock.calls.find(c => c[1].includes('AUP'));
-    const [wb] = aupCall;
+    // Le premier cabinet dans l'itération Object.entries est AUP (ajouté en premier)
+    const aupIdx = _downloadedFiles.findIndex(f => f.includes('AUP'));
+    const [wb] = XLSX.write.mock.calls[aupIdx];
     const ws = wb.Sheets['Feuil1'];
 
-    // Vérifier que la raison sociale est BK BAGNEUX (pas CABINET TEST ZF)
     const a2 = ws[XLSX.utils.encode_cell({ r: 1, c: 0 })];
     expect(a2.v).toBe('BK BAGNEUX');
   });
 
   it('devrait mettre uniquement les clients ZF dans le fichier ZF', () => {
+    _downloadedFiles.length = 0;
     const resultat = { clients: [CLIENT_AUP, CLIENT_ZF], stats: {} };
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    const zfCall = XLSX.writeFile.mock.calls.find(c => c[1].includes('ZF'));
-    const [wb] = zfCall;
+    const zfIdx = _downloadedFiles.findIndex(f => f.includes('ZF'));
+    const [wb] = XLSX.write.mock.calls[zfIdx];
     const ws = wb.Sheets['Feuil1'];
 
     const a2 = ws[XLSX.utils.encode_cell({ r: 1, c: 0 })];
@@ -681,6 +698,6 @@ describe('split par cabinet', () => {
 
     exportFacturationVariableExcel({ resultat, periode: '2026-01' });
 
-    expect(XLSX.writeFile).toHaveBeenCalledTimes(1);
+    expect(XLSX.write).toHaveBeenCalledTimes(1);
   });
 });

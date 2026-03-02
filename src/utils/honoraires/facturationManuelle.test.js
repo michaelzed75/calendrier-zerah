@@ -21,13 +21,27 @@ import * as XLSX from 'xlsx-js-style';
 vi.mock('xlsx-js-style', async () => {
   const actual = await vi.importActual('xlsx-js-style');
   const mod = actual.default || actual;
-  const mockWriteFile = vi.fn();
+  const realWrite = mod.write.bind(mod);
+  const mockWrite = vi.fn((...args) => realWrite(...args));
   return {
-    default: { ...mod, writeFile: mockWriteFile },
+    default: { ...mod, write: mockWrite },
     ...mod,
-    writeFile: mockWriteFile
+    write: mockWrite
   };
 });
+
+// Mock DOM APIs pour le pattern Blob download (jsdom fournit document mais pas URL.createObjectURL)
+const _origCreateElement = document.createElement.bind(document);
+document.createElement = vi.fn(function(tag) {
+  if (tag === 'a') {
+    const a = _origCreateElement.call(document, 'a');
+    a.click = function() {};
+    return a;
+  }
+  return _origCreateElement.call(document, tag);
+});
+if (!URL.createObjectURL) URL.createObjectURL = vi.fn(() => 'blob:mock');
+if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
 
 import { parseManuelExcel } from './facturationManuelleService.js';
 import { exportFacturationVariableExcel } from './exportFacturationVariable.js';
@@ -291,7 +305,7 @@ describe('export PL — filtre quantité', () => {
 
     exportFacturationVariableExcel({ resultat: { clients: [client], stats: {} }, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // Seule la ligne bulletin (qte=39) doit être exportée
@@ -321,7 +335,7 @@ describe('export PL — filtre quantité', () => {
 
     exportFacturationVariableExcel({ resultat: { clients: [client], stats: {} }, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // 2 lignes data : bulletin (39) + modif (2)
@@ -358,7 +372,7 @@ describe('export PL — clients forfait coffre-fort/éditique', () => {
 
     exportFacturationVariableExcel({ resultat: { clients: [clientForfait], stats: {} }, periode: '2026-01' });
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // Row 1 = coffre-fort
@@ -404,9 +418,9 @@ describe('export PL — clients forfait coffre-fort/éditique', () => {
     });
 
     // 1 seul fichier (même cabinet AUP)
-    expect(XLSX.writeFile).toHaveBeenCalledTimes(1);
+    expect(XLSX.write).toHaveBeenCalledTimes(1);
 
-    const [wb] = XLSX.writeFile.mock.calls[0];
+    const [wb] = XLSX.write.mock.calls[0];
     const ws = wb.Sheets['Feuil1'];
 
     // Row 1 = BK BAGNEUX, Row 2 = ACF CONSEILS

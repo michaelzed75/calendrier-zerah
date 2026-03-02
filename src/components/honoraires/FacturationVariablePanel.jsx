@@ -4,13 +4,12 @@ import { Loader2, Download, AlertTriangle, Check, FileSpreadsheet, Calculator, C
 import { supabase } from '../../supabaseClient';
 import {
   genererFacturationVariable,
-  getPeriodesDisponibles,
   getDatesEffetVariables,
   syncProduitsPennylane
 } from '../../utils/honoraires/facturationVariableService';
 import { getAllProducts, setCompanyId } from '../../utils/honoraires/pennylaneCustomersApi';
-import { exportFacturationVariableExcel } from '../../utils/honoraires/exportFacturationVariable';
-import { parseSilaeExcel, importSilaeData, updateSilaeMapping, extractPeriodeFromFilename } from '../../utils/honoraires/silaeService';
+import { exportFacturationVariableExcel, exportManquantsExcel } from '../../utils/honoraires/exportFacturationVariable';
+import { parseSilaeExcel, importSilaeData, updateSilaeMapping } from '../../utils/honoraires/silaeService';
 import { exportModeleManuel, parseManuelExcel, importManuelData } from '../../utils/honoraires/facturationManuelleService';
 import SilaeMappingModal from './SilaeMappingModal';
 import FacturationGrid from './FacturationGrid';
@@ -52,9 +51,10 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const [error, setError] = useState(null);
 
   // Paramètres période + tarifs
-  const [periode, setPeriode] = useState('');
+  const [periodeMois, setPeriodeMois] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [periodeAnnee, setPeriodeAnnee] = useState(String(new Date().getFullYear()));
+  const periode = `${periodeAnnee}-${periodeMois}`;
   const [dateEffet, setDateEffet] = useState('');
-  const [periodesDisponibles, setPeriodesDisponibles] = useState([]);
   const [datesEffetDisponibles, setDatesEffetDisponibles] = useState([]);
 
   // Résultats export PL
@@ -72,11 +72,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const [matchedSilae, setMatchedSilae] = useState([]);
   const [pendingSilaeRows, setPendingSilaeRows] = useState([]);
   const [pendingSilaePeriode, setPendingSilaePeriode] = useState('');
-  const [importMonth, setImportMonth] = useState('');
-  const [importYear, setImportYear] = useState('2026');
 
   // Saisie hors Silae (import/export manuel)
-  const [importMois, setImportMois] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [importingManuel, setImportingManuel] = useState(false);
   const [importManuelResult, setImportManuelResult] = useState(null);
   const fileInputRef = useRef(null);
@@ -84,26 +81,22 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   // Reload key pour la grille
   const [reloadKey, setReloadKey] = useState(0);
 
-  // === Chargement initial des périodes et dates ===
+  // Anomalies prix/produit — modal de confirmation avant export
+  const [anomalies, setAnomalies] = useState(null);
+  const [pendingResult, setPendingResult] = useState(null);
+
+  // === Chargement initial des dates d'effet ===
   useEffect(() => {
     (async () => {
       try {
-        const [periodes, dates] = await Promise.all([
-          getPeriodesDisponibles(supabase),
-          getDatesEffetVariables(supabase)
-        ]);
-        setPeriodesDisponibles(periodes);
+        const dates = await getDatesEffetVariables(supabase);
         setDatesEffetDisponibles(dates);
-        if (periodes.length > 0) setPeriode(periodes[0]);
         if (dates.length > 0) setDateEffet(dates[0]);
       } catch (err) {
         setError(`Erreur chargement initial: ${err.message}`);
       }
     })();
   }, []);
-
-  // Année extraite de la période sélectionnée (pour la saisie hors Silae)
-  const anneeFromPeriode = periode ? periode.split('-')[0] : String(new Date().getFullYear());
 
   // === Import Silae ===
   const handleSilaeFileSelect = useCallback(async (e) => {
@@ -116,12 +109,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       const buffer = await file.arrayBuffer();
       const rows = parseSilaeExcel(buffer);
 
-      let periodeImport;
-      if (importMonth && importYear) {
-        periodeImport = `${importYear}-${importMonth}`;
-      } else {
-        periodeImport = extractPeriodeFromFilename(file.name);
-      }
+      // Utilise la période globale sélectionnée en Section 1
+      const periodeImport = periode;
 
       const result = await importSilaeData(supabase, rows, periodeImport, clients);
       setMatchedSilae(result.matched);
@@ -134,10 +123,6 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       }
 
       setSilaeResult({ ...result, periode: periodeImport, filename: file.name });
-
-      const freshPeriodes = await getPeriodesDisponibles(supabase);
-      setPeriodesDisponibles(freshPeriodes);
-      setPeriode(periodeImport);
       setReloadKey(k => k + 1);
     } catch (err) {
       console.error('Erreur import Silae:', err);
@@ -146,7 +131,7 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
     }
     setImportingSilae(false);
     e.target.value = '';
-  }, [importMonth, importYear, clients]);
+  }, [periode, clients]);
 
   const handleMappingSave = useCallback(async (mappingsMap) => {
     setShowMappingModal(false);
@@ -162,9 +147,6 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           inserted: (prev?.inserted || 0) + result.inserted,
           matched: [...(prev?.matched || []), ...result.matched]
         }));
-        const freshPeriodes = await getPeriodesDisponibles(supabase);
-        setPeriodesDisponibles(freshPeriodes);
-        setPeriode(pendingSilaePeriode);
         setReloadKey(k => k + 1);
       }
     } catch (err) {
@@ -181,12 +163,11 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const handleExportModele = useCallback(async () => {
     try {
       const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
-      const periodeManuel = `${anneeFromPeriode}-${importMois}`;
-      await exportModeleManuel({ supabase, periode: periodeManuel, cabinet });
+      await exportModeleManuel({ supabase, periode, cabinet });
     } catch (err) {
       alert(`Erreur export : ${err.message}`);
     }
-  }, [anneeFromPeriode, importMois, filterCabinet]);
+  }, [periode, filterCabinet]);
 
   // === Saisie hors Silae — Import fichier ===
   const handleImportManuel = useCallback(async (e) => {
@@ -211,8 +192,7 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         .select('id, nom, siren')
         .eq('actif', true);
 
-      const periodeManuel = `${anneeFromPeriode}-${importMois}`;
-      const result = await importManuelData({ supabase, rows, periode: periodeManuel, clients: activeClients || [] });
+      const result = await importManuelData({ supabase, rows, periode, clients: activeClients || [] });
       setImportManuelResult(result);
       setReloadKey(k => k + 1);
     } catch (err) {
@@ -220,7 +200,7 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
     } finally {
       setImportingManuel(false);
     }
-  }, [anneeFromPeriode, importMois]);
+  }, [periode]);
 
   // === Export Pennylane (unifié : sync + génération + export) ===
   const handleExportPL = useCallback(async () => {
@@ -261,7 +241,40 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       });
       setResultat(result);
 
-      // 3. Export Excel
+      // 3. Vérifier anomalies (prix manquants / produit PL manquant)
+      const detectedAnomalies = [];
+      for (const client of result.clients) {
+        for (const ligne of client.lignes) {
+          if (!ligne.quantite) continue;
+          const issues = [];
+          if (ligne.pu_ht === null || ligne.pu_ht === undefined ||
+              (ligne.pu_ht === 0 && ligne.label_normalise !== 'coffre_fort')) {
+            issues.push('Prix manquant (0 €)');
+          }
+          if (!ligne.pennylane_product_id) {
+            issues.push('Produit PL non trouvé');
+          }
+          if (issues.length > 0) {
+            detectedAnomalies.push({
+              client_nom: client.client_nom,
+              cabinet: client.cabinet,
+              label: ligne.label,
+              pu_ht: ligne.pu_ht,
+              issues
+            });
+          }
+        }
+      }
+
+      if (detectedAnomalies.length > 0) {
+        // Anomalies détectées → afficher modal, stocker résultat en attente
+        setAnomalies(detectedAnomalies);
+        setPendingResult(result);
+        setSyncStatus({ message: `${detectedAnomalies.length} anomalie(s) détectée(s)`, type: 'error' });
+        return; // PAS d'export automatique
+      }
+
+      // 4. Pas d'anomalies → Export Excel direct
       setSyncStatus({ message: 'Export Excel…', type: 'info' });
       exportFacturationVariableExcel({ resultat: result, periode });
 
@@ -276,6 +289,32 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
     }
   }, [periode, dateEffet, filterCabinet, apiKeysMap]);
 
+  // === Anomalies : exporter quand même ===
+  const handleConfirmExport = useCallback(() => {
+    if (!pendingResult) return;
+    exportFacturationVariableExcel({ resultat: pendingResult, periode });
+    setSyncStatus({ message: 'Export terminé ✓', type: 'success' });
+    setTimeout(() => setSyncStatus(null), 3000);
+    setAnomalies(null);
+    setPendingResult(null);
+  }, [pendingResult, periode]);
+
+  // === Anomalies : exporter la liste des manquants ===
+  const handleExportManquants = useCallback(() => {
+    if (!anomalies) return;
+    exportManquantsExcel(anomalies, periode);
+    setAnomalies(null);
+    setPendingResult(null);
+    setSyncStatus(null);
+  }, [anomalies, periode]);
+
+  // === Anomalies : annuler ===
+  const handleCancelExport = useCallback(() => {
+    setAnomalies(null);
+    setPendingResult(null);
+    setSyncStatus(null);
+  }, []);
+
   // ═══════════════════════ RENDER ═══════════════════════
 
   return (
@@ -287,20 +326,31 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           <h3 className="text-lg font-semibold text-white">Facturation variable mensuelle</h3>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-3">
+        <div className="grid grid-cols-3 gap-4 mb-3">
           <div>
             <label className="block text-sm font-medium text-white mb-1">
               <Calendar className="w-4 h-4 inline mr-1" />
-              Période Silae
+              Mois
             </label>
             <select
-              value={periode}
-              onChange={e => setPeriode(e.target.value)}
+              value={periodeMois}
+              onChange={e => setPeriodeMois(e.target.value)}
               className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
             >
-              <option value="">Sélectionner...</option>
-              {periodesDisponibles.map(p => (
-                <option key={p} value={p}>{p}</option>
+              {MOIS_OPTIONS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-1">Année</label>
+            <select
+              value={periodeAnnee}
+              onChange={e => setPeriodeAnnee(e.target.value)}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
+            >
+              {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                <option key={y} value={String(y)}>{y}</option>
               ))}
             </select>
           </div>
@@ -336,29 +386,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           <h4 className="text-white font-semibold text-sm">Importer un fichier Silae</h4>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div>
-            <label className="block text-xs text-white mb-1">Mois</label>
-            <select
-              value={importMonth}
-              onChange={e => setImportMonth(e.target.value)}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
-            >
-              <option value="">Auto (nom fichier)</option>
-              {MOIS_OPTIONS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-white mb-1">Année</label>
-            <input
-              type="number"
-              value={importYear}
-              onChange={e => setImportYear(e.target.value)}
-              min={2024}
-              max={2030}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm w-20"
-            />
+          <div className="text-sm text-white">
+            Période : <strong>{MOIS_OPTIONS.find(m => m.value === periodeMois)?.label} {periodeAnnee}</strong>
           </div>
           <div className="flex items-end">
             <label className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium transition ${
@@ -395,20 +424,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           <h4 className="text-white font-semibold text-sm">Saisie hors Silae (bulletins manuels, refaits, temps passé…)</h4>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div>
-            <label className="block text-xs text-white mb-1">Mois</label>
-            <select
-              value={importMois}
-              onChange={e => setImportMois(e.target.value)}
-              className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1.5 text-sm"
-            >
-              {MOIS_OPTIONS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="text-xs text-white self-end pb-1.5">
-            Année : <strong>{anneeFromPeriode}</strong>
+          <div className="text-sm text-white">
+            Période : <strong>{MOIS_OPTIONS.find(m => m.value === periodeMois)?.label} {periodeAnnee}</strong>
           </div>
 
           <button
@@ -512,6 +529,75 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
           <span className="ml-3 text-white">{progress || 'Chargement...'}</span>
+        </div>
+      )}
+
+      {/* Modal anomalies prix/produit */}
+      {anomalies && anomalies.length > 0 && (
+        <div className="fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-amber-700 rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <h3 className="text-white font-semibold">
+                {anomalies.length} anomalie{anomalies.length > 1 ? 's' : ''} détectée{anomalies.length > 1 ? 's' : ''}
+              </h3>
+              <span className="text-white text-sm ml-2">— prix ou produit Pennylane manquant</span>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-slate-600">
+                    <th className="text-white pb-2 pr-3">Client</th>
+                    <th className="text-white pb-2 pr-3">Cabinet</th>
+                    <th className="text-white pb-2 pr-3">Produit</th>
+                    <th className="text-white pb-2 pr-3 text-right">PU HT</th>
+                    <th className="text-white pb-2">Anomalie</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anomalies.map((a, i) => (
+                    <tr key={i} className="border-b border-slate-700/50">
+                      <td className="text-white py-1.5 pr-3">{a.client_nom}</td>
+                      <td className="text-white py-1.5 pr-3">{a.cabinet === 'Audit Up' ? 'AUP' : 'ZF'}</td>
+                      <td className="text-white py-1.5 pr-3">{a.label}</td>
+                      <td className="text-white py-1.5 pr-3 text-right">{a.pu_ht != null ? `${a.pu_ht} €` : '—'}</td>
+                      <td className="py-1.5">
+                        {a.issues.map((issue, j) => (
+                          <span key={j} className={`inline-block text-xs px-1.5 py-0.5 rounded mr-1 ${
+                            issue.includes('Prix') ? 'bg-red-900/50 text-white' : 'bg-amber-900/50 text-white'
+                          }`}>{issue}</span>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t border-slate-700 flex items-center gap-3 justify-end">
+              <button
+                onClick={handleCancelExport}
+                className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleExportManquants}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exporter la liste
+              </button>
+              <button
+                onClick={handleConfirmExport}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exporter quand même
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

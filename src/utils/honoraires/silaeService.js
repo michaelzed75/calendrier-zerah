@@ -192,12 +192,20 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
 
   // 2. Construire un index des clients par code_silae, par SIREN et par nom normalisé
   const clientByCode = new Map();
-  /** @type {Map<string, Object>} SIREN → client (clé universelle) */
+  /** @type {Map<string, Object>} SIREN → client (clé universelle, uniquement si SIREN unique) */
   const clientBySiren = new Map();
+  /** @type {Set<string>} SIRENs partagés par plusieurs clients (multi-établissements) */
+  const sharedSirens = new Set();
   const clientByNom = new Map();
   for (const c of clients) {
     if (c.code_silae) clientByCode.set(c.code_silae, c);
-    if (c.siren) clientBySiren.set(c.siren, c);
+    if (c.siren) {
+      if (clientBySiren.has(c.siren)) {
+        // SIREN partagé par plusieurs clients → ne PAS auto-matcher (ex: SNC CHRISTINE)
+        sharedSirens.add(c.siren);
+      }
+      clientBySiren.set(c.siren, c);
+    }
     clientByNom.set(normalizeString(c.nom), c);
   }
 
@@ -215,10 +223,10 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
       clientIds = mappingByCode.get(row.code);
     }
 
-    // Essai 2 : par SIREN (CLÉ UNIVERSELLE) — Silae col C = client.siren
+    // Essai 2 : par SIREN (CLÉ UNIVERSELLE) — sauf si SIREN partagé par plusieurs clients
     if (clientIds.length === 0 && row.siren) {
       const sirenClean = row.siren.replace(/\s/g, '').trim();
-      if (sirenClean && clientBySiren.has(sirenClean)) {
+      if (sirenClean && clientBySiren.has(sirenClean) && !sharedSirens.has(sirenClean)) {
         const client = clientBySiren.get(sirenClean);
         clientIds = [client.id];
       }

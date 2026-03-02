@@ -159,7 +159,18 @@ export async function exportModeleManuel({ supabase, periode, cabinet }) {
 
   const suffixe = formaterPeriodeFr(periode);
   const fileName = `Modele facturation ${suffixe}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+
+  // Blob download (compatible navigateur — XLSX.writeFile utilise fs qui est externalisé par Vite)
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════ Parse Excel ═══════════════════════════
