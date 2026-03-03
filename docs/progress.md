@@ -10,7 +10,8 @@
 | Nettoyage PL | Transition 2025 → 2026 | Terminee (ISO verifie 02/03/2026) |
 | Phase 3b | Saisie manuelle + grille Silae | Terminee |
 | Phase 4 | Correction factures Janvier 2026 | En attente (corrections manuelles PL) |
-| **Phase 5** | **Dashboard Vue — Honoraires annuels estimes** | **Terminee (02/03/2026)** |
+| Phase 5 | Dashboard Vue — Honoraires annuels estimes | Terminee (02/03/2026) |
+| **Phase 6** | **Import/Export tarifs variables (edition en masse)** | **Terminee (03/03/2026)** |
 
 ---
 
@@ -276,6 +277,46 @@ TOTAL HONORAIRES (2 299 128 EUR)
 
 ---
 
+## Phase 6 — Import/Export tarifs variables
+
+**Objectif :** Permettre l'edition en masse des tarifs variables (prix unitaires bulletins, coffre-fort, editique, entrees, sorties, modifications) via un workflow Excel export → edition → import avec preview et tracabilite.
+
+### Workflow
+
+1. **Export** : cliquer "Exporter tarifs" dans Section 1 de FacturationVariablePanel
+   - Genere un Excel avec tous les clients actifs (R en premier, puis F), triés alphabetiquement
+   - Colonnes : Client, Type (R/F), SIREN/SIRET, Cabinet, + 6 colonnes prix
+   - Prix pre-remplis pour les clients ayant des tarifs existants, cellules vides sinon
+2. **Edition** : modifier les prix dans Excel (ajouter, modifier, vider une cellule)
+3. **Import** : cliquer "Importer tarifs" → selectionner le fichier edite
+   - **Preview** : modal avec tableau des modifications (creations, modifications, non matches)
+   - Cellule vide = ecraser a 0 si un tarif existait, ignorer sinon
+   - **Confirmation** : clic "Confirmer" → upsert dans `tarifs_reference` + trace dans `historique_prix`
+
+### Matching clients
+
+- Cle composite **SIREN/SIRET + Cabinet** (distingue RELAIS CHRISTINE AUP vs ZF)
+- SIRET 14 chiffres pour multi-etablissements
+- Clients non matches reportes dans la preview
+
+### Tracabilite
+
+- Chaque creation ou changement de prix est trace dans `historique_prix`
+- Label prefixe `[Variable]` pour distinguer des traces de sync PL (fixes)
+- Pas d'historique si le prix importe est identique a l'existant
+
+### Fix DashboardHonorairesPanel
+
+- Ajout `clientsDetail: []` dans les etats initiaux/erreur de `socialReel` pour eviter des erreurs undefined
+
+### Fichiers cles
+- `tarifsVariableExcelService.js` — export, parse, preview, import (4 fonctions exportees + TARIF_COLUMNS)
+- `tarifsVariableExcel.test.js` — 27 tests (parse, export, import, preview, multi-cabinet)
+- `FacturationVariablePanel.jsx` — UI boutons export/import + modal preview
+- `DashboardHonorairesPanel.jsx` — fix clientsDetail initialisation
+
+---
+
 ## Tests
 
 | Module | Tests | Fichier |
@@ -287,11 +328,12 @@ TOTAL HONORAIRES (2 299 128 EUR)
 | Restructuration (export) | 32 | exportRestructuration.test.js |
 | Facturation variable | 59 | facturationVariable.test.js |
 | Facturation manuelle | 22 | facturationManuelle.test.js |
+| Tarifs variable Excel | 27 | tarifsVariableExcel.test.js |
 | Sync honoraires | 35 | syncHonoraires.test.js |
 | Sync preview | 47 | syncPreview.test.js |
 | Reconciliation | 21 | reconciliation.test.js |
-| **Total module honoraires** | **364** | |
-| **Total projet** | **558** | |
+| **Total module honoraires** | **391** | |
+| **Total projet** | **585** | |
 
 ---
 

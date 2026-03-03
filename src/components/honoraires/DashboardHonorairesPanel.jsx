@@ -238,13 +238,13 @@ export default function DashboardHonorairesPanel({ honoraires, clients, filterCa
         const periodesAnnee = allPeriodes.filter(p => p.startsWith(annee + '-')).sort();
 
         if (periodesAnnee.length === 0) {
-          if (!cancelled) setSocialReel({ loading: false, total: 0, periodes: [], dernierMois: 0, cumulReel: 0, projection: 0, detail: [], error: null });
+          if (!cancelled) setSocialReel({ loading: false, total: 0, periodes: [], dernierMois: 0, cumulReel: 0, projection: 0, detail: [], error: null, clientsDetail: [] });
           return;
         }
 
         const datesEffet = await getDatesEffetVariables(supabase);
         if (datesEffet.length === 0) {
-          if (!cancelled) setSocialReel({ loading: false, total: 0, periodes: [], dernierMois: 0, cumulReel: 0, projection: 0, detail: [], error: 'Aucun tarif variable configuré' });
+          if (!cancelled) setSocialReel({ loading: false, total: 0, periodes: [], dernierMois: 0, cumulReel: 0, projection: 0, detail: [], error: 'Aucun tarif variable configuré', clientsDetail: [] });
           return;
         }
         const dateEffet = datesEffet[0];
@@ -309,7 +309,7 @@ export default function DashboardHonorairesPanel({ honoraires, clients, filterCa
         }
       } catch (err) {
         if (!cancelled) {
-          setSocialReel({ loading: false, total: null, periodes: [], dernierMois: null, cumulReel: 0, projection: 0, detail: [], error: err.message });
+          setSocialReel({ loading: false, total: null, periodes: [], dernierMois: null, cumulReel: 0, projection: 0, detail: [], error: err.message, clientsDetail: [] });
         }
       }
     }

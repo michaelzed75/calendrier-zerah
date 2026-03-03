@@ -11,6 +11,7 @@ import { getAllProducts, setCompanyId } from '../../utils/honoraires/pennylaneCu
 import { exportFacturationVariableExcel, exportManquantsExcel } from '../../utils/honoraires/exportFacturationVariable';
 import { parseSilaeExcel, importSilaeData, updateSilaeMapping } from '../../utils/honoraires/silaeService';
 import { exportModeleManuel, parseManuelExcel, importManuelData } from '../../utils/honoraires/facturationManuelleService';
+import { exportTarifsVariableExcel, parseTarifsVariableExcel, previewTarifsVariableImport, importTarifsVariableData } from '../../utils/honoraires/tarifsVariableExcelService';
 import SilaeMappingModal from './SilaeMappingModal';
 import FacturationGrid from './FacturationGrid';
 
@@ -77,6 +78,12 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const [importingManuel, setImportingManuel] = useState(false);
   const [importManuelResult, setImportManuelResult] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Import/export tarifs variables
+  const [importingTarifs, setImportingTarifs] = useState(false);
+  const [importTarifsResult, setImportTarifsResult] = useState(null);
+  const [tarifsPreview, setTarifsPreview] = useState(null); // { changes, unmatched, rows, clients }
+  const tarifsFileInputRef = useRef(null);
 
   // Reload key pour la grille
   const [reloadKey, setReloadKey] = useState(0);
@@ -201,6 +208,78 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
       setImportingManuel(false);
     }
   }, [periode]);
+
+  // === Export tarifs variables ===
+  const handleExportTarifs = useCallback(async () => {
+    if (!dateEffet) {
+      setError('Veuillez sélectionner une date de tarifs.');
+      return;
+    }
+    try {
+      const cabinet = filterCabinet !== 'tous' ? filterCabinet : undefined;
+      await exportTarifsVariableExcel({ supabase, dateEffet, cabinet });
+    } catch (err) {
+      setError(`Erreur export tarifs: ${err.message}`);
+    }
+  }, [dateEffet, filterCabinet]);
+
+  // === Import tarifs variables (preview → confirmation → import) ===
+  const handleImportTarifs = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (!dateEffet) {
+      setError('Veuillez sélectionner une date de tarifs.');
+      return;
+    }
+
+    setImportingTarifs(true);
+    setImportTarifsResult(null);
+    setTarifsPreview(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const rows = parseTarifsVariableExcel(buffer);
+
+      if (rows.length === 0) {
+        setImportTarifsResult({ created: 0, updated: 0, errors: [], unmatched: [], message: 'Aucune donnée à importer.' });
+        setImportingTarifs(false);
+        return;
+      }
+
+      const { data: activeClients } = await supabase
+        .from('clients')
+        .select('id, nom, siren, cabinet, siret_complement')
+        .eq('actif', true);
+
+      // Preview : comparer avec la base sans écrire
+      const preview = await previewTarifsVariableImport({
+        supabase, rows, dateEffet, clients: activeClients || []
+      });
+
+      setTarifsPreview({ ...preview, rows, clients: activeClients || [] });
+    } catch (err) {
+      setImportTarifsResult({ created: 0, updated: 0, errors: [err.message], unmatched: [] });
+    } finally {
+      setImportingTarifs(false);
+    }
+  }, [dateEffet]);
+
+  const handleConfirmImportTarifs = useCallback(async () => {
+    if (!tarifsPreview) return;
+    setImportingTarifs(true);
+    try {
+      const result = await importTarifsVariableData({
+        supabase, rows: tarifsPreview.rows, dateEffet, clients: tarifsPreview.clients
+      });
+      setImportTarifsResult(result);
+    } catch (err) {
+      setImportTarifsResult({ created: 0, updated: 0, errors: [err.message], unmatched: [] });
+    } finally {
+      setTarifsPreview(null);
+      setImportingTarifs(false);
+    }
+  }, [tarifsPreview, dateEffet]);
 
   // === Export Pennylane (unifié : sync + génération + export) ===
   const handleExportPL = useCallback(async () => {
@@ -377,7 +456,186 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           les brouillons de factures variables. Les colonnes manuelles (ex: modification de bulletin)
           restent vides avec l'étiquette.
         </p>
+
+        {/* Tarifs variables : export / import */}
+        <div className="mt-3 pt-3 border-t border-slate-700">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-white font-medium">Tarifs variables :</span>
+
+            <button
+              onClick={handleExportTarifs}
+              disabled={!dateEffet}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exporter tarifs
+            </button>
+
+            <button
+              onClick={() => tarifsFileInputRef.current?.click()}
+              disabled={importingTarifs || !dateEffet}
+              className="bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              {importingTarifs
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Upload className="w-3.5 h-3.5" />}
+              Importer tarifs
+            </button>
+            <input
+              ref={tarifsFileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportTarifs}
+              className="hidden"
+            />
+
+            {importTarifsResult && (
+              <div className="flex items-center gap-2 text-sm">
+                {importTarifsResult.errors?.length > 0 ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                )}
+                <span className="text-white">
+                  {importTarifsResult.message || (
+                    <>
+                      {importTarifsResult.created} créés, {importTarifsResult.updated} mis à jour
+                      {importTarifsResult.historique > 0 && (
+                        <span className="text-blue-400"> ({importTarifsResult.historique} tracés)</span>
+                      )}
+                      {importTarifsResult.unmatched?.length > 0 && (
+                        <span className="text-amber-400"> ({importTarifsResult.unmatched.length} non matchés)</span>
+                      )}
+                    </>
+                  )}
+                </span>
+                <button onClick={() => setImportTarifsResult(null)} className="text-white hover:text-white ml-1">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+          {importTarifsResult?.unmatched?.length > 0 && (
+            <div className="mt-2 text-xs text-white">
+              Non matchés : {importTarifsResult.unmatched.join(', ')}
+            </div>
+          )}
+          {importTarifsResult?.errors?.length > 0 && (
+            <div className="mt-2 text-xs text-red-400">
+              Erreurs : {importTarifsResult.errors.slice(0, 5).join(' | ')}
+              {importTarifsResult.errors.length > 5 && ` (+${importTarifsResult.errors.length - 5})`}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* ── Modal preview import tarifs ── */}
+      {tarifsPreview && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-white font-semibold">Aperçu import tarifs variables</h3>
+              <button onClick={() => setTarifsPreview(null)} className="text-white hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {tarifsPreview.changes.length === 0 && tarifsPreview.unmatched.length === 0 ? (
+                <p className="text-white text-sm">Aucune modification détectée — tous les prix sont identiques.</p>
+              ) : (
+                <>
+                  {tarifsPreview.changes.filter(c => c.type === 'modification').length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-white font-semibold text-sm mb-2">
+                        Modifications ({tarifsPreview.changes.filter(c => c.type === 'modification').length})
+                      </h4>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-white border-b border-slate-600">
+                            <th className="text-left py-1 px-2">Client</th>
+                            <th className="text-left py-1 px-2">Cab.</th>
+                            <th className="text-left py-1 px-2">Produit</th>
+                            <th className="text-right py-1 px-2">Ancien</th>
+                            <th className="text-right py-1 px-2">Nouveau</th>
+                            <th className="text-right py-1 px-2">Delta</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tarifsPreview.changes.filter(c => c.type === 'modification').map((c, i) => (
+                            <tr key={i} className="border-b border-slate-700/50">
+                              <td className="py-1 px-2 text-white">{c.client}</td>
+                              <td className="py-1 px-2 text-white">{c.cabinet}</td>
+                              <td className="py-1 px-2 text-white">{c.colonne}</td>
+                              <td className="py-1 px-2 text-right text-white">{c.ancienPrix?.toFixed(2)} €</td>
+                              <td className="py-1 px-2 text-right text-white font-semibold">{c.nouveauPrix.toFixed(2)} €</td>
+                              <td className={`py-1 px-2 text-right font-semibold ${c.nouveauPrix > c.ancienPrix ? 'text-red-400' : 'text-emerald-400'}`}>
+                                {c.nouveauPrix > c.ancienPrix ? '+' : ''}{(c.nouveauPrix - c.ancienPrix).toFixed(2)} €
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {tarifsPreview.changes.filter(c => c.type === 'creation').length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-white font-semibold text-sm mb-2">
+                        Créations ({tarifsPreview.changes.filter(c => c.type === 'creation').length})
+                      </h4>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-white border-b border-slate-600">
+                            <th className="text-left py-1 px-2">Client</th>
+                            <th className="text-left py-1 px-2">Cab.</th>
+                            <th className="text-left py-1 px-2">Produit</th>
+                            <th className="text-right py-1 px-2">Prix</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tarifsPreview.changes.filter(c => c.type === 'creation').map((c, i) => (
+                            <tr key={i} className="border-b border-slate-700/50">
+                              <td className="py-1 px-2 text-white">{c.client}</td>
+                              <td className="py-1 px-2 text-white">{c.cabinet}</td>
+                              <td className="py-1 px-2 text-white">{c.colonne}</td>
+                              <td className="py-1 px-2 text-right text-emerald-400 font-semibold">{c.nouveauPrix.toFixed(2)} €</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {tarifsPreview.unmatched.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-white font-semibold text-sm mb-2">
+                        Non matchés ({tarifsPreview.unmatched.length})
+                      </h4>
+                      <p className="text-xs text-amber-400">{tarifsPreview.unmatched.join(', ')}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-4 border-t border-slate-700">
+              <button
+                onClick={() => setTarifsPreview(null)}
+                className="px-4 py-2 text-sm text-white bg-slate-700 hover:bg-slate-600 rounded"
+              >
+                Annuler
+              </button>
+              {tarifsPreview.changes.length > 0 && (
+                <button
+                  onClick={handleConfirmImportTarifs}
+                  disabled={importingTarifs}
+                  className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded flex items-center gap-2"
+                >
+                  {importingTarifs ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Confirmer l'import ({tarifsPreview.changes.length} changements)
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Section 2 : Import Silae ── */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
