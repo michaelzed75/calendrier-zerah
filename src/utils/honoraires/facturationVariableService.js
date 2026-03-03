@@ -758,11 +758,12 @@ export async function syncProduitsPennylane({ supabase, cabinet, plProducts }) {
  * }>}
  */
 export async function chargerDonneesGrille({ supabase, year, cabinet }) {
-  // 1. Clients "au réel" = ceux qui ont des tarifs type_recurrence='variable'
+  // 1. Clients "au réel" = ceux qui ont un tarif social_bulletin (pas juste des accessoires)
   let queryTarifs = supabase
     .from('tarifs_reference')
     .select('client_id')
-    .eq('type_recurrence', 'variable');
+    .eq('type_recurrence', 'variable')
+    .eq('axe', 'social_bulletin');
   if (cabinet) {
     queryTarifs = queryTarifs.eq('cabinet', cabinet);
   }

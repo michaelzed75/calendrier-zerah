@@ -54,7 +54,8 @@ export async function exportModeleManuel({ supabase, periode, cabinet }) {
   let qTarifs = supabase
     .from('tarifs_reference')
     .select('client_id')
-    .eq('type_recurrence', 'variable');
+    .eq('type_recurrence', 'variable')
+    .eq('axe', 'social_bulletin');
   if (cabinet) {
     qTarifs = qTarifs.eq('cabinet', cabinet);
   }
