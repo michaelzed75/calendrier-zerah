@@ -52,7 +52,7 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
   const [error, setError] = useState(null);
 
   // Paramètres période + tarifs
-  const [periodeMois, setPeriodeMois] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [periodeMois, setPeriodeMois] = useState('');
   const [periodeAnnee, setPeriodeAnnee] = useState(String(new Date().getFullYear()));
   const periode = `${periodeAnnee}-${periodeMois}`;
   const [dateEffet, setDateEffet] = useState('');
@@ -405,8 +405,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
           <h3 className="text-lg font-semibold text-white">Facturation variable mensuelle</h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-3">
-          <div>
+        <div className="flex items-center gap-4 mb-3">
+          <div className="w-48">
             <label className="block text-sm font-medium text-white mb-1">
               <Calendar className="w-4 h-4 inline mr-1" />
               Mois
@@ -416,49 +416,62 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
               onChange={e => setPeriodeMois(e.target.value)}
               className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
             >
+              <option value="">Choisir un mois…</option>
               {MOIS_OPTIONS.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-white mb-1">Année</label>
-            <select
-              value={periodeAnnee}
-              onChange={e => setPeriodeAnnee(e.target.value)}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
-            >
-              {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
-                <option key={y} value={String(y)}>{y}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-white mb-1">
-              <FileSpreadsheet className="w-4 h-4 inline mr-1" />
-              Tarifs (date d'effet)
-            </label>
-            <select
-              value={dateEffet}
-              onChange={e => setDateEffet(e.target.value)}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
-            >
-              <option value="">Sélectionner...</option>
-              {datesEffetDisponibles.map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
+          {periodeMois && (
+            <>
+              <div className="w-32">
+                <label className="block text-sm font-medium text-white mb-1">Année</label>
+                <select
+                  value={periodeAnnee}
+                  onChange={e => setPeriodeAnnee(e.target.value)}
+                  className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
+                >
+                  {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-white mb-1">
+                  <FileSpreadsheet className="w-4 h-4 inline mr-1" />
+                  Tarifs (date d'effet)
+                </label>
+                <select
+                  value={dateEffet}
+                  onChange={e => setDateEffet(e.target.value)}
+                  className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2"
+                >
+                  <option value="">Sélectionner...</option>
+                  {datesEffetDisponibles.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </div>
 
-        <p className="text-sm text-white">
-          Combine les quantités <strong>Silae</strong> avec les tarifs <strong>2026</strong> pour générer
-          les brouillons de factures variables. Les colonnes manuelles (ex: modification de bulletin)
-          restent vides avec l'étiquette.
-        </p>
+        {!periodeMois && (
+          <p className="text-sm text-white">
+            Sélectionnez un mois pour accéder à la facturation variable.
+          </p>
+        )}
 
-        {/* Tarifs variables : export / import */}
-        <div className="mt-3 pt-3 border-t border-slate-700">
+        {periodeMois && (
+          <>
+            <p className="text-sm text-white">
+              Combine les quantités <strong>Silae</strong> avec les tarifs <strong>2026</strong> pour générer
+              les brouillons de factures variables. Les colonnes manuelles (ex: modification de bulletin)
+              restent vides avec l'étiquette.
+            </p>
+
+            {/* Tarifs variables : export / import */}
+            <div className="mt-3 pt-3 border-t border-slate-700">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm text-white font-medium">Tarifs variables :</span>
 
@@ -527,6 +540,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* ── Modal preview import tarifs ── */}
@@ -637,6 +652,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
         </div>
       )}
 
+      {periodeMois && (
+      <>
       {/* ── Section 2 : Import Silae ── */}
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -873,6 +890,8 @@ export default function FacturationVariablePanel({ clients, accent, filterCabine
 
       {/* ── Section 5 : Grille Silae annuelle ── */}
       <FacturationGrid filterCabinet={filterCabinet} externalReloadKey={reloadKey} />
+      </>
+      )}
     </div>
   );
 }
