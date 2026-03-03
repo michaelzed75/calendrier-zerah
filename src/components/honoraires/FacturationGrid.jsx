@@ -231,7 +231,7 @@ export default function FacturationGrid({ filterCabinet, externalReloadKey = 0 }
       bulletins_refaits: row?.bulletins_refaits || 0,
       entrees: row?.entrees || 0,
       sorties: row?.sorties || 0,
-      extras: 0,
+      extras: row?.extras || 0,
       coffre_fort: row?.coffre_fort || 0,
       editique: row?.editique || 0,
       temps_passe: row?.temps_passe || 0,

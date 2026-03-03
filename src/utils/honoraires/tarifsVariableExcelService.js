@@ -22,6 +22,7 @@ export const TARIF_COLUMNS = [
   { key: 'entree_salarie',        axe: 'accessoires_social', header: 'Entrée salarié',        defaultLabel: "Enregistrement d'entrée de salariés" },
   { key: 'sortie_salarie',        axe: 'accessoires_social', header: 'Sortie salarié',        defaultLabel: 'Enregistrement de sortie de salariés' },
   { key: 'modification_bulletin', axe: 'accessoires_social', header: 'Modification bulletin', defaultLabel: 'Modification de bulletin de salaires sur votre demande' },
+  { key: 'entree_sortie_extra',   axe: 'accessoires_social', header: 'Extra',                 defaultLabel: "Enregistrement d'entrée / sortie d'un extra" },
 ];
 
 const CABINET_MAP = { 'Audit Up': 'AUP', 'Zerah Fiduciaire': 'ZF' };
@@ -69,6 +70,9 @@ function detectLabelNormalise(axe, label) {
   if (lower.includes('coffre')) return 'coffre_fort';
   if (lower.includes('publi') || lower.includes('éditique') || lower.includes('editique')) return 'publipostage';
   if (lower.includes('modification')) return 'modification_bulletin';
+  // Extras doivent être testés AVANT entrée/sortie standard (car ils contiennent aussi "entrée"/"sortie")
+  if (lower.includes('extra') && lower.includes('vacation')) return 'vacation_extra';
+  if (lower.includes('extra') && (lower.includes('entrée') || lower.includes('sortie'))) return 'entree_sortie_extra';
   if (lower.includes('sortie')) return 'sortie_salarie';
   if (lower.includes('entrée') || lower.includes('entree') || lower.includes("d'entrée")) return 'entree_salarie';
   return null;
@@ -202,6 +206,7 @@ export async function exportTarifsVariableExcel({ supabase, dateEffet, cabinet }
     { wch: 14 },  // H Entrée
     { wch: 14 },  // I Sortie
     { wch: 20 },  // J Modification
+    { wch: 12 },  // K Extra
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Tarifs variables');
@@ -233,6 +238,7 @@ export async function exportTarifsVariableExcel({ supabase, dateEffet, cabinet }
  * @property {number|null} entree_salarie
  * @property {number|null} sortie_salarie
  * @property {number|null} modification_bulletin
+ * @property {number|null} entree_sortie_extra
  */
 
 /**

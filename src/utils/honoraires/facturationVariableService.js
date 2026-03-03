@@ -27,7 +27,9 @@ const SILAE_COLUMN_MAP = {
   sorties: 'sorties',
   declarations: 'declarations',
   attestations_pe: 'attestations_pe',
-  bulletins_refaits: 'bulletins_refaits'
+  bulletins_refaits: 'bulletins_refaits',
+  extras: 'extras',
+  vacation_extra: 'vacation_extra'
 };
 
 /**
@@ -771,7 +773,7 @@ export async function chargerDonneesGrille({ supabase, year, cabinet }) {
 
   // 2. Données Silae pour toute l'année (avec fallback si colonnes manuelles pas encore créées)
   let silaeData;
-  const selectFull = 'client_id, periode, bulletins, coffre_fort, editique, entrees, sorties, declarations, attestations_pe, bulletins_manuels, bulletins_refaits, temps_passe, commentaires';
+  const selectFull = 'client_id, periode, bulletins, coffre_fort, editique, entrees, sorties, declarations, attestations_pe, bulletins_manuels, bulletins_refaits, extras, vacation_extra, temps_passe, commentaires';
   const selectBase = 'client_id, periode, bulletins, coffre_fort, editique, entrees, sorties, declarations, attestations_pe';
 
   const { data: d1, error: e1 } = await supabase
@@ -889,6 +891,8 @@ export async function sauverDonneesManuelles({ supabase, clientId, periode, data
     bulletins_refaits: data.bulletins_refaits ?? 0,
     entrees: data.entrees ?? 0,
     sorties: data.sorties ?? 0,
+    extras: data.extras ?? 0,
+    vacation_extra: data.vacation_extra ?? 0,
     coffre_fort: data.coffre_fort ?? 0,
     editique: data.editique ?? 0,
     temps_passe: data.temps_passe ?? 0,

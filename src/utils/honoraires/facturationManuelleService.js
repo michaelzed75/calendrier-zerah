@@ -31,6 +31,7 @@ function formaterPeriodeFr(periode) {
  *
  * Colonnes : Type | Client | SIREN | Cabinet | Bull. refaits | Bull. manuels |
  *            Entrées | Sorties | Extras | Coffre-fort | Éditique | Temps passé | Commentaires
+ * (13 colonnes A-M)
  *
  * @param {Object} params
  * @param {import('@supabase/supabase-js').SupabaseClient} params.supabase
@@ -148,7 +149,7 @@ export async function exportModeleManuel({ supabase, periode, cabinet }) {
     { wch: 13 },  // F Bull. manuels
     { wch: 10 },  // G Entrées
     { wch: 10 },  // H Sorties
-    { wch: 10 },  // I Extras
+    { wch: 12 },  // I Extras
     { wch: 12 },  // J Coffre-fort
     { wch: 10 },  // K Éditique
     { wch: 12 },  // L Temps passé
@@ -280,7 +281,7 @@ export async function importManuelData({ supabase, rows, periode, clients }) {
       continue;
     }
 
-    // Sauver les données manuelles (bulletins_manuels, bulletins_refaits, temps_passe, commentaires)
+    // Sauver les données manuelles (bulletins_manuels, bulletins_refaits, extras, temps_passe, commentaires)
     await sauverDonneesManuelles({
       supabase,
       clientId: client.id,
@@ -288,6 +289,7 @@ export async function importManuelData({ supabase, rows, periode, clients }) {
       data: {
         bulletins_manuels: row.bulletins_manuels,
         bulletins_refaits: row.bulletins_refaits,
+        extras: row.extras,
         temps_passe: row.temps_passe,
         commentaires: row.commentaires
       }
@@ -295,7 +297,7 @@ export async function importManuelData({ supabase, rows, periode, clients }) {
 
     // Si le fichier contient des données Silae standard (entrees/sorties/etc.)
     // et que le client N'A PAS de données Silae auto → mettre à jour aussi les colonnes standard
-    if (row.entrees > 0 || row.sorties > 0 || row.extras > 0 || row.coffre_fort > 0 || row.editique > 0) {
+    if (row.entrees > 0 || row.sorties > 0 || row.coffre_fort > 0 || row.editique > 0) {
       const { data: existing } = await supabase
         .from('silae_productions')
         .select('id, bulletins')
