@@ -198,13 +198,22 @@ export default function App() {
         setClients(/** @type {Client[]} */ (clientsData));
       }
 
-      // Charger charges (Supabase limite à 1000 par défaut — on force une limite haute)
-      const { data: chargesData, error: chargesError } = await supabase
-        .from('charges')
-        .select('*')
-        .range(0, 9999);
-      if (!chargesError && chargesData) {
-        setCharges(/** @type {Charge[]} */ (chargesData));
+      // Charger charges (Supabase limite à 1000 lignes par requête côté serveur)
+      {
+        let allCharges = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: page, error: pageError } = await supabase
+            .from('charges')
+            .select('*')
+            .range(from, from + pageSize - 1);
+          if (pageError || !page) break;
+          allCharges = allCharges.concat(page);
+          if (page.length < pageSize) break;
+          from += pageSize;
+        }
+        setCharges(/** @type {Charge[]} */ (allCharges));
       }
 
       // Charger impots_taxes
