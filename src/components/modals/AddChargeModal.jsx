@@ -79,6 +79,10 @@ function AddChargeModal({ clients, collaborateurs, defaultDate, onAdd, onClose }
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!formData.clientId) {
+      alert('Veuillez sélectionner un client dans la liste.');
+      return;
+    }
     onAdd(parseInt(formData.collaborateurId), parseInt(formData.clientId), formData.dateComplete, formData.heures, formData.type, formData.detail);
   };
 

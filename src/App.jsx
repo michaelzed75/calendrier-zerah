@@ -42,6 +42,8 @@ export default function App() {
   // État d'authentification
   /** @type {[import('@supabase/supabase-js').User|null, function]} */
   const [user, setUser] = useState(null);
+  /** @type {[boolean, function]} */
+  const [dataLoaded, setDataLoaded] = useState(false);
   /** @type {[Collaborateur|null, function]} */
   const [userCollaborateur, setUserCollaborateur] = useState(null);
   /** @type {[boolean, function]} */
@@ -117,8 +119,13 @@ export default function App() {
     });
 
     // Écouter les changements d'auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // TOKEN_REFRESHED : ne pas déclencher un rechargement complet des données
+      // Seuls SIGNED_IN et SIGNED_OUT changent réellement l'utilisateur
+      if (event === 'TOKEN_REFRESHED') return;
+
       setUser(session?.user ?? null);
+      setDataLoaded(false);
       if (session?.user) {
         loadUserCollaborateur(session.user.email);
       } else {
@@ -156,12 +163,13 @@ export default function App() {
     setUserCollaborateur(null);
   };
 
-  // Chargement initial des données depuis Supabase
+  // Chargement initial des données depuis Supabase (une seule fois par session)
   useEffect(() => {
-    if (user) {
+    if (user && !dataLoaded) {
       loadAllData();
+      setDataLoaded(true);
     }
-  }, [user]);
+  }, [user, dataLoaded]);
 
   /**
    * Charge toutes les données depuis Supabase

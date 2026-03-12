@@ -182,6 +182,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   }, [currentDate]);
 
   const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
+    if (!clientId || isNaN(clientId)) {
+      alert('Veuillez sélectionner un client avant d\'ajouter une charge.');
+      return;
+    }
+
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
@@ -194,11 +199,18 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
 
     try {
       const { data, error } = await supabase.from('charges').insert([newCharge]).select();
-      if (!error && data) {
+      if (error) {
+        console.error('Erreur ajout charge:', error);
+        alert('Erreur lors de l\'ajout de la charge : ' + error.message);
+        return;
+      }
+      if (data) {
         setCharges(prev => [...prev, data[0]]);
       }
     } catch (err) {
       console.error('Erreur ajout charge:', err);
+      alert('Erreur réseau lors de l\'ajout de la charge. Vérifiez votre connexion.');
+      return;
     }
     setShowAddModal(false);
     setPrefilledDate(null);
@@ -214,31 +226,51 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       detail: detail
     };
 
-    setCharges(prev => prev.map(c => 
+    // Sauvegarder l'état précédent pour rollback en cas d'erreur
+    const previousCharges = charges;
+    setCharges(prev => prev.map(c =>
       c.id === chargeId ? { ...c, ...updatedCharge } : c
     ));
 
     try {
-      await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
+      const { error } = await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
+      if (error) {
+        console.error('Erreur mise à jour:', error);
+        alert('Erreur lors de la mise à jour : ' + error.message);
+        setCharges(previousCharges); // Rollback
+        return;
+      }
     } catch (err) {
       console.error('Erreur mise à jour:', err);
+      alert('Erreur réseau lors de la mise à jour. Vérifiez votre connexion.');
+      setCharges(previousCharges); // Rollback
+      return;
     }
-    
+
     setEditingCharge(null);
   };
 
   const handleDeleteCharge = useCallback(async (chargeId) => {
+    const previousCharges = charges;
     setCharges(prev => prev.filter(c => c.id !== chargeId));
 
     try {
-      await supabase.from('charges').delete().eq('id', chargeId);
+      const { error } = await supabase.from('charges').delete().eq('id', chargeId);
+      if (error) {
+        console.error('Erreur suppression:', error);
+        alert('Erreur lors de la suppression : ' + error.message);
+        setCharges(previousCharges); // Rollback
+      }
     } catch (err) {
       console.error('Erreur suppression:', err);
+      alert('Erreur réseau lors de la suppression.');
+      setCharges(previousCharges); // Rollback
     }
-  }, [setCharges]);
+  }, [charges, setCharges]);
 
   // Déplacer une charge à une nouvelle date (drag and drop)
   const handleMoveCharge = useCallback(async (chargeId, newDate) => {
+    const previousCharges = charges;
     // Mise à jour optimiste
     setCharges(prev => prev.map(c =>
       c.id === chargeId ? { ...c, date_charge: newDate } : c
@@ -250,12 +282,17 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         .update({ date_charge: newDate })
         .eq('id', chargeId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur déplacement charge:', error);
+        alert('Erreur lors du déplacement : ' + error.message);
+        setCharges(previousCharges); // Rollback
+      }
     } catch (err) {
       console.error('Erreur déplacement charge:', err);
-      // Recharger les données en cas d'erreur
+      alert('Erreur réseau lors du déplacement.');
+      setCharges(previousCharges); // Rollback
     }
-  }, [setCharges]);
+  }, [charges, setCharges]);
 
   const getChargesForDay = useCallback((collaborateurId, day) => {
     const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
