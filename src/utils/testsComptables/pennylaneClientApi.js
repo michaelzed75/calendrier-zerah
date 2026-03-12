@@ -452,13 +452,50 @@ export async function getFECByAccountsToDate(apiKey, startDate, endDate, compteP
 
   console.log(`getFECByAccountsToDate: ${targetAccountIds.length} comptes trouvés pour préfixes [${comptePrefixes.join(', ')}] (${startDate} → ${endDate})`);
 
-  // 3. Récupérer les lignes d'écritures pour chaque compte cible
+  // 3. Identifier le journal AN (à-nouveau) pour récupérer les soldes d'ouverture
+  //    Les AN de l'exercice courant peuvent être datées hors de la plage demandée
+  //    (ex: exercice 2026, AN datées 01/01/2025 car exercice 2025 pas clôturé)
+  const anJournalEntry = [...journalsMap.entries()].find(([, j]) => /^AN$/i.test(j.code));
+  const anJournalId = anJournalEntry ? anJournalEntry[0] : null;
+
+  // 4. PASSE 1 — Récupérer un échantillon du journal AN pour trouver la date de début effective
+  //    On query le journal AN (sans filtre compte ni date) pour trouver la date des AN les plus récentes
+  let effectiveStartDate = startDate;
+
+  if (anJournalId) {
+    console.log(`getFECByAccountsToDate: Journal AN trouvé (id=${anJournalId}), recherche de la date AN...`);
+    const anFilter = JSON.stringify([
+      { field: 'journal_id', operator: 'eq', value: anJournalId }
+    ]);
+    // On ne récupère que la première page (max 100 lignes) — suffisant pour trouver la date
+    const anSample = await callPennylaneAPI(apiKey, '/ledger_entry_lines', { filter: anFilter, per_page: 100 });
+    const anItems = anSample.items || anSample.data || [];
+
+    if (anItems.length > 0) {
+      // Trouver la date AN la plus récente
+      const anDates = [...new Set(anItems.map(l => l.date).filter(Boolean))].sort();
+      const latestANDate = anDates[anDates.length - 1];
+      if (latestANDate && latestANDate < startDate) {
+        effectiveStartDate = latestANDate;
+        console.log(`getFECByAccountsToDate: AN détectées au ${latestANDate} → date de début ajustée de ${startDate} à ${effectiveStartDate}`);
+      } else {
+        console.log(`getFECByAccountsToDate: AN date=${latestANDate}, déjà dans la plage (>= ${startDate})`);
+      }
+    } else {
+      console.warn('getFECByAccountsToDate: Journal AN vide — pas d\'écritures à-nouveau');
+    }
+  } else {
+    console.warn('getFECByAccountsToDate: Aucun journal AN trouvé — les soldes d\'ouverture seront absents');
+  }
+
+  // 5. PASSE 2 — Récupérer TOUTES les lignes depuis la date effective jusqu'à la date d'arrêté
+  //    Cela capture : AN + mouvements exercice(s) intermédiaire(s) + mouvements exercice courant
   /** @type {Object[]} */
   let allLines = [];
 
   for (const accountId of targetAccountIds) {
     const filter = JSON.stringify([
-      { field: 'date', operator: 'gteq', value: startDate },
+      { field: 'date', operator: 'gteq', value: effectiveStartDate },
       { field: 'date', operator: 'lteq', value: endDate },
       { field: 'ledger_account_id', operator: 'eq', value: accountId }
     ]);
@@ -467,9 +504,9 @@ export async function getFECByAccountsToDate(apiKey, startDate, endDate, compteP
     allLines = allLines.concat(lines);
   }
 
-  console.log(`getFECByAccountsToDate: ${allLines.length} lignes récupérées au total`);
+  console.log(`getFECByAccountsToDate: ${allLines.length} lignes récupérées (${effectiveStartDate} → ${endDate})`);
 
-  // 4. Récupérer les en-têtes d'écritures pour enrichir
+  // 6. Récupérer les en-têtes d'écritures pour enrichir (même plage étendue)
   const entryIds = new Set(allLines.map(l => l.ledger_entry?.id).filter(Boolean));
 
   /** @type {Map<number, {label: string, pieceNumber: string, journalId: number}>} */
@@ -477,7 +514,7 @@ export async function getFECByAccountsToDate(apiKey, startDate, endDate, compteP
 
   if (entryIds.size > 0) {
     const dateFilter = JSON.stringify([
-      { field: 'date', operator: 'gteq', value: startDate },
+      { field: 'date', operator: 'gteq', value: effectiveStartDate },
       { field: 'date', operator: 'lteq', value: endDate }
     ]);
     const entries = await getAllPaginated(apiKey, '/ledger_entries', { filter: dateFilter });

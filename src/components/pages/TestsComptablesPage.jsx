@@ -70,7 +70,7 @@ export default function TestsComptablesPage({
   // Champs pour le test État des Dettes
   const [jourArreteInput, setJourArreteInput] = useState('31');
   const [moisArreteInput, setMoisArreteInput] = useState('12');
-  const [comptesDetteInput, setComptesDetteInput] = useState('164,421,428,451,455,53,401,408,467,468,512');
+  const [comptesDetteInput, setComptesDetteInput] = useState('164,421,428,438,451,455,53,401,408,467,468,512');
   const [seuilSignificationInput, setSeuilSignificationInput] = useState('0');
 
   // Données
@@ -740,7 +740,7 @@ export default function TestsComptablesPage({
                       type="text"
                       value={comptesDetteInput}
                       onChange={(e) => setComptesDetteInput(e.target.value)}
-                      placeholder="164,421,428,451,455,53,401,408,467,468,512"
+                      placeholder="164,421,428,438,451,455,53,401,408,467,468,512"
                       className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 text-sm"
                     />
                   </div>

@@ -16,6 +16,7 @@ const CATEGORIES_DETTES_DEFAUT = [
   { prefixes: ['164'], categorie: 'Emprunts', label: 'Emprunts auprès des établissements de crédit' },
   { prefixes: ['421'], categorie: 'Personnel', label: 'Personnel - Rémunérations dues' },
   { prefixes: ['428'], categorie: 'Congés payés', label: 'Personnel - Charges à payer (congés payés)' },
+  { prefixes: ['438'], categorie: 'Organismes sociaux', label: 'Organismes sociaux - Charges à payer' },
   { prefixes: ['451'], categorie: 'Groupe et associés', label: 'Groupe et associés' },
   { prefixes: ['455'], categorie: 'Comptes courants associés', label: 'Associés - Comptes courants' },
   { prefixes: ['53'], categorie: 'Caisse', label: 'Caisse (si solde négatif)', onlyIfNegative: true },
