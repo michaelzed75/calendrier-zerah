@@ -109,9 +109,7 @@ export default function App() {
   useEffect(() => {
     // Récupérer la session actuelle
     supabase.auth.getSession().then(({ data: { session } }) => {
-      // Comparer par ID pour éviter un double-load si INITIAL_SESSION a déjà positionné le user
-      const newUser = session?.user ?? null;
-      setUser(prev => (prev?.id === newUser?.id) ? prev : newUser);
+      setUser(session?.user ?? null);
       if (session?.user) {
         loadUserCollaborateur(session.user.email);
       }
@@ -120,13 +118,8 @@ export default function App() {
 
     // Écouter les changements d'auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // TOKEN_REFRESHED : ne pas déclencher un rechargement complet des données
-      // Seuls SIGNED_IN et SIGNED_OUT changent réellement l'utilisateur
       if (event === 'TOKEN_REFRESHED') return;
-
-      // Comparer par ID pour éviter un re-render inutile (même user, nouvel objet)
-      const newUser = session?.user ?? null;
-      setUser(prev => (prev?.id === newUser?.id) ? prev : newUser);
+      setUser(session?.user ?? null);
       if (session?.user) {
         loadUserCollaborateur(session.user.email);
       } else {

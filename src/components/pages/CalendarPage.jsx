@@ -1,5 +1,5 @@
 // @ts-check
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Filter, Download, Eye, Pencil, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, VolumeX, Volume2, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
@@ -32,7 +32,7 @@ import { formatDateToYMD, parseDateString } from '../../utils/dateUtils';
  */
 function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, setCharges, getChefsOf, getEquipeOf, getAccessibleClients, accent, userCollaborateur, impotsTaxes, suiviEcheances, setSuiviEcheances }) {
   const [currentDate, setCurrentDate] = useState(new Date());
-
+  // filteredCollaborateurs est calculé directement (donnée dérivée, pas de state)
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -47,12 +47,12 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const [draggedCharge, setDraggedCharge] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
 
-  const activeCollaborateurs = useMemo(() => collaborateurs.filter(c => c.actif), [collaborateurs]);
-  const activeClients = useMemo(() => clients.filter(c => c.actif), [clients]);
-  const chefsMission = useMemo(() => activeCollaborateurs.filter(c => c.est_chef_mission), [activeCollaborateurs]);
+  const activeCollaborateurs = collaborateurs.filter(c => c.actif);
+  const activeClients = clients.filter(c => c.actif);
+  const chefsMission = activeCollaborateurs.filter(c => c.est_chef_mission);
 
   // Calculer les collaborateurs visibles selon les droits de l'utilisateur
-  const visibleCollaborateurs = useMemo(() => {
+  const getVisibleCollaborateurs = () => {
     if (!userCollaborateur) return [];
 
     // Admin voit tout le monde
@@ -82,9 +82,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     });
 
     return activeCollaborateurs.filter(c => visibleIds.has(c.id));
-  }, [activeCollaborateurs, userCollaborateur, getChefsOf, getEquipeOf]);
+  };
 
-  const visibleChefsMission = useMemo(() => visibleCollaborateurs.filter(c => c.est_chef_mission), [visibleCollaborateurs]);
+  const visibleCollaborateurs = getVisibleCollaborateurs();
+  const visibleChefsMission = visibleCollaborateurs.filter(c => c.est_chef_mission);
 
   // Charger les préférences utilisateur
   useEffect(() => {
@@ -124,11 +125,8 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     }
   }, [currentUser, viewMode, selectedCollaborateurs, expandedEquipes, selectedDay]);
 
-  // Collaborateurs visibles et sélectionnés (donnée dérivée, pas besoin de state)
-  const filteredCollaborateursComputed = useMemo(() =>
-    visibleCollaborateurs.filter(c => selectedCollaborateurs.includes(c.id)),
-    [selectedCollaborateurs, visibleCollaborateurs]
-  );
+  // Filtrer les collaborateurs visibles et sélectionnés (calcul direct, pas de useEffect)
+  const filteredCollaborateurs = visibleCollaborateurs.filter(c => selectedCollaborateurs.includes(c.id));
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -181,11 +179,6 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   }, [currentDate]);
 
   const handleAddCharge = async (collaborateurId, clientId, date, heures, type = 'budgété', detail = '') => {
-    if (!clientId || isNaN(clientId)) {
-      alert('Veuillez sélectionner un client avant d\'ajouter une charge.');
-      return;
-    }
-
     const newCharge = {
       collaborateur_id: collaborateurId,
       client_id: clientId,
@@ -198,18 +191,11 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
 
     try {
       const { data, error } = await supabase.from('charges').insert([newCharge]).select();
-      if (error) {
-        console.error('Erreur ajout charge:', error);
-        alert('Erreur lors de l\'ajout de la charge : ' + error.message);
-        return;
-      }
-      if (data) {
+      if (!error && data) {
         setCharges(prev => [...prev, data[0]]);
       }
     } catch (err) {
       console.error('Erreur ajout charge:', err);
-      alert('Erreur réseau lors de l\'ajout de la charge. Vérifiez votre connexion.');
-      return;
     }
     setShowAddModal(false);
     setPrefilledDate(null);
@@ -225,67 +211,35 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       detail: detail
     };
 
-    // Sauvegarder la version précédente pour rollback
-    let previousVersion = null;
-    setCharges(prev => {
-      const target = prev.find(c => c.id === chargeId);
-      if (target) previousVersion = { ...target };
-      return prev.map(c => c.id === chargeId ? { ...c, ...updatedCharge } : c);
-    });
+    setCharges(prev => prev.map(c => 
+      c.id === chargeId ? { ...c, ...updatedCharge } : c
+    ));
 
     try {
-      const { error } = await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
-      if (error) {
-        console.error('Erreur mise à jour:', error);
-        alert('Erreur lors de la mise à jour : ' + error.message);
-        if (previousVersion) {
-          setCharges(prev => prev.map(c => c.id === chargeId ? previousVersion : c));
-        }
-        return;
-      }
+      await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
     } catch (err) {
       console.error('Erreur mise à jour:', err);
-      alert('Erreur réseau lors de la mise à jour. Vérifiez votre connexion.');
-      if (previousVersion) {
-        setCharges(prev => prev.map(c => c.id === chargeId ? previousVersion : c));
-      }
-      return;
     }
-
+    
     setEditingCharge(null);
   };
 
   const handleDeleteCharge = useCallback(async (chargeId) => {
-    // Capturer la charge supprimée pour rollback éventuel
-    let deletedCharge = null;
-    setCharges(prev => {
-      deletedCharge = prev.find(c => c.id === chargeId) || null;
-      return prev.filter(c => c.id !== chargeId);
-    });
+    setCharges(prev => prev.filter(c => c.id !== chargeId));
 
     try {
-      const { error } = await supabase.from('charges').delete().eq('id', chargeId);
-      if (error) {
-        console.error('Erreur suppression:', error);
-        alert('Erreur lors de la suppression : ' + error.message);
-        if (deletedCharge) setCharges(prev => [...prev, deletedCharge]);
-      }
+      await supabase.from('charges').delete().eq('id', chargeId);
     } catch (err) {
       console.error('Erreur suppression:', err);
-      alert('Erreur réseau lors de la suppression.');
-      if (deletedCharge) setCharges(prev => [...prev, deletedCharge]);
     }
   }, [setCharges]);
 
   // Déplacer une charge à une nouvelle date (drag and drop)
   const handleMoveCharge = useCallback(async (chargeId, newDate) => {
-    // Capturer l'ancienne date pour rollback
-    let previousDate = null;
-    setCharges(prev => {
-      const target = prev.find(c => c.id === chargeId);
-      if (target) previousDate = target.date_charge;
-      return prev.map(c => c.id === chargeId ? { ...c, date_charge: newDate } : c);
-    });
+    // Mise à jour optimiste
+    setCharges(prev => prev.map(c =>
+      c.id === chargeId ? { ...c, date_charge: newDate } : c
+    ));
 
     try {
       const { error } = await supabase
@@ -293,15 +247,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         .update({ date_charge: newDate })
         .eq('id', chargeId);
 
-      if (error) {
-        console.error('Erreur déplacement charge:', error);
-        alert('Erreur lors du déplacement : ' + error.message);
-        if (previousDate) setCharges(prev => prev.map(c => c.id === chargeId ? { ...c, date_charge: previousDate } : c));
-      }
+      if (error) throw error;
     } catch (err) {
       console.error('Erreur déplacement charge:', err);
-      alert('Erreur réseau lors du déplacement.');
-      if (previousDate) setCharges(prev => prev.map(c => c.id === chargeId ? { ...c, date_charge: previousDate } : c));
+      // Recharger les données en cas d'erreur
     }
   }, [setCharges]);
 
@@ -767,7 +716,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const exportToExcel = (startDateStr, endDateStr) => {
     const data = [];
     
-    filteredCollaborateursComputed.forEach(collab => {
+    filteredCollaborateurs.forEach(collab => {
       const chargesForCollab = charges.filter(c => {
         return c.collaborateur_id === collab.id &&
                c.date_charge >= startDateStr &&
@@ -849,9 +798,9 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
           </div>
 
           <div className="flex gap-3 flex-wrap">
-            {filteredCollaborateursComputed.length > 0 && (
+            {filteredCollaborateurs.length > 0 && (
               <select value={currentUser || ''} onChange={(e) => setCurrentUser(parseInt(e.target.value))} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-                {filteredCollaborateursComputed.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                {filteredCollaborateurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
               </select>
             )}
 
@@ -1141,7 +1090,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         {showAddModal && (
           <AddChargeModal
             clients={getAccessibleClients(userCollaborateur)}
-            collaborateurs={filteredCollaborateursComputed}
+            collaborateurs={filteredCollaborateurs}
             defaultDate={getDefaultDate()}
             onAdd={handleAddCharge}
             onClose={() => { setShowAddModal(false); setPrefilledDate(null); }}
@@ -1152,7 +1101,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
           <EditChargeModal
             charge={editingCharge}
             clients={getAccessibleClients(userCollaborateur)}
-            collaborateurs={filteredCollaborateursComputed}
+            collaborateurs={filteredCollaborateurs}
             onUpdate={handleUpdateCharge}
             onClose={() => setEditingCharge(null)}
           />
@@ -1242,7 +1191,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                           </button>
                         </div>
                         <div className="space-y-0.5">
-                          {filteredCollaborateursComputed.map(collab => {
+                          {filteredCollaborateurs.map(collab => {
                             const total = getTotalHoursForDay(collab.id, day);
                             if (total === 0) return null;
                             return (
@@ -1289,7 +1238,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                 </div>
               </div>
 
-              {filteredCollaborateursComputed.map(collab => (
+              {filteredCollaborateurs.map(collab => (
                 <div key={collab.id} className="flex gap-2 mb-3 bg-slate-700 p-3 rounded">
                   <div className="w-28 flex-shrink-0">
                     <div className="text-blue-300 font-semibold text-sm">{collab.nom}</div>
@@ -1376,7 +1325,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         {viewMode === 'day' && selectedDay && (
           <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
             <div className="space-y-6">
-              {filteredCollaborateursComputed.map(collab => {
+              {filteredCollaborateurs.map(collab => {
                 const dayCharges = getChargesForDateStr(collab.id, selectedDay);
                 const totalHours = dayCharges.reduce((sum, c) => sum + parseFloat(c.heures), 0);
                 
@@ -1455,7 +1404,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
 
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-6">
           <p className="text-white text-sm">
-            Charges : {charges.length} | Collaborateurs filtrés : {filteredCollaborateursComputed.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
+            Charges : {charges.length} | Collaborateurs filtrés : {filteredCollaborateurs.length} | Vue : {viewMode === 'month' ? 'Mois' : viewMode === 'week' ? 'Semaine' : 'Jour'}
           </p>
           <p className="text-white text-xs mt-2">calendrier-zerah v3.1</p>
         </div>
