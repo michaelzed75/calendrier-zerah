@@ -80,7 +80,7 @@ async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) 
         break;
       case 'fecDettes': {
         // État des dettes : récupération FEC avec date personnalisée et préfixes de comptes
-        const prefixesDettes = options.comptesPrefixes || ['164','421','428','455','53','401','467','468','512'];
+        const prefixesDettes = options.comptesPrefixes || ['164','421','428','451','455','53','401','408','467','468','512'];
         const debutExercice = `${millesime}-01-01`;
         const dateArrete = options.dateArrete || `${millesime}-12-31`;
         data.fec = await getFECByAccountsToDate(apiKey, debutExercice, dateArrete, prefixesDettes);
