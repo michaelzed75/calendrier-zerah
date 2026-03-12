@@ -88,14 +88,25 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         setMappingCollaborateurs(collabMappings);
         setMappingClients(clientMappings);
 
-        // Charger les temps réels
-        const { data: tempsData, error: tempsError } = await supabase
-          .from('temps_reels')
-          .select('*')
-          .order('date', { ascending: false });
-
-        if (tempsError) throw tempsError;
-        setTempsReels(tempsData || []);
+        // Charger les temps réels (pagination — Supabase limite à 1000 par requête)
+        {
+          let allTemps = [];
+          let from = 0;
+          const pageSize = 1000;
+          while (true) {
+            const { data: page, error: pageError } = await supabase
+              .from('temps_reels')
+              .select('*')
+              .order('date', { ascending: false })
+              .range(from, from + pageSize - 1);
+            if (pageError) throw pageError;
+            if (!page) break;
+            allTemps = allTemps.concat(page);
+            if (page.length < pageSize) break;
+            from += pageSize;
+          }
+          setTempsReels(allTemps);
+        }
 
         // Charger le journal
         const { data: journalData, error: journalError } = await supabase
