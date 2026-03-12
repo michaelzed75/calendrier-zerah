@@ -198,10 +198,11 @@ export default function App() {
         setClients(/** @type {Client[]} */ (clientsData));
       }
 
-      // Charger charges
+      // Charger charges (Supabase limite à 1000 par défaut — on force une limite haute)
       const { data: chargesData, error: chargesError } = await supabase
         .from('charges')
-        .select('*');
+        .select('*')
+        .range(0, 9999);
       if (!chargesError && chargesData) {
         setCharges(/** @type {Charge[]} */ (chargesData));
       }
