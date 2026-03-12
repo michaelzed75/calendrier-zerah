@@ -125,7 +125,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   }, [currentUser, viewMode, selectedCollaborateurs, expandedEquipes, selectedDay]);
 
   // Collaborateurs visibles et sélectionnés (donnée dérivée, pas besoin de state)
-  const filteredCollaborateursComputedComputed = useMemo(() =>
+  const filteredCollaborateursComputed = useMemo(() =>
     visibleCollaborateurs.filter(c => selectedCollaborateurs.includes(c.id)),
     [selectedCollaborateurs, visibleCollaborateurs]
   );
