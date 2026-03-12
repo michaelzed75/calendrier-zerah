@@ -226,24 +226,30 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       detail: detail
     };
 
-    // Sauvegarder l'état précédent pour rollback en cas d'erreur
-    const previousCharges = charges;
-    setCharges(prev => prev.map(c =>
-      c.id === chargeId ? { ...c, ...updatedCharge } : c
-    ));
+    // Sauvegarder la version précédente pour rollback
+    let previousVersion = null;
+    setCharges(prev => {
+      const target = prev.find(c => c.id === chargeId);
+      if (target) previousVersion = { ...target };
+      return prev.map(c => c.id === chargeId ? { ...c, ...updatedCharge } : c);
+    });
 
     try {
       const { error } = await supabase.from('charges').update(updatedCharge).eq('id', chargeId);
       if (error) {
         console.error('Erreur mise à jour:', error);
         alert('Erreur lors de la mise à jour : ' + error.message);
-        setCharges(previousCharges); // Rollback
+        if (previousVersion) {
+          setCharges(prev => prev.map(c => c.id === chargeId ? previousVersion : c));
+        }
         return;
       }
     } catch (err) {
       console.error('Erreur mise à jour:', err);
       alert('Erreur réseau lors de la mise à jour. Vérifiez votre connexion.');
-      setCharges(previousCharges); // Rollback
+      if (previousVersion) {
+        setCharges(prev => prev.map(c => c.id === chargeId ? previousVersion : c));
+      }
       return;
     }
 
@@ -251,30 +257,36 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   };
 
   const handleDeleteCharge = useCallback(async (chargeId) => {
-    const previousCharges = charges;
-    setCharges(prev => prev.filter(c => c.id !== chargeId));
+    // Capturer la charge supprimée pour rollback éventuel
+    let deletedCharge = null;
+    setCharges(prev => {
+      deletedCharge = prev.find(c => c.id === chargeId) || null;
+      return prev.filter(c => c.id !== chargeId);
+    });
 
     try {
       const { error } = await supabase.from('charges').delete().eq('id', chargeId);
       if (error) {
         console.error('Erreur suppression:', error);
         alert('Erreur lors de la suppression : ' + error.message);
-        setCharges(previousCharges); // Rollback
+        if (deletedCharge) setCharges(prev => [...prev, deletedCharge]);
       }
     } catch (err) {
       console.error('Erreur suppression:', err);
       alert('Erreur réseau lors de la suppression.');
-      setCharges(previousCharges); // Rollback
+      if (deletedCharge) setCharges(prev => [...prev, deletedCharge]);
     }
-  }, [charges, setCharges]);
+  }, [setCharges]);
 
   // Déplacer une charge à une nouvelle date (drag and drop)
   const handleMoveCharge = useCallback(async (chargeId, newDate) => {
-    const previousCharges = charges;
-    // Mise à jour optimiste
-    setCharges(prev => prev.map(c =>
-      c.id === chargeId ? { ...c, date_charge: newDate } : c
-    ));
+    // Capturer l'ancienne date pour rollback
+    let previousDate = null;
+    setCharges(prev => {
+      const target = prev.find(c => c.id === chargeId);
+      if (target) previousDate = target.date_charge;
+      return prev.map(c => c.id === chargeId ? { ...c, date_charge: newDate } : c);
+    });
 
     try {
       const { error } = await supabase
@@ -285,14 +297,14 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       if (error) {
         console.error('Erreur déplacement charge:', error);
         alert('Erreur lors du déplacement : ' + error.message);
-        setCharges(previousCharges); // Rollback
+        if (previousDate) setCharges(prev => prev.map(c => c.id === chargeId ? { ...c, date_charge: previousDate } : c));
       }
     } catch (err) {
       console.error('Erreur déplacement charge:', err);
       alert('Erreur réseau lors du déplacement.');
-      setCharges(previousCharges); // Rollback
+      if (previousDate) setCharges(prev => prev.map(c => c.id === chargeId ? { ...c, date_charge: previousDate } : c));
     }
-  }, [charges, setCharges]);
+  }, [setCharges]);
 
   const getChargesForDay = useCallback((collaborateurId, day) => {
     const targetDate = formatDateToYMD(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
