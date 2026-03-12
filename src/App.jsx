@@ -109,7 +109,9 @@ export default function App() {
   useEffect(() => {
     // Récupérer la session actuelle
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+      // Comparer par ID pour éviter un double-load si INITIAL_SESSION a déjà positionné le user
+      const newUser = session?.user ?? null;
+      setUser(prev => (prev?.id === newUser?.id) ? prev : newUser);
       if (session?.user) {
         loadUserCollaborateur(session.user.email);
       }
