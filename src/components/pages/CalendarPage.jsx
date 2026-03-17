@@ -46,6 +46,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const [prefilledDate, setPrefilledDate] = useState(null);
   const [draggedCharge, setDraggedCharge] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
+  const [dragOverCollab, setDragOverCollab] = useState(null);
 
   const activeCollaborateurs = collaborateurs.filter(c => c.actif);
   const activeClients = clients.filter(c => c.actif);
@@ -234,17 +235,23 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
     }
   }, [setCharges]);
 
-  // Déplacer une charge à une nouvelle date (drag and drop)
-  const handleMoveCharge = useCallback(async (chargeId, newDate) => {
+  // Le chef de mission ou l'admin peut déplacer vers un autre collaborateur
+  const canDropCrossCollab = userCollaborateur?.is_admin || userCollaborateur?.est_chef_mission;
+
+  // Déplacer une charge à une nouvelle date (et éventuellement un autre collaborateur)
+  const handleMoveCharge = useCallback(async (chargeId, newDate, newCollabId) => {
+    const updates = { date_charge: newDate };
+    if (newCollabId) updates.collaborateur_id = newCollabId;
+
     // Mise à jour optimiste
     setCharges(prev => prev.map(c =>
-      c.id === chargeId ? { ...c, date_charge: newDate } : c
+      c.id === chargeId ? { ...c, ...updates } : c
     ));
 
     try {
       const { error } = await supabase
         .from('charges')
-        .update({ date_charge: newDate })
+        .update(updates)
         .eq('id', chargeId);
 
       if (error) throw error;
@@ -1247,29 +1254,40 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                     const dateStr = formatDateToYMD(date);
                     const dayCharges = getChargesForDateStr(collab.id, dateStr);
                     const dayTotal = getTotalHoursForDateStr(collab.id, dateStr);
-                    const isDropTarget = draggedCharge && draggedCharge.collaborateur_id === collab.id && dragOverDate === dateStr;
+                    const isSameCollab = draggedCharge && draggedCharge.collaborateur_id === collab.id;
+                    const isCrossCollab = draggedCharge && !isSameCollab && canDropCrossCollab;
+                    const canDrop = isSameCollab || isCrossCollab;
+                    const isDropTarget = canDrop && dragOverDate === dateStr && dragOverCollab === collab.id;
                     return (
                       <div
                         key={dateStr}
                         className={`flex-1 min-w-36 rounded p-1 transition min-h-[60px] ${
                           isDropTarget
-                            ? 'bg-green-600/30 border-2 border-dashed border-green-400'
+                            ? isCrossCollab
+                              ? 'bg-orange-600/30 border-2 border-dashed border-orange-400'
+                              : 'bg-green-600/30 border-2 border-dashed border-green-400'
                             : 'hover:bg-slate-600'
                         }`}
                         onDragOver={(e) => {
                           e.preventDefault();
-                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id) {
+                          if (canDrop) {
                             setDragOverDate(dateStr);
+                            setDragOverCollab(collab.id);
                           }
                         }}
-                        onDragLeave={() => setDragOverDate(null)}
+                        onDragLeave={() => { setDragOverDate(null); setDragOverCollab(null); }}
                         onDrop={(e) => {
                           e.preventDefault();
-                          if (draggedCharge && draggedCharge.collaborateur_id === collab.id && draggedCharge.date_charge !== dateStr) {
-                            handleMoveCharge(draggedCharge.id, dateStr);
+                          if (draggedCharge && canDrop) {
+                            const hasChanged = draggedCharge.date_charge !== dateStr || draggedCharge.collaborateur_id !== collab.id;
+                            if (hasChanged) {
+                              const newCollabId = draggedCharge.collaborateur_id !== collab.id ? collab.id : undefined;
+                              handleMoveCharge(draggedCharge.id, dateStr, newCollabId);
+                            }
                           }
                           setDraggedCharge(null);
                           setDragOverDate(null);
+                          setDragOverCollab(null);
                         }}
                       >
                         <div
@@ -1291,6 +1309,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                                 onDragEnd={() => {
                                   setDraggedCharge(null);
                                   setDragOverDate(null);
+                                  setDragOverCollab(null);
                                 }}
                                 className={`text-xs px-1 py-0.5 rounded truncate cursor-grab active:cursor-grabbing ${
                                   draggedCharge?.id === charge.id
