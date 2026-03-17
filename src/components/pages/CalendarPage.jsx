@@ -47,6 +47,7 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
   const [draggedCharge, setDraggedCharge] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
   const [dragOverCollab, setDragOverCollab] = useState(null);
+  const [echeancePopup, setEcheancePopup] = useState(null); // { dateStr, echeances }
 
   const activeCollaborateurs = collaborateurs.filter(c => c.actif);
   const activeClients = clients.filter(c => c.actif);
@@ -434,10 +435,10 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
       return dayOfMonth === jourTheorique;
     };
 
-    // Clients du chef de mission connecté
+    // Clients visibles : admin voit tout, chef de mission voit ses clients + ceux sans chef
     const mesClients = clients.filter(c =>
       c.actif &&
-      (c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
+      (userCollaborateur?.is_admin || c.chef_mission_id === userCollaborateur?.id || !c.chef_mission_id)
     );
 
     // Pour chaque client, vérifier les échéances
@@ -1124,6 +1125,110 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
           />
         )}
 
+        {/* POPUP ÉCHÉANCES FISCALES */}
+        {echeancePopup && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEcheancePopup(null)}>
+            <div
+              className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center p-4 border-b border-slate-700">
+                <h3 className="text-lg font-bold text-white">
+                  Échéances du {parseDateString(echeancePopup.dateStr).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </h3>
+                <button onClick={() => setEcheancePopup(null)} className="text-white hover:bg-slate-700 p-1 rounded">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1">
+                {(() => {
+                  // Grouper par type
+                  const grouped = {};
+                  echeancePopup.echeances.forEach(ech => {
+                    if (!grouped[ech.type]) grouped[ech.type] = [];
+                    grouped[ech.type].push(ech);
+                  });
+                  const typeColors = {
+                    'TVA': 'bg-blue-900/40 border-blue-700',
+                    'TVA Ac.': 'bg-blue-900/40 border-blue-700',
+                    'CA12': 'bg-blue-900/40 border-blue-700',
+                    'CA12 E': 'bg-blue-900/40 border-blue-700',
+                    'IS': 'bg-amber-900/40 border-amber-700',
+                    'IS Solde': 'bg-amber-900/40 border-amber-700',
+                    'Liasse': 'bg-purple-900/40 border-purple-700',
+                    'CFE': 'bg-red-900/40 border-red-700',
+                    'CFE Ac.': 'bg-red-900/40 border-red-700',
+                    'CVAE': 'bg-red-900/40 border-red-700',
+                    'CVAE Sol.': 'bg-red-900/40 border-red-700',
+                    'TVTS': 'bg-orange-900/40 border-orange-700',
+                    'DAS2': 'bg-teal-900/40 border-teal-700',
+                    'Taxe Salaires': 'bg-orange-900/40 border-orange-700',
+                    'IFU': 'bg-teal-900/40 border-teal-700',
+                  };
+                  return Object.entries(grouped).map(([type, echs]) => {
+                    const doneCount = echs.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length;
+                    const colors = typeColors[type] || 'bg-slate-700 border-slate-600';
+                    return (
+                      <div key={type} className={`mb-3 rounded-lg border ${colors} p-3`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-white font-bold text-sm">{type}</span>
+                          <span className="text-xs text-white">{doneCount}/{echs.length} fait{doneCount > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {echs.map((ech, i) => {
+                            const isFait = isEcheanceFaite(ech.clientId, ech.type, ech.dateEcheance);
+                            const suivi = suiviEcheances.find(s =>
+                              s.client_id === ech.clientId && s.type_echeance === ech.type && s.date_echeance === ech.dateEcheance
+                            );
+                            return (
+                              <div
+                                key={i}
+                                className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition ${
+                                  isFait
+                                    ? 'bg-emerald-900/30 hover:bg-emerald-900/50'
+                                    : 'bg-slate-700/50 hover:bg-slate-600/50'
+                                }`}
+                                onClick={() => toggleSuiviEcheance(ech.clientId, ech.type, ech.dateEcheance, currentDate.getFullYear())}
+                              >
+                                <div className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition ${
+                                  isFait
+                                    ? 'bg-emerald-500 border-emerald-500'
+                                    : 'border-slate-400 hover:border-emerald-400'
+                                }`}>
+                                  {isFait && <Check size={14} className="text-white" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className={`text-sm ${isFait ? 'text-emerald-300 line-through' : 'text-white'}`}>
+                                    {ech.client}
+                                  </span>
+                                  {ech.montant && (
+                                    <span className="text-sm text-white ml-2 font-semibold">{ech.montant.toLocaleString('fr-FR')} €</span>
+                                  )}
+                                </div>
+                                {isFait && suivi?.fait_le && (
+                                  <div className="text-[11px] text-emerald-400 flex-shrink-0 text-right">
+                                    <div>{collaborateurs.find(c => c.id === suivi.fait_par_id)?.nom || '?'}</div>
+                                    <div>{new Date(suivi.fait_le).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à {new Date(suivi.fait_le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="p-3 border-t border-slate-700 text-center">
+                <span className="text-sm text-white">
+                  {echeancePopup.echeances.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length} / {echeancePopup.echeances.length} échéance{echeancePopup.echeances.length > 1 ? 's' : ''} traitée{echeancePopup.echeances.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length > 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* VUE MOIS */}
         {viewMode === 'month' && (
           <div className="grid grid-cols-7 gap-1 mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
@@ -1140,44 +1245,37 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                 >
                   {day && (
                     <>
-                      {/* Partie haute - Échéances fiscales (fond vert) */}
-                      {echeances.length > 0 && (
-                        <div className="bg-emerald-900/60 rounded-t-lg p-1 border-b border-emerald-700/50">
-                          <div className="space-y-0.5 max-h-16 overflow-y-auto">
-                            {echeances.slice(0, 3).map((ech, echIdx) => {
-                              const isFait = isEcheanceFaite(ech.clientId, ech.type, ech.dateEcheance);
-                              return (
-                                <div
-                                  key={echIdx}
-                                  className={`text-xs truncate px-1 flex items-center gap-1 ${isFait ? 'text-emerald-400/50 line-through' : 'text-emerald-200'}`}
-                                  title={`${ech.client} - ${ech.type}${ech.montant ? ` : ${ech.montant}€` : ''}`}
-                                >
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleSuiviEcheance(ech.clientId, ech.type, ech.dateEcheance, currentDate.getFullYear());
-                                    }}
-                                    className={`w-3 h-3 rounded border flex-shrink-0 flex items-center justify-center ${
-                                      isFait
-                                        ? 'bg-emerald-500 border-emerald-500'
-                                        : 'border-emerald-400 hover:bg-emerald-700/50'
-                                    }`}
-                                    title={isFait ? 'Marquer comme non fait' : 'Marquer comme fait'}
-                                  >
-                                    {isFait && <Check size={8} className="text-white" />}
-                                  </button>
-                                  <span className={`font-semibold ${isFait ? 'text-emerald-500/50' : 'text-emerald-300'}`}>{ech.type}</span>
-                                  {ech.montant && <span className="ml-1">{ech.montant}€</span>}
-                                  <span className="text-emerald-400/70 text-[10px]">{ech.client.substring(0, 8)}</span>
-                                </div>
-                              );
-                            })}
-                            {echeances.length > 3 && (
-                              <div className="text-[10px] text-emerald-400/70 px-1">+{echeances.length - 3} autres</div>
-                            )}
+                      {/* Partie haute - Badge échéances fiscales cliquable */}
+                      {echeances.length > 0 && (() => {
+                        const doneCount = echeances.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length;
+                        const allDone = doneCount === echeances.length;
+                        // Types distincts pour les mini-badges
+                        const types = [...new Set(echeances.map(e => e.type))];
+                        return (
+                          <div
+                            className={`rounded-t-lg p-1.5 border-b cursor-pointer transition hover:brightness-125 ${
+                              allDone
+                                ? 'bg-emerald-900/60 border-emerald-700/50'
+                                : 'bg-amber-900/60 border-amber-700/50'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEcheancePopup({ dateStr, echeances });
+                            }}
+                            title={`${echeances.length} échéance${echeances.length > 1 ? 's' : ''} — Cliquer pour détails`}
+                          >
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`text-xs font-bold ${allDone ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                {doneCount}/{echeances.length}
+                              </span>
+                              {types.slice(0, 4).map(t => (
+                                <span key={t} className="text-[10px] bg-slate-700/70 text-white px-1 rounded">{t}</span>
+                              ))}
+                              {types.length > 4 && <span className="text-[10px] text-white">+{types.length - 4}</span>}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Partie basse - Charges */}
                       <div className={`p-2 flex-1 ${echeances.length === 0 ? 'rounded-lg' : ''}`}>
@@ -1244,6 +1342,44 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
                   <div className="font-bold text-green-300 text-sm text-center">Total</div>
                 </div>
               </div>
+
+              {/* Ligne échéances fiscales en vue semaine */}
+              {(() => {
+                const hasAny = weekDays.some(d => getEcheancesFiscales(formatDateToYMD(d)).length > 0);
+                if (!hasAny) return null;
+                return (
+                  <div className="flex gap-2 mb-2 bg-amber-900/20 p-2 rounded border border-amber-800/30">
+                    <div className="w-28 flex-shrink-0 flex items-center">
+                      <span className="text-xs font-bold text-amber-300">Échéances</span>
+                    </div>
+                    {weekDays.map(date => {
+                      const ds = formatDateToYMD(date);
+                      const echs = getEcheancesFiscales(ds);
+                      if (echs.length === 0) return <div key={ds} className="flex-1 min-w-36" />;
+                      const done = echs.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length;
+                      const allDone = done === echs.length;
+                      return (
+                        <div
+                          key={ds}
+                          className={`flex-1 min-w-36 rounded px-1.5 py-1 cursor-pointer transition hover:brightness-125 ${
+                            allDone ? 'bg-emerald-900/40' : 'bg-amber-900/40'
+                          }`}
+                          onClick={() => setEcheancePopup({ dateStr: ds, echeances: echs })}
+                          title={`${echs.length} échéance${echs.length > 1 ? 's' : ''}`}
+                        >
+                          <span className={`text-xs font-bold ${allDone ? 'text-emerald-300' : 'text-amber-300'}`}>
+                            {done}/{echs.length}
+                          </span>
+                          <span className="text-[10px] text-white ml-1">
+                            {[...new Set(echs.map(e => e.type))].slice(0, 3).join(', ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="w-20 flex-shrink-0" />
+                  </div>
+                );
+              })()}
 
               {filteredCollaborateurs.map(collab => (
                 <div key={collab.id} className="flex gap-2 mb-3 bg-slate-700 p-3 rounded">
@@ -1343,6 +1479,50 @@ function CalendarPage({ collaborateurs, collaborateurChefs, clients, charges, se
         {/* VUE JOUR */}
         {viewMode === 'day' && selectedDay && (
           <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+            {/* Échéances fiscales du jour */}
+            {(() => {
+              const dayEcheances = getEcheancesFiscales(selectedDay);
+              if (dayEcheances.length === 0) return null;
+              const doneCount = dayEcheances.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length;
+              const allDone = doneCount === dayEcheances.length;
+              // Grouper par type
+              const grouped = {};
+              dayEcheances.forEach(ech => {
+                if (!grouped[ech.type]) grouped[ech.type] = [];
+                grouped[ech.type].push(ech);
+              });
+              return (
+                <div className={`mb-6 rounded-lg border p-4 ${allDone ? 'bg-emerald-900/30 border-emerald-700/50' : 'bg-amber-900/30 border-amber-700/50'}`}>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className={`font-bold ${allDone ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      Échéances fiscales — {doneCount}/{dayEcheances.length} traitée{doneCount > 1 ? 's' : ''}
+                    </h3>
+                    <button
+                      onClick={() => setEcheancePopup({ dateStr: selectedDay, echeances: dayEcheances })}
+                      className="text-xs text-white bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded transition"
+                    >
+                      Voir détails
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(grouped).map(([type, echs]) => {
+                      const typeDone = echs.filter(e => isEcheanceFaite(e.clientId, e.type, e.dateEcheance)).length;
+                      return (
+                        <span
+                          key={type}
+                          className={`text-sm px-2 py-1 rounded cursor-pointer transition hover:brightness-125 ${
+                            typeDone === echs.length ? 'bg-emerald-800/50 text-emerald-300' : 'bg-slate-700 text-white'
+                          }`}
+                          onClick={() => setEcheancePopup({ dateStr: selectedDay, echeances: dayEcheances })}
+                        >
+                          {type} ({typeDone}/{echs.length})
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="space-y-6">
               {filteredCollaborateurs.map(collab => {
                 const dayCharges = getChargesForDateStr(collab.id, selectedDay);
