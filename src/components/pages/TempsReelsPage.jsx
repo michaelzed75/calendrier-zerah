@@ -861,6 +861,8 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       // Format date jj/mm/aaaa
       const dateFormatted = t.date ? `${t.date.substring(8, 10)}/${t.date.substring(5, 7)}/${t.date.substring(0, 4)}` : '';
       return {
+        collaborateur_id: t.collaborateur_id,
+        client_id: t.client_id,
         cabinet: cabinetCode,
         collaborateur: collab?.nom || 'Inconnu',
         client: client?.nom || 'Inconnu',
@@ -1595,54 +1597,86 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 <button
                   onClick={() => {
                     const wb = XLSX.utils.book_new();
+                    const headers = ['Cabinet', 'Collaborateur', 'Client', 'Date', 'Heures', 'Budgété', 'Écart (h)', 'Écart (%)', 'Type de Mission', 'Code', 'Tâche', 'Millésime', 'Facturable', 'Commentaire'];
+                    const rows = [headers];
+                    const rowOutlines = []; // outlineLevel par ligne (0 = total, 1 = détail)
 
-                    // Onglet 1 : Détail ligne par ligne
-                    const detailData = [
-                      ['Cabinet', 'Collaborateur', 'Client', 'Date', 'Heures', 'Type de Mission', 'Code', 'Tâche', 'Millésime', 'Facturable', 'Commentaire', 'Produit', 'Statut facturation'],
-                      ...tempsDetail.map(t => [
-                        t.cabinet,
-                        t.collaborateur,
-                        t.client,
-                        t.date,
-                        Math.round(t.heures * 100) / 100,
-                        t.typeMission,
-                        t.code,
-                        t.activite,
-                        t.millesime,
-                        t.facturable,
-                        t.commentaire,
-                        t.produit,
-                        t.statutFacturation
-                      ])
-                    ];
-                    const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
-                    // Largeurs de colonnes
-                    wsDetail['!cols'] = [
-                      { wch: 6 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 8 },
-                      { wch: 18 }, { wch: 8 }, { wch: 30 }, { wch: 10 }, { wch: 10 },
-                      { wch: 40 }, { wch: 20 }, { wch: 18 }
-                    ];
-                    XLSX.utils.book_append_sheet(wb, wsDetail, 'Détail temps');
+                    // Regrouper tempsDetail par collaborateur+client
+                    const detailParGroupe = {};
+                    tempsDetail.forEach(t => {
+                      const key = `${t.collaborateur_id}-${t.client_id}`;
+                      if (!detailParGroupe[key]) detailParGroupe[key] = [];
+                      detailParGroupe[key].push(t);
+                    });
 
-                    // Onglet 2 : Synthèse écarts (comme avant)
-                    const synthData = [
-                      ['Cabinet', 'Collaborateur', 'Client', 'Heures Budgétées', 'Heures Réelles', 'Écart (h)', 'Écart (%)', 'Détail travail'],
-                      ...ecarts.map(e => [
-                        e.cabinet,
-                        e.collaborateurNom,
-                        e.clientNom,
-                        Math.round(e.heuresBudgetees * 10) / 10,
+                    // Pour chaque écart : lignes de détail (dépliables) puis ligne totale (gras)
+                    ecarts.forEach(e => {
+                      const key = `${e.collaborateur_id}-${e.client_id}`;
+                      const details = detailParGroupe[key] || [];
+
+                      // Trier les détails par date
+                      details.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+                      // Lignes de détail (outline level 1 = dépliable)
+                      details.forEach(t => {
+                        rows.push([
+                          t.cabinet, t.collaborateur, t.client, t.date,
+                          Math.round(t.heures * 100) / 100,
+                          '', '', '',
+                          t.typeMission, t.code, t.activite, t.millesime, t.facturable, t.commentaire
+                        ]);
+                        rowOutlines.push(1);
+                      });
+
+                      // Ligne totale (gras, outline level 0)
+                      rows.push([
+                        e.cabinet, e.collaborateurNom, e.clientNom, 'TOTAL',
                         Math.round(e.heuresReelles * 10) / 10,
+                        Math.round(e.heuresBudgetees * 10) / 10,
                         e.ecart,
-                        e.ecartPourcent,
-                        e.detailTravail || ''
-                      ]),
-                      [],
-                      ['TOTAL', '', '', Math.round(totaux.budgetees * 10) / 10, Math.round(totaux.reelles * 10) / 10, Math.round(totaux.ecart * 10) / 10, totaux.budgetees > 0 ? Math.round((totaux.ecart / totaux.budgetees) * 100) : 0, '']
-                    ];
-                    const wsSynth = XLSX.utils.aoa_to_sheet(synthData);
-                    XLSX.utils.book_append_sheet(wb, wsSynth, 'Synthèse écarts');
+                        e.ecartPourcent !== undefined ? `${e.ecartPourcent}%` : '',
+                        '', '', '', '', '', ''
+                      ]);
+                      rowOutlines.push(0);
+                    });
 
+                    // Ligne grand total
+                    rows.push([]);
+                    rowOutlines.push(0);
+                    rows.push([
+                      '', '', 'GRAND TOTAL', '',
+                      Math.round(totaux.reelles * 10) / 10,
+                      Math.round(totaux.budgetees * 10) / 10,
+                      Math.round(totaux.ecart * 10) / 10,
+                      totaux.budgetees > 0 ? `${Math.round((totaux.ecart / totaux.budgetees) * 100)}%` : '',
+                      '', '', '', '', '', ''
+                    ]);
+                    rowOutlines.push(0);
+
+                    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+                    // Appliquer outline levels pour le grouping Excel
+                    ws['!rows'] = [];
+                    // Header (row 0)
+                    ws['!rows'].push({});
+                    rowOutlines.forEach((level, i) => {
+                      ws['!rows'].push({ outlineLevel: level, hidden: false });
+                    });
+
+                    // Outline properties : détails sous le total (below = true)
+                    ws['!outline'] = { above: false, left: false };
+
+                    // Mettre en gras les lignes totales (via style si supporté)
+                    // Note: xlsx community ne supporte pas le styling, mais le grouping fonctionne
+
+                    // Largeurs de colonnes
+                    ws['!cols'] = [
+                      { wch: 6 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 8 },
+                      { wch: 8 }, { wch: 9 }, { wch: 9 },
+                      { wch: 18 }, { wch: 8 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 40 }
+                    ];
+
+                    XLSX.utils.book_append_sheet(wb, ws, 'Analyse écarts');
                     XLSX.writeFile(wb, `ecarts_${dateDebut}_${dateFin}.xlsx`);
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
