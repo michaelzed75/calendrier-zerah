@@ -61,6 +61,10 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
     return formatDateToYMD(d);
   });
   const [searchEcarts, setSearchEcarts] = useState('');
+  const [filtreTypeMission, setFiltreTypeMission] = useState('');
+  const [filtreCode, setFiltreCode] = useState('');
+  const [filtreMillesime, setFiltreMillesime] = useState('');
+  const [filtreFacturable, setFiltreFacturable] = useState('');
   const [sortEcarts, setSortEcarts] = useState({ column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
 
   // Charger les données depuis Supabase au démarrage
@@ -265,9 +269,13 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         commentaire: headers.findIndex(h => h && h.toLowerCase().includes('commentaire')),
         code: headers.findIndex(h => h && h.toLowerCase().includes('code')),
         typeMission: headers.findIndex(h => h && h.toLowerCase().includes('type') && h.toLowerCase().includes('mission')),
-        activite: headers.findIndex(h => h && h.toLowerCase().includes('activit')),
+        activite: headers.findIndex(h => h && (h.toLowerCase().includes('activit') || h.toLowerCase().includes('tâche') || h.toLowerCase().includes('tache'))),
         date: headers.findIndex(h => h && h.toLowerCase().includes('date')),
-        duree: headers.findIndex(h => h && (h.toLowerCase().includes('dur') || h.toLowerCase().includes('factur')))
+        duree: headers.findIndex(h => h && (h.toLowerCase().includes('dur') || h.toLowerCase().includes('factur'))),
+        facturable: headers.findIndex(h => h && h.toLowerCase().includes('facturable')),
+        produit: headers.findIndex(h => h && h.toLowerCase() === 'produit'),
+        quantitePl: headers.findIndex(h => h && h.toLowerCase().includes('quantit')),
+        statutFacturation: headers.findIndex(h => h && h.toLowerCase().includes('statut'))
       };
 
       const parsed = rows.map(row => {
@@ -305,12 +313,16 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           clientPennylane: row[colIndices.client] || '',
           millesime: row[colIndices.millesime] || '',
           commentaire: row[colIndices.commentaire] || '',
-          code: row[colIndices.code] || '',
+          code: row[colIndices.code] != null ? String(row[colIndices.code]) : '',
           typeMission: row[colIndices.typeMission] || '',
           activite: row[colIndices.activite] || '',
           date: dateStr,
           dureeMinutes: dureeMinutes,
-          dureeHeures: Math.round((dureeMinutes / 60) * 100) / 100
+          dureeHeures: Math.round((dureeMinutes / 60) * 100) / 100,
+          facturable: row[colIndices.facturable] || '',
+          produit: row[colIndices.produit] || '',
+          quantitePl: colIndices.quantitePl >= 0 ? (parseFloat(row[colIndices.quantitePl]) || 0) : 0,
+          statutFacturation: row[colIndices.statutFacturation] || ''
         };
       }).filter(row => row.collaborateurPennylane && row.clientPennylane && row.date);
 
@@ -440,7 +452,12 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           commentaire: row.commentaire,
           activite: row.activite,
           type_mission: row.typeMission,
-          millesime: row.millesime
+          millesime: row.millesime,
+          code: row.code,
+          facturable: row.facturable,
+          produit: row.produit,
+          quantite_pl: row.quantitePl,
+          statut_facturation: row.statutFacturation
           // Plus de champ cabinet - il se déduit du client
         });
       });
@@ -521,14 +538,24 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         date: t.date
       }));
 
-      // Requête pour récupérer les temps existants qui correspondent aux clés importées
-      const { data: existingTemps, error: fetchError } = await supabase
-        .from('temps_reels')
-        .select('*')
-        .gte('date', periodeDebut)
-        .lte('date', periodeFin);
-
-      if (fetchError) throw fetchError;
+      // Requête pour récupérer les temps existants (paginé — Supabase limite à 1000)
+      let existingTemps = [];
+      {
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: page, error: pageError } = await supabase
+            .from('temps_reels')
+            .select('*')
+            .gte('date', periodeDebut)
+            .lte('date', periodeFin)
+            .range(from, from + pageSize - 1);
+          if (pageError) throw pageError;
+          existingTemps = existingTemps.concat(page || []);
+          if (!page || page.length < pageSize) break;
+          from += pageSize;
+        }
+      }
 
       // Indexer les données existantes
       const existingIndex = {};
@@ -563,12 +590,18 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             heures: Math.round(nouveau.heures * 100) / 100
           });
         } else {
-          // Vérifier si les heures sont différentes
+          // Vérifier si les heures sont différentes OU si des champs sont vides en base
           const heuresExistantes = parseFloat(existant.heures);
           const heuresNouvelles = nouveau.heures;
+          const heuresDifferentes = Math.abs(heuresExistantes - heuresNouvelles) > 0.01;
 
-          if (Math.abs(heuresExistantes - heuresNouvelles) > 0.01) {
-            // MODIFICATION : Les heures sont différentes
+          // Détecter si des champs enrichis sont vides en base mais remplis dans le fichier
+          const champsEnrichis = !existant.code && nouveau.code ||
+            !existant.facturable && nouveau.facturable ||
+            !existant.produit && nouveau.produit ||
+            !existant.statut_facturation && nouveau.statut_facturation;
+
+          if (heuresDifferentes || champsEnrichis) {
             toUpdate.push({
               id: existant.id,
               ...nouveau
@@ -582,7 +615,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
               ecart: Math.round((heuresNouvelles - heuresExistantes) * 100) / 100
             });
           } else {
-            // INCHANGE : Les heures sont identiques
+            // INCHANGE : Les heures sont identiques et champs déjà remplis
             modifications.inchanges.push({
               collaborateur: collab?.nom || 'Inconnu',
               client: client?.nom || 'Inconnu',
@@ -612,7 +645,12 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             commentaire: dataWithoutId.commentaire,
             activite: dataWithoutId.activite,
             type_mission: dataWithoutId.type_mission,
-            millesime: dataWithoutId.millesime
+            millesime: dataWithoutId.millesime,
+            code: dataWithoutId.code,
+            facturable: dataWithoutId.facturable,
+            produit: dataWithoutId.produit,
+            quantite_pl: dataWithoutId.quantite_pl,
+            statut_facturation: dataWithoutId.statut_facturation
           })
           .eq('id', id);
 
@@ -644,13 +682,23 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
         }
       }
 
-      // 11. Recharger les temps réels depuis Supabase
-      const { data: newTempsData } = await supabase
-        .from('temps_reels')
-        .select('*')
-        .order('date', { ascending: false });
-
-      setTempsReels(newTempsData || []);
+      // 11. Recharger les temps réels depuis Supabase (paginé)
+      {
+        let allReloaded = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: page } = await supabase
+            .from('temps_reels')
+            .select('*')
+            .order('date', { ascending: false })
+            .range(from, from + pageSize - 1);
+          allReloaded = allReloaded.concat(page || []);
+          if (!page || page.length < pageSize) break;
+          from += pageSize;
+        }
+        setTempsReels(allReloaded);
+      }
 
       // 12. Afficher le résumé
       const resume = [
@@ -679,6 +727,43 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   };
 
   // Calcul des écarts
+  // Valeurs distinctes pour les filtres avancés (calculées depuis tempsReels)
+  const valeursDistinctes = React.useMemo(() => {
+    const typesMission = new Set();
+    const codes = {}; // code → tâche (activite)
+    const millesimes = new Set();
+
+    tempsReels.forEach(t => {
+      if (t.type_mission) typesMission.add(t.type_mission);
+      if (t.code) {
+        if (!codes[t.code]) codes[t.code] = t.activite || '';
+      }
+      if (t.millesime) millesimes.add(t.millesime);
+    });
+
+    return {
+      typesMission: [...typesMission].sort((a, b) => a.localeCompare(b, 'fr')),
+      codes: Object.entries(codes).sort((a, b) => {
+        const na = parseFloat(a[0]) || 0;
+        const nb = parseFloat(b[0]) || 0;
+        return na - nb;
+      }),
+      millesimes: [...millesimes].sort((a, b) => b.localeCompare(a)) // Plus récent en premier
+    };
+  }, [tempsReels]);
+
+  // Codes filtrés par Type de Mission sélectionné
+  const codesFiltresParType = React.useMemo(() => {
+    if (!filtreTypeMission) return valeursDistinctes.codes;
+    const codesDeceType = new Set();
+    tempsReels.forEach(t => {
+      if (t.type_mission === filtreTypeMission && t.code) {
+        codesDeceType.add(t.code);
+      }
+    });
+    return valeursDistinctes.codes.filter(([code]) => codesDeceType.has(code));
+  }, [filtreTypeMission, tempsReels, valeursDistinctes.codes]);
+
   const calculateEcarts = () => {
     // Filtrer les charges budgétées selon la période
     const chargesFiltrees = charges.filter(c => {
@@ -688,11 +773,19 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       return true;
     });
 
-    // Filtrer les temps réels selon la période
+    // Filtrer les temps réels selon la période et les filtres avancés
     const tempsReelsFiltres = tempsReels.filter(t => {
       if (t.date < dateDebut || t.date > dateFin) return false;
       if (filtreCollaborateur && t.collaborateur_id !== parseInt(filtreCollaborateur)) return false;
       if (filtreClient && t.client_id !== parseInt(filtreClient)) return false;
+      if (filtreTypeMission && t.type_mission !== filtreTypeMission) return false;
+      if (filtreCode && t.code !== filtreCode) return false;
+      if (filtreMillesime && t.millesime !== filtreMillesime) return false;
+      if (filtreFacturable) {
+        const estFacturable = t.facturable === 'true' || t.facturable === true;
+        if (filtreFacturable === 'oui' && !estFacturable) return false;
+        if (filtreFacturable === 'non' && estFacturable) return false;
+      }
       return true;
     });
 
@@ -733,26 +826,32 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
       }
     });
 
+    // Si un filtre avancé est actif, ne garder que les lignes avec du temps réel
+    // (les charges ne portent pas type_mission/code/millesime → pas filtrable)
+    const filtreAvanceActif = filtreTypeMission || filtreCode || filtreMillesime || filtreFacturable;
+
     // Calculer les écarts et enrichir avec les noms
-    return Object.values(ecarts).map(e => {
-      const collab = collaborateurs.find(c => c.id === e.collaborateur_id);
-      const client = clients.find(c => c.id === e.client_id);
-      const ecart = e.heuresReelles - e.heuresBudgetees;
-      const ecartPourcent = e.heuresBudgetees > 0 ? Math.round((ecart / e.heuresBudgetees) * 100) : (e.heuresReelles > 0 ? 100 : 0);
+    return Object.values(ecarts)
+      .filter(e => !filtreAvanceActif || e.heuresReelles > 0)
+      .map(e => {
+        const collab = collaborateurs.find(c => c.id === e.collaborateur_id);
+        const client = clients.find(c => c.id === e.client_id);
+        const ecart = e.heuresReelles - e.heuresBudgetees;
+        const ecartPourcent = e.heuresBudgetees > 0 ? Math.round((ecart / e.heuresBudgetees) * 100) : (e.heuresReelles > 0 ? 100 : 0);
 
-      // Déterminer le cabinet du client (ZG = Zerah Fiduciaire, AU = Audit Up)
-      const cabinetCode = client?.cabinet === 'Zerah Fiduciaire' ? 'ZG' : client?.cabinet === 'Audit Up' ? 'AU' : '-';
+        // Déterminer le cabinet du client (ZG = Zerah Fiduciaire, AU = Audit Up)
+        const cabinetCode = client?.cabinet === 'Zerah Fiduciaire' ? 'ZG' : client?.cabinet === 'Audit Up' ? 'AU' : '-';
 
-      return {
-        ...e,
-        collaborateurNom: collab?.nom || 'Inconnu',
-        clientNom: client?.nom || 'Inconnu',
-        cabinet: cabinetCode,
-        ecart: Math.round(ecart * 100) / 100,
-        ecartPourcent,
-        detailTravail: Array.from(e.commentaires).join(' | ')
-      };
-    });
+        return {
+          ...e,
+          collaborateurNom: collab?.nom || 'Inconnu',
+          clientNom: client?.nom || 'Inconnu',
+          cabinet: cabinetCode,
+          ecart: Math.round(ecart * 100) / 100,
+          ecartPourcent,
+          detailTravail: Array.from(e.commentaires).join(' | ')
+        };
+      });
   };
 
   const ecartsRaw = calculateEcarts();
@@ -1261,6 +1360,73 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Filtres avancés — 2e ligne */}
+              <div className="flex flex-wrap items-end gap-4 mt-3 pt-3 border-t border-slate-600">
+                <div>
+                  <label className="block text-sm text-white mb-1">Type de Mission</label>
+                  <select
+                    value={filtreTypeMission}
+                    onChange={(e) => { setFiltreTypeMission(e.target.value); setFiltreCode(''); }}
+                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
+                  >
+                    <option value="">Tous</option>
+                    {valeursDistinctes.typesMission.map(tm => (
+                      <option key={tm} value={tm}>{tm}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="min-w-[280px]">
+                  <label className="block text-sm text-white mb-1">Code</label>
+                  <select
+                    value={filtreCode}
+                    onChange={(e) => setFiltreCode(e.target.value)}
+                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white w-full"
+                  >
+                    <option value="">Tous</option>
+                    {codesFiltresParType.map(([code, tache]) => (
+                      <option key={code} value={code}>{code} — {tache}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-white mb-1">Millésime</label>
+                  <select
+                    value={filtreMillesime}
+                    onChange={(e) => setFiltreMillesime(e.target.value)}
+                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
+                  >
+                    <option value="">Tous</option>
+                    {valeursDistinctes.millesimes.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-white mb-1">Facturable</label>
+                  <select
+                    value={filtreFacturable}
+                    onChange={(e) => setFiltreFacturable(e.target.value)}
+                    className="px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white"
+                  >
+                    <option value="">Tous</option>
+                    <option value="oui">Oui</option>
+                    <option value="non">Non</option>
+                  </select>
+                </div>
+
+                {(filtreTypeMission || filtreCode || filtreMillesime || filtreFacturable) && (
+                  <button
+                    onClick={() => { setFiltreTypeMission(''); setFiltreCode(''); setFiltreMillesime(''); setFiltreFacturable(''); }}
+                    className="px-3 py-2 bg-slate-500 hover:bg-slate-400 text-white rounded-lg text-sm transition"
+                  >
+                    Réinitialiser filtres
+                  </button>
+                )}
               </div>
             </div>
 
