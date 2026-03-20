@@ -1609,7 +1609,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       detailParGroupe[key].push(t);
                     });
 
-                    // Pour chaque écart : lignes de détail (dépliables) puis ligne totale (gras)
+                    // Pour chaque écart : lignes de détail (dépliables) puis ligne totale
                     ecarts.forEach(e => {
                       const key = `${e.collaborateur_id}-${e.client_id}`;
                       const details = detailParGroupe[key] || [];
@@ -1617,27 +1617,43 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       // Trier les détails par date
                       details.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-                      // Lignes de détail (outline level 1 = dépliable)
-                      details.forEach(t => {
+                      if (details.length <= 1) {
+                        // Une seule ligne → pas de grouping, on affiche directement la ligne complète
+                        const t = details[0];
                         rows.push([
-                          t.cabinet, t.collaborateur, t.client, t.date,
-                          Math.round(t.heures * 100) / 100,
-                          '', '', '',
-                          t.typeMission, t.code, t.activite, t.millesime, t.facturable, t.commentaire
+                          e.cabinet, e.collaborateurNom, e.clientNom,
+                          t ? t.date : '',
+                          Math.round(e.heuresReelles * 10) / 10,
+                          Math.round(e.heuresBudgetees * 10) / 10,
+                          e.ecart,
+                          e.ecartPourcent !== undefined ? `${e.ecartPourcent}%` : '',
+                          t ? t.typeMission : '', t ? t.code : '', t ? t.activite : '',
+                          t ? t.millesime : '', t ? t.facturable : '', t ? t.commentaire : ''
                         ]);
-                        rowOutlines.push(1);
-                      });
+                        rowOutlines.push(0);
+                      } else {
+                        // Plusieurs lignes → détails dépliables (outline level 1) + ligne totale
+                        details.forEach(t => {
+                          rows.push([
+                            t.cabinet, t.collaborateur, t.client, t.date,
+                            Math.round(t.heures * 100) / 100,
+                            '', '', '',
+                            t.typeMission, t.code, t.activite, t.millesime, t.facturable, t.commentaire
+                          ]);
+                          rowOutlines.push(1);
+                        });
 
-                      // Ligne totale (gras, outline level 0)
-                      rows.push([
-                        e.cabinet, e.collaborateurNom, e.clientNom, 'TOTAL',
-                        Math.round(e.heuresReelles * 10) / 10,
-                        Math.round(e.heuresBudgetees * 10) / 10,
-                        e.ecart,
-                        e.ecartPourcent !== undefined ? `${e.ecartPourcent}%` : '',
-                        '', '', '', '', '', ''
-                      ]);
-                      rowOutlines.push(0);
+                        // Ligne totale (outline level 0 = toujours visible)
+                        rows.push([
+                          e.cabinet, e.collaborateurNom, e.clientNom, `TOTAL (${details.length})`,
+                          Math.round(e.heuresReelles * 10) / 10,
+                          Math.round(e.heuresBudgetees * 10) / 10,
+                          e.ecart,
+                          e.ecartPourcent !== undefined ? `${e.ecartPourcent}%` : '',
+                          '', '', '', '', '', ''
+                        ]);
+                        rowOutlines.push(0);
+                      }
                     });
 
                     // Ligne grand total
