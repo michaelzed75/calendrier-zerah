@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Search, RefreshCw, Check, X, Trash2, AlertCircle, Pencil, Link2, BarChart3, ArrowUpDown, Clock, ChevronDown, ChevronUp, FileText, Users, Building2, Download, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { supabase } from '../../supabaseClient';
 import { formatDateToYMD } from '../../utils/dateUtils';
 
@@ -1595,11 +1596,29 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
             {ecarts.length > 0 && (
               <div className="flex justify-end">
                 <button
-                  onClick={() => {
-                    const wb = XLSX.utils.book_new();
+                  onClick={async () => {
+                    const workbook = new ExcelJS.Workbook();
+                    const ws = workbook.addWorksheet('Analyse écarts', {
+                      properties: { outlineLevelRow: 1, defaultRowHeight: 18 }
+                    });
+
+                    // En-têtes
                     const headers = ['Cabinet', 'Collaborateur', 'Client', 'Date', 'Heures', 'Budgété', 'Écart (h)', 'Écart (%)', 'Type de Mission', 'Code', 'Tâche', 'Millésime', 'Facturable', 'Commentaire'];
-                    const rows = [headers];
-                    const rowOutlines = []; // outlineLevel par ligne (0 = total, 1 = détail)
+                    const headerRow = ws.addRow(headers);
+                    headerRow.font = { bold: true, size: 11 };
+                    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3748' } };
+                    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+
+                    // Largeurs
+                    ws.columns = [
+                      { width: 8 }, { width: 18 }, { width: 32 }, { width: 14 }, { width: 10 },
+                      { width: 10 }, { width: 10 }, { width: 10 },
+                      { width: 20 }, { width: 10 }, { width: 32 }, { width: 12 }, { width: 12 }, { width: 45 }
+                    ];
+
+                    // Style gras pour lignes totales
+                    const boldFont = { bold: true, size: 11 };
+                    const totalFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
 
                     // Regrouper tempsDetail par collaborateur+client
                     const detailParGroupe = {};
@@ -1609,18 +1628,15 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       detailParGroupe[key].push(t);
                     });
 
-                    // Pour chaque écart : lignes de détail (dépliables) puis ligne totale
                     ecarts.forEach(e => {
                       const key = `${e.collaborateur_id}-${e.client_id}`;
                       const details = detailParGroupe[key] || [];
-
-                      // Trier les détails par date
                       details.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
                       if (details.length <= 1) {
-                        // Une seule ligne → pas de grouping, on affiche directement la ligne complète
+                        // Une seule ligne → pas de grouping
                         const t = details[0];
-                        rows.push([
+                        const row = ws.addRow([
                           e.cabinet, e.collaborateurNom, e.clientNom,
                           t ? t.date : '',
                           Math.round(e.heuresReelles * 10) / 10,
@@ -1630,21 +1646,21 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                           t ? t.typeMission : '', t ? t.code : '', t ? t.activite : '',
                           t ? t.millesime : '', t ? t.facturable : '', t ? t.commentaire : ''
                         ]);
-                        rowOutlines.push(0);
+                        row.font = boldFont;
                       } else {
-                        // Plusieurs lignes → détails dépliables (outline level 1) + ligne totale
+                        // Lignes de détail (dépliables, outline level 1)
                         details.forEach(t => {
-                          rows.push([
+                          const row = ws.addRow([
                             t.cabinet, t.collaborateur, t.client, t.date,
                             Math.round(t.heures * 100) / 100,
                             '', '', '',
                             t.typeMission, t.code, t.activite, t.millesime, t.facturable, t.commentaire
                           ]);
-                          rowOutlines.push(1);
+                          row.outlineLevel = 1;
                         });
 
-                        // Ligne totale (outline level 0 = toujours visible)
-                        rows.push([
+                        // Ligne totale (gras, toujours visible)
+                        const totalRow = ws.addRow([
                           e.cabinet, e.collaborateurNom, e.clientNom, `TOTAL (${details.length})`,
                           Math.round(e.heuresReelles * 10) / 10,
                           Math.round(e.heuresBudgetees * 10) / 10,
@@ -1652,14 +1668,14 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                           e.ecartPourcent !== undefined ? `${e.ecartPourcent}%` : '',
                           '', '', '', '', '', ''
                         ]);
-                        rowOutlines.push(0);
+                        totalRow.font = boldFont;
+                        totalRow.fill = totalFill;
                       }
                     });
 
-                    // Ligne grand total
-                    rows.push([]);
-                    rowOutlines.push(0);
-                    rows.push([
+                    // Ligne vide + Grand total
+                    ws.addRow([]);
+                    const grandTotalRow = ws.addRow([
                       '', '', 'GRAND TOTAL', '',
                       Math.round(totaux.reelles * 10) / 10,
                       Math.round(totaux.budgetees * 10) / 10,
@@ -1667,33 +1683,18 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       totaux.budgetees > 0 ? `${Math.round((totaux.ecart / totaux.budgetees) * 100)}%` : '',
                       '', '', '', '', '', ''
                     ]);
-                    rowOutlines.push(0);
+                    grandTotalRow.font = { bold: true, size: 12 };
+                    grandTotalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCBD5E0' } };
 
-                    const ws = XLSX.utils.aoa_to_sheet(rows);
-
-                    // Appliquer outline levels pour le grouping Excel
-                    ws['!rows'] = [];
-                    // Header (row 0)
-                    ws['!rows'].push({});
-                    rowOutlines.forEach((level, i) => {
-                      ws['!rows'].push({ outlineLevel: level, hidden: false });
-                    });
-
-                    // Outline properties : détails sous le total (below = true)
-                    ws['!outline'] = { above: false, left: false };
-
-                    // Mettre en gras les lignes totales (via style si supporté)
-                    // Note: xlsx community ne supporte pas le styling, mais le grouping fonctionne
-
-                    // Largeurs de colonnes
-                    ws['!cols'] = [
-                      { wch: 6 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 8 },
-                      { wch: 8 }, { wch: 9 }, { wch: 9 },
-                      { wch: 18 }, { wch: 8 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 40 }
-                    ];
-
-                    XLSX.utils.book_append_sheet(wb, ws, 'Analyse écarts');
-                    XLSX.writeFile(wb, `ecarts_${dateDebut}_${dateFin}.xlsx`);
+                    // Générer et télécharger
+                    const buffer = await workbook.xlsx.writeBuffer();
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ecarts_${dateDebut}_${dateFin}.xlsx`;
+                    a.click();
+                    URL.revokeObjectURL(url);
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
                 >
