@@ -831,7 +831,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
     const filtreAvanceActif = filtreTypeMission || filtreCode || filtreMillesime || filtreFacturable;
 
     // Calculer les écarts et enrichir avec les noms
-    return Object.values(ecarts)
+    const ecartsResult = Object.values(ecarts)
       .filter(e => !filtreAvanceActif || e.heuresReelles > 0)
       .map(e => {
         const collab = collaborateurs.find(c => c.id === e.collaborateur_id);
@@ -852,9 +852,35 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
           detailTravail: Array.from(e.commentaires).join(' | ')
         };
       });
+
+    // Enrichir les temps réels filtrés avec noms pour l'export détaillé
+    const tempsDetail = tempsReelsFiltres.map(t => {
+      const collab = collaborateurs.find(c => c.id === t.collaborateur_id);
+      const client = clients.find(c => c.id === t.client_id);
+      const cabinetCode = client?.cabinet === 'Zerah Fiduciaire' ? 'ZG' : client?.cabinet === 'Audit Up' ? 'AU' : '-';
+      // Format date jj/mm/aaaa
+      const dateFormatted = t.date ? `${t.date.substring(8, 10)}/${t.date.substring(5, 7)}/${t.date.substring(0, 4)}` : '';
+      return {
+        cabinet: cabinetCode,
+        collaborateur: collab?.nom || 'Inconnu',
+        client: client?.nom || 'Inconnu',
+        date: dateFormatted,
+        heures: t.heures || 0,
+        typeMission: t.type_mission || '',
+        code: t.code || '',
+        activite: t.activite || '',
+        millesime: t.millesime || '',
+        facturable: t.facturable || '',
+        commentaire: t.commentaire || '',
+        produit: t.produit || '',
+        statutFacturation: t.statut_facturation || ''
+      };
+    });
+
+    return { ecarts: ecartsResult, tempsDetail };
   };
 
-  const ecartsRaw = calculateEcarts();
+  const { ecarts: ecartsRaw, tempsDetail } = calculateEcarts();
 
   // Filtrer par recherche
   const ecartsFiltres = ecartsRaw.filter(e => {
@@ -1569,7 +1595,37 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                 <button
                   onClick={() => {
                     const wb = XLSX.utils.book_new();
-                    const wsData = [
+
+                    // Onglet 1 : Détail ligne par ligne
+                    const detailData = [
+                      ['Cabinet', 'Collaborateur', 'Client', 'Date', 'Heures', 'Type de Mission', 'Code', 'Tâche', 'Millésime', 'Facturable', 'Commentaire', 'Produit', 'Statut facturation'],
+                      ...tempsDetail.map(t => [
+                        t.cabinet,
+                        t.collaborateur,
+                        t.client,
+                        t.date,
+                        Math.round(t.heures * 100) / 100,
+                        t.typeMission,
+                        t.code,
+                        t.activite,
+                        t.millesime,
+                        t.facturable,
+                        t.commentaire,
+                        t.produit,
+                        t.statutFacturation
+                      ])
+                    ];
+                    const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
+                    // Largeurs de colonnes
+                    wsDetail['!cols'] = [
+                      { wch: 6 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 8 },
+                      { wch: 18 }, { wch: 8 }, { wch: 30 }, { wch: 10 }, { wch: 10 },
+                      { wch: 40 }, { wch: 20 }, { wch: 18 }
+                    ];
+                    XLSX.utils.book_append_sheet(wb, wsDetail, 'Détail temps');
+
+                    // Onglet 2 : Synthèse écarts (comme avant)
+                    const synthData = [
                       ['Cabinet', 'Collaborateur', 'Client', 'Heures Budgétées', 'Heures Réelles', 'Écart (h)', 'Écart (%)', 'Détail travail'],
                       ...ecarts.map(e => [
                         e.cabinet,
@@ -1584,8 +1640,9 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
                       [],
                       ['TOTAL', '', '', Math.round(totaux.budgetees * 10) / 10, Math.round(totaux.reelles * 10) / 10, Math.round(totaux.ecart * 10) / 10, totaux.budgetees > 0 ? Math.round((totaux.ecart / totaux.budgetees) * 100) : 0, '']
                     ];
-                    const ws = XLSX.utils.aoa_to_sheet(wsData);
-                    XLSX.utils.book_append_sheet(wb, ws, 'Écarts');
+                    const wsSynth = XLSX.utils.aoa_to_sheet(synthData);
+                    XLSX.utils.book_append_sheet(wb, wsSynth, 'Synthèse écarts');
+
                     XLSX.writeFile(wb, `ecarts_${dateDebut}_${dateFin}.xlsx`);
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition"
