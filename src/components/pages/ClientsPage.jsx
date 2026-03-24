@@ -536,20 +536,9 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Clients');
 
-    // Ajuster la largeur des colonnes
     ws['!cols'] = [
-      { wch: 8 },  // ID
-      { wch: 30 }, // Nom
-      { wch: 5 },  // Type
-      { wch: 12 }, // SIREN
-      { wch: 8 },  // SIRET NIC
-      { wch: 30 }, // Email
-      { wch: 15 }, // Cabinet
-      { wch: 38 }, // Pennylane Customer ID
-      { wch: 15 }, // Code Pennylane
-      { wch: 20 }, // Chef
-      { wch: 8 },  // Charges
-      { wch: 6 }   // Actif
+      { wch: 8 }, { wch: 30 }, { wch: 5 }, { wch: 12 }, { wch: 8 },
+      { wch: 30 }, { wch: 15 }, { wch: 38 }, { wch: 15 }, { wch: 20 }, { wch: 8 }, { wch: 6 }
     ];
 
     const date = new Date().toISOString().split('T')[0];

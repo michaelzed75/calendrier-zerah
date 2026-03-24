@@ -1,6 +1,7 @@
 // @ts-check
 import React, { useState, useEffect } from 'react';
 import { FileText, Search, X, Download } from 'lucide-react';
+import ExcelJS from 'exceljs';
 import { supabase } from '../../supabaseClient';
 
 /**
@@ -578,33 +579,77 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
     return { total: all.length, faites, aFaire };
   };
 
-  // Export CSV du suivi
-  const exportSuiviCSV = () => {
+  // Export Excel du suivi (2 onglets : Détail + Synthèse)
+  const exportSuiviExcel = async () => {
     const data = getAllEcheancesForYear();
     if (data.length === 0) {
       alert('Aucune échéance configurée pour cette année');
       return;
     }
 
-    const headers = ['Client', 'Type', 'Date échéance', 'Montant', 'Statut', 'Fait par', 'Fait le'];
-    const csvContent = [
-      headers.join(';'),
-      ...data.map(row => [
-        row.client,
-        row.type,
-        row.dateEcheance,
-        row.montant || '',
-        row.fait ? 'Fait' : 'À faire',
-        row.faitPar,
-        row.faitLe
-      ].join(';'))
-    ].join('\n');
+    const wb = new ExcelJS.Workbook();
+    const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } } };
+    const greenFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF22C55E' } };
+    const greenFont = { color: { argb: 'FF052E16' }, bold: true };
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    // ── Onglet 1 : Détail des échéances ──
+    const wsDetail = wb.addWorksheet('Suivi détail');
+    const detailHeaders = ['Client', 'Type', 'Date échéance', 'Montant', 'Statut', 'Fait par', 'Fait le'];
+    const detailHeaderRow = wsDetail.addRow(detailHeaders);
+    detailHeaderRow.eachCell(cell => { cell.font = headerStyle.font; cell.fill = headerStyle.fill; });
+
+    data.forEach(row => {
+      const r = wsDetail.addRow([
+        row.client, row.type, row.dateEcheance, row.montant || '', row.fait ? 'Fait' : 'À faire', row.faitPar, row.faitLe
+      ]);
+      if (row.fait) {
+        r.eachCell(cell => { cell.fill = greenFill; cell.font = greenFont; });
+      }
+    });
+
+    wsDetail.columns = [{ width: 30 }, { width: 15 }, { width: 15 }, { width: 12 }, { width: 10 }, { width: 18 }, { width: 20 }];
+
+    // ── Onglet 2 : Synthèse par client ──
+    const wsSynthese = wb.addWorksheet('Synthèse');
+    const taxTypes = ['TVA', 'IS', 'IS Solde', 'Liasse', 'CFE', 'CVAE', 'TVTS', 'DAS2', 'Taxe Salaires', 'IFU'];
+    const synthHeaders = ['Client', ...taxTypes];
+    const synthHeaderRow = wsSynthese.addRow(synthHeaders);
+    synthHeaderRow.eachCell(cell => { cell.font = headerStyle.font; cell.fill = headerStyle.fill; cell.alignment = { horizontal: 'center' }; });
+
+    // Grouper les échéances par client
+    const clientIds = [...new Set(data.map(d => d.clientId))];
+    clientIds.forEach(clientId => {
+      const clientData = data.filter(d => d.clientId === clientId);
+      const clientName = clientData[0]?.client || '';
+
+      const taxValues = taxTypes.map(type => {
+        const matching = clientData.filter(e => e.type === type || e.type.startsWith(type));
+        if (matching.length === 0) return { text: '-', allFait: false, hasData: false };
+        const faitCount = matching.filter(e => e.fait).length;
+        const allFait = matching.every(e => e.fait);
+        return { text: `${faitCount}/${matching.length}`, allFait, hasData: true };
+      });
+
+      const row = wsSynthese.addRow([clientName, ...taxValues.map(v => v.text)]);
+      taxValues.forEach((v, i) => {
+        const cell = row.getCell(i + 2);
+        cell.alignment = { horizontal: 'center' };
+        if (v.hasData && v.allFait) {
+          cell.fill = greenFill;
+          cell.font = greenFont;
+        }
+      });
+    });
+
+    wsSynthese.columns = [{ width: 30 }, ...taxTypes.map(() => ({ width: 14 }))];
+
+    // Téléchargement
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `suivi_echeances_${anneeFiscale}.csv`;
+    link.download = `suivi_echeances_${anneeFiscale}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
     setShowExportModal(false);
@@ -968,11 +1013,11 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
                 Annuler
               </button>
               <button
-                onClick={exportSuiviCSV}
+                onClick={exportSuiviExcel}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center gap-2"
               >
                 <Download size={16} />
-                Exporter CSV
+                Exporter Excel
               </button>
             </div>
           </div>
