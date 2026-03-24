@@ -24,6 +24,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [editingClient, setEditingClient] = useState(null);
   const [mergingClient, setMergingClient] = useState(null);
   const [filterCabinet, setFilterCabinet] = useState('tous');
+  const [filterChef, setFilterChef] = useState('tous');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('nom');
   const [sortDirection, setSortDirection] = useState('asc');
@@ -463,10 +464,11 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const filteredClients = [...clients]
     .filter(client => {
       const matchesCabinet = filterCabinet === 'tous' || client.cabinet === filterCabinet || (filterCabinet === 'autres' && !client.cabinet);
+      const matchesChef = filterChef === 'tous' || (filterChef === 'non_assigne' ? !client.chef_mission_id : client.chef_mission_id === parseInt(filterChef));
       const term = searchTerm.toLowerCase();
       const matchesSearch = client.nom.toLowerCase().includes(term)
         || (client.email && client.email.toLowerCase().includes(term));
-      return matchesCabinet && matchesSearch;
+      return matchesCabinet && matchesChef && matchesSearch;
     })
     .sort((a, b) => {
       let valA, valB;
@@ -618,6 +620,17 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
               <option key={cab} value={cab}>{cab}</option>
             ))}
             <option value="autres">Sans cabinet</option>
+          </select>
+          <select
+            value={filterChef}
+            onChange={(e) => setFilterChef(e.target.value)}
+            className="bg-slate-700 border border-slate-600 text-white px-4 py-2 rounded-lg"
+          >
+            <option value="tous">Tous les chefs de mission</option>
+            {chefsMission.map(chef => (
+              <option key={chef.id} value={chef.id}>{chef.nom}</option>
+            ))}
+            <option value="non_assigne">Non assigné</option>
           </select>
         </div>
 
