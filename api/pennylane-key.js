@@ -55,7 +55,7 @@ async function authenticateAdmin(authHeader) {
   // Vérifier le flag is_admin du collaborateur
   const { data: collab, error: collabErr } = await supabaseAdmin
     .from('collaborateurs')
-    .select('id, email, is_admin, est_chef_mission, prenom, nom')
+    .select('id, email, is_admin, est_chef_mission, nom')
     .eq('email', userData.user.email)
     .single();
 
