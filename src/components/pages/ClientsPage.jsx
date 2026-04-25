@@ -1,9 +1,9 @@
 // @ts-check
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown, Shield } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
-import { ClientModal, MergeClientModal } from '../modals';
+import { ClientModal, MergeClientModal, PennylaneKeysModal } from '../modals';
 import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
 
 /**
@@ -31,13 +31,16 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
 
-  // États pour la modal API Key
+  // États pour la modal API Key (legacy : clé unique stockée en clair dans clients.pennylane_client_api_key)
   const [apiKeyModalClient, setApiKeyModalClient] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [testingApiKey, setTestingApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState(/** @type {'idle'|'success'|'error'|'testing'} */ ('idle'));
   const [apiKeyError, setApiKeyError] = useState('');
+
+  // État pour la nouvelle modal Vault (clés read + write chiffrées dans Supabase Vault)
+  const [vaultKeysClient, setVaultKeysClient] = useState(/** @type {Client | null} */ (null));
 
   // Chefs de mission pour l'assignation
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
@@ -732,17 +735,26 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => openApiKeyModal(client)}
-                        className={`p-1 rounded transition ${
-                          client.pennylane_client_api_key
-                            ? 'text-green-400 hover:bg-green-900/30'
-                            : 'text-white hover:bg-slate-700'
-                        }`}
-                        title={client.pennylane_client_api_key ? 'Clé API configurée' : 'Configurer la clé API'}
-                      >
-                        <Key size={18} />
-                      </button>
+                      <div className="flex justify-center gap-1">
+                        <button
+                          onClick={() => openApiKeyModal(client)}
+                          className={`p-1 rounded transition ${
+                            client.pennylane_client_api_key
+                              ? 'text-green-400 hover:bg-green-900/30'
+                              : 'text-white hover:bg-slate-700'
+                          }`}
+                          title={client.pennylane_client_api_key ? 'Clé API legacy configurée' : 'Configurer la clé API legacy'}
+                        >
+                          <Key size={18} />
+                        </button>
+                        <button
+                          onClick={() => setVaultKeysClient(client)}
+                          className="p-1 rounded transition text-cyan-400 hover:bg-cyan-900/30"
+                          title="Clés API Pennylane sécurisées (Vault) — read + write"
+                        >
+                          <Shield size={18} />
+                        </button>
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
@@ -819,7 +831,15 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
           />
         )}
 
-        {/* Modal clé API Pennylane */}
+        {/* Modal clés API Pennylane Vault (read + write) */}
+        {vaultKeysClient && (
+          <PennylaneKeysModal
+            client={vaultKeysClient}
+            onClose={() => setVaultKeysClient(null)}
+          />
+        )}
+
+        {/* Modal clé API Pennylane (legacy — clé unique en clair, à migrer) */}
         {apiKeyModalClient && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700">
