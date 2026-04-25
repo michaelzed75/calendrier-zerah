@@ -1,10 +1,11 @@
 // @ts-check
-import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown, Shield, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
 import { ClientModal, MergeClientModal, PennylaneKeysModal } from '../modals';
 import { testConnection } from '../../utils/testsComptables/pennylaneClientApi.js';
+import { fetchVaultStatuses, buildVaultColumnsForClient, parseImportFile, executeImport } from '../../utils/pennylaneVaultImportExcel.js';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -41,6 +42,22 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
   // État pour la nouvelle modal Vault (clés read + write chiffrées dans Supabase Vault)
   const [vaultKeysClient, setVaultKeysClient] = useState(/** @type {Client | null} */ (null));
+
+  // États pour l'import/export Excel des clés Vault
+  const [vaultStatuses, setVaultStatuses] = useState(/** @type {Object<number, any>} */ ({}));
+  const [importPreview, setImportPreview] = useState(/** @type {null | { rows: any[], stats: any }} */ (null));
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(/** @type {null | { current: number, total: number, currentName: string }} */ (null));
+  const [importResult, setImportResult] = useState(/** @type {null | { success: number, failed: any[] }} */ (null));
+  const fileInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+
+  // Charger les statuts Vault au montage (uniquement pour les admins, sinon l'endpoint répondra 403)
+  useEffect(() => {
+    if (!userCollaborateur?.is_admin) return;
+    fetchVaultStatuses()
+      .then(setVaultStatuses)
+      .catch(err => console.warn('[ClientsPage] Échec chargement statuts Vault:', err.message));
+  }, [userCollaborateur?.is_admin]);
 
   // Chefs de mission pour l'assignation
   const chefsMission = collaborateurs.filter(c => c.est_chef_mission && c.actif);
@@ -518,7 +535,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       return sortDirection === 'asc' ? cmp : -cmp;
     });
 
-  // Export Excel
+  // Export Excel (avec colonnes Vault read/write — les colonnes "Clé" sont volontairement vides)
   const handleExportExcel = () => {
     const dataToExport = filteredClients.map(client => ({
       'ID': client.id,
@@ -532,7 +549,9 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
       'Code Pennylane': client.code_pennylane || '',
       'Chef de mission': getChefName(client.chef_mission_id) || 'Non assigné',
       'Charges': getChargesCount(client.id),
-      'Actif': client.actif ? 'Oui' : 'Non'
+      'Actif': client.actif ? 'Oui' : 'Non',
+      // Colonnes Vault — les clés sont vides à l'export, à remplir avant import
+      ...buildVaultColumnsForClient(client.id, vaultStatuses)
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -541,11 +560,54 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
 
     ws['!cols'] = [
       { wch: 8 }, { wch: 30 }, { wch: 5 }, { wch: 12 }, { wch: 8 },
-      { wch: 30 }, { wch: 15 }, { wch: 38 }, { wch: 15 }, { wch: 20 }, { wch: 8 }, { wch: 6 }
+      { wch: 30 }, { wch: 15 }, { wch: 38 }, { wch: 15 }, { wch: 20 }, { wch: 8 }, { wch: 6 },
+      // Colonnes Vault
+      { wch: 26 }, { wch: 40 }, { wch: 26 }, { wch: 40 }
     ];
 
     const date = new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `clients_${date}.xlsx`);
+  };
+
+  // Import Excel — étape 1 : sélection du fichier + parsing → preview
+  const handleImportFileSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    // Reset l'input pour pouvoir réimporter le même fichier après modif
+    event.target.value = '';
+
+    try {
+      const result = await parseImportFile(file);
+      setImportPreview(result);
+    } catch (err) {
+      alert('Erreur lecture fichier : ' + err.message);
+    }
+  };
+
+  // Import Excel — étape 2 : confirmation → exécution
+  const handleConfirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    setImportProgress({ current: 0, total: 0, currentName: '' });
+
+    try {
+      const result = await executeImport(importPreview.rows, setImportProgress);
+      setImportResult(result);
+      // Recharger les statuts pour refléter les nouvelles clés
+      const newStatuses = await fetchVaultStatuses();
+      setVaultStatuses(newStatuses);
+    } catch (err) {
+      alert('Erreur import : ' + err.message);
+    }
+    setImporting(false);
+    setImportProgress(null);
+  };
+
+  const closeImportModal = () => {
+    setImportPreview(null);
+    setImportResult(null);
+    setImporting(false);
+    setImportProgress(null);
   };
 
   return (
@@ -574,6 +636,25 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
               <Download size={18} />
               Export Excel
             </button>
+            {userCollaborateur?.is_admin && (
+              <>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-cyan-700 hover:bg-cyan-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+                  title="Importer un Excel pour mettre à jour les clés API Pennylane (Vault)"
+                >
+                  <Upload size={18} />
+                  Import Excel
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleImportFileSelected}
+                />
+              </>
+            )}
             <button
               onClick={() => setShowAddModal(true)}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
@@ -837,6 +918,137 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
             client={vaultKeysClient}
             onClose={() => setVaultKeysClient(null)}
           />
+        )}
+
+        {/* Modal Import Excel — preview / progress / résultat */}
+        {importPreview && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800/90 border border-slate-700 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Upload size={22} className="text-cyan-400" />
+                  Import des clés API Pennylane
+                </h3>
+                {!importing && (
+                  <button onClick={closeImportModal} className="text-white hover:bg-slate-700 p-1 rounded">
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+
+              {/* Étape preview */}
+              {!importing && !importResult && (
+                <>
+                  <div className="bg-cyan-900/20 border border-cyan-800 text-white text-sm rounded p-3 mb-4">
+                    <div className="font-semibold mb-1">📋 Récapitulatif du fichier</div>
+                    <ul className="space-y-1 ml-4 list-disc">
+                      <li>{importPreview.stats.totalRows} lignes lues</li>
+                      <li className="text-green-300">{importPreview.stats.withReadKey} clé(s) READ à enregistrer</li>
+                      <li className="text-orange-300">{importPreview.stats.withWriteKey} clé(s) WRITE à enregistrer</li>
+                      <li className="text-white opacity-60">{importPreview.stats.ignored} ligne(s) ignorée(s) (clés vides)</li>
+                    </ul>
+                  </div>
+
+                  {importPreview.stats.errors.length > 0 && (
+                    <div className="bg-red-900/30 border border-red-800 text-white text-sm rounded p-3 mb-4">
+                      <div className="font-semibold mb-1">⚠️ Erreurs détectées</div>
+                      <ul className="space-y-1 ml-4 list-disc">
+                        {importPreview.stats.errors.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="bg-yellow-900/20 border border-yellow-800 text-white text-sm rounded p-3 mb-4">
+                    <div className="font-semibold mb-1">⚠️ Sécurité</div>
+                    Les clés vont être chiffrées dans Supabase Vault. <strong>Pensez à supprimer le fichier Excel
+                    de votre disque après l'import</strong> — il contient des clés API sensibles en clair.
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={closeImportModal}
+                      className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded text-sm"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={importPreview.stats.withReadKey + importPreview.stats.withWriteKey === 0}
+                      className="bg-cyan-700 hover:bg-cyan-800 text-white px-4 py-2 rounded text-sm disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Upload size={14} />
+                      Confirmer l'import
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Étape progress */}
+              {importing && importProgress && (
+                <div className="space-y-4">
+                  <div className="text-center text-white">
+                    <Loader2 size={32} className="animate-spin mx-auto mb-2 text-cyan-400" />
+                    <div className="font-semibold">Import en cours...</div>
+                    <div className="text-sm opacity-75 mt-1">
+                      {importProgress.current} / {importProgress.total}
+                      {importProgress.currentName && <> — {importProgress.currentName}</>}
+                    </div>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-2">
+                    <div
+                      className="bg-cyan-500 h-2 rounded-full transition-all"
+                      style={{ width: `${importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Étape résultat */}
+              {importResult && !importing && (
+                <>
+                  <div className="bg-green-900/20 border border-green-800 text-white text-sm rounded p-3 mb-4">
+                    <div className="font-semibold mb-1 flex items-center gap-2">
+                      <CheckCircle size={16} className="text-green-400" />
+                      Import terminé
+                    </div>
+                    <div className="ml-6">
+                      {importResult.success} clé(s) enregistrée(s) avec succès dans Vault.
+                    </div>
+                  </div>
+
+                  {importResult.failed.length > 0 && (
+                    <div className="bg-red-900/30 border border-red-800 text-white text-sm rounded p-3 mb-4">
+                      <div className="font-semibold mb-1 flex items-center gap-2">
+                        <AlertCircle size={16} className="text-red-400" />
+                        {importResult.failed.length} échec(s)
+                      </div>
+                      <ul className="space-y-1 ml-6 list-disc text-xs">
+                        {importResult.failed.map((f, i) => (
+                          <li key={i}>
+                            {f.nom} (ID {f.client_id}, {f.scope}) : {f.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="bg-yellow-900/30 border border-yellow-800 text-white text-sm rounded p-3 mb-4">
+                    🗑️ <strong>Pensez à supprimer le fichier Excel</strong> de votre disque maintenant — il contient
+                    encore les clés API en clair.
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={closeImportModal}
+                      className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded text-sm"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Modal clé API Pennylane (legacy — clé unique en clair, à migrer) */}
