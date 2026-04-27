@@ -130,29 +130,29 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
     }
   }, [apiCabinet, apiKeysMap]);
 
-  // Sauvegarder la clé API en base
+  // Sauvegarder UNIQUEMENT le company_id (la clé API est stockée dans Vault et ne se modifie
+  // que par SQL via set_pennylane_cabinet_key). Volontairement plus de champ api_key dans
+  // l'UI pour éviter de réintroduire une clé en clair dans la DB.
   const saveApiKey = async () => {
-    if (!apiKey || !apiCabinet || !apiCompanyId) {
-      setError('Veuillez remplir le cabinet, la clé API et le Company ID');
+    if (!apiCabinet || !apiCompanyId) {
+      setError('Veuillez sélectionner le cabinet et entrer le Company ID');
       return;
     }
     setSavingApiKey(true);
     try {
       const { error } = await supabase
         .from('pennylane_api_keys')
-        .upsert({
-          cabinet: apiCabinet,
-          api_key: apiKey,
-          company_id: apiCompanyId,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'cabinet' });
+        .update({ company_id: apiCompanyId, updated_at: new Date().toISOString() })
+        .eq('cabinet', apiCabinet);
       if (error) throw error;
-      setApiKeysMap(prev => ({ ...prev, [apiCabinet]: { api_key: apiKey, company_id: apiCompanyId } }));
-      // Configurer le company_id pour les appels API
+      setApiKeysMap(prev => ({
+        ...prev,
+        [apiCabinet]: { ...(prev[apiCabinet] || {}), company_id: apiCompanyId }
+      }));
       setCompanyId(apiCompanyId);
     } catch (err) {
-      console.error('Erreur sauvegarde clé API:', err);
-      setError('Erreur sauvegarde clé API: ' + err.message);
+      console.error('Erreur sauvegarde company_id:', err);
+      setError('Erreur sauvegarde : ' + err.message);
     }
     setSavingApiKey(false);
   };
@@ -189,13 +189,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   };
 
   /**
-   * Teste la connexion API
+   * Teste la connexion API (mode Vault — la clé est récupérée côté serveur)
    */
   const handleTestConnection = async () => {
-    const trimmedKey = apiKey?.trim();
     const trimmedCompanyId = apiCompanyId?.trim();
-    if (!trimmedKey) {
-      setError('Veuillez entrer une clé API valide');
+    if (!apiCabinet) {
+      setError('Veuillez sélectionner un cabinet');
+      return;
+    }
+    if (!apiKeysMap[apiCabinet]) {
+      setError(`Aucune clé Vault pour le cabinet "${apiCabinet}". Configurez-la via SQL : SELECT set_pennylane_cabinet_key('${apiCabinet}', '<clé>', '<company_id>');`);
       return;
     }
     if (!trimmedCompanyId) {
@@ -691,30 +694,39 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
               <label className="block text-sm font-medium text-white mb-2">
                 Clé API Pennylane v2
               </label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Entrez votre clé API..."
-                className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="px-3 py-2 bg-slate-800 text-white border border-slate-600 rounded-lg flex items-center gap-2 h-[42px]">
+                {apiCabinet && apiKeysMap[apiCabinet] ? (
+                  <>
+                    <CheckCircle size={16} className="text-green-400" />
+                    <span className="text-sm">Stockée dans Supabase Vault</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={16} className="text-yellow-400" />
+                    <span className="text-sm">Aucune clé Vault pour ce cabinet</span>
+                  </>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-white opacity-75">
+                Saisie/rotation : SQL Editor → <code>set_pennylane_cabinet_key(...)</code>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 mt-4">
             <button
               onClick={handleTestConnection}
-              disabled={!apiKey || !apiCompanyId || testingConnection}
+              disabled={!apiCabinet || !apiCompanyId || testingConnection || !apiKeysMap[apiCabinet]}
               className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 disabled:opacity-50"
             >
-              {testingConnection ? <Loader2 size={16} className="animate-spin" /> : 'Tester'}
+              {testingConnection ? <Loader2 size={16} className="animate-spin" /> : 'Tester la connexion'}
             </button>
             <button
               onClick={saveApiKey}
-              disabled={!apiKey || !apiCabinet || !apiCompanyId || savingApiKey}
+              disabled={!apiCabinet || !apiCompanyId || savingApiKey}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 disabled:opacity-50 flex items-center gap-1"
             >
               {savingApiKey ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              Enregistrer
+              Enregistrer Company ID
             </button>
             {connectionStatus === 'success' && (
               <span className="text-white text-sm flex items-center gap-1">
@@ -724,11 +736,6 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
             {connectionStatus === 'error' && (
               <span className="text-white text-sm flex items-center gap-1">
                 <AlertCircle size={14} className="text-red-400" /> Connexion échouée
-              </span>
-            )}
-            {apiCabinet && apiKeysMap[apiCabinet] && (
-              <span className="text-white text-sm flex items-center gap-1">
-                <CheckCircle size={14} className="text-green-400" /> Config enregistrée pour {apiCabinet}
               </span>
             )}
           </div>
