@@ -65,7 +65,8 @@ async function getAllCustomersV2(apiKey, companyId) {
   let cursor = null;
 
   while (true) {
-    let endpoint = '/customers?per_page=100';
+    // ⚠️ API Pennylane 2026 : limit remplace per_page (déprécié)
+    let endpoint = '/customers?limit=100';
     if (cursor) {
       endpoint += `&cursor=${cursor}`;
     }

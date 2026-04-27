@@ -100,7 +100,8 @@ async function getAllPaginated(apiKey, endpoint, baseParams = {}, onProgress = n
 
   while (true) {
     pageNum++;
-    const params = { ...baseParams, per_page: 100 };
+    // ⚠️ API Pennylane 2026 : limit remplace per_page (déprécié)
+    const params = { ...baseParams, limit: 100 };
     if (cursor) {
       params.cursor = cursor;
     }

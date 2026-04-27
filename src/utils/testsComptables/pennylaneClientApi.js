@@ -117,27 +117,25 @@ export async function callPennylaneAPI(auth, endpoint, params = {}, retries = 3)
  * @returns {Promise<Object[]>} Toutes les données (dédupliquées par id)
  */
 async function getAllPaginated(apiKey, endpoint, baseParams = {}) {
+  // ⚠️ API Pennylane 2026 : per_page/page sont dépréciés au profit de limit/cursor.
+  // On utilise désormais uniquement la pagination par curseur partout.
   let allItems = [];
   const maxPages = 1000; // sécurité haute
 
-  // Premier appel pour détecter le type de pagination
-  const firstParams = { ...baseParams, per_page: 100 };
+  // Premier appel
+  const firstParams = { ...baseParams, limit: 100 };
   const firstResult = await callPennylaneAPI(apiKey, endpoint, firstParams);
   const firstItems = firstResult.items || firstResult.data || firstResult.entries || [];
   allItems = allItems.concat(firstItems);
 
-  // Détecter le type de pagination
-  const usesCursor = firstResult.has_more !== null && firstResult.has_more !== undefined;
-  const usesPages = firstResult.total_pages !== null && firstResult.total_pages !== undefined && firstResult.total_pages > 1;
-
-  if (usesCursor && firstResult.has_more && firstResult.next_cursor) {
-    // Pagination par curseur (ledger_entry_lines, etc.)
+  // Suivre les curseurs jusqu'au bout
+  if (firstResult.has_more && firstResult.next_cursor) {
     let cursor = firstResult.next_cursor;
     let pageCount = 1;
 
     while (pageCount < maxPages && cursor) {
       pageCount++;
-      const params = { ...baseParams, per_page: 100, cursor };
+      const params = { ...baseParams, limit: 100, cursor };
       const result = await callPennylaneAPI(apiKey, endpoint, params);
       const items = result.items || result.data || result.entries || [];
       allItems = allItems.concat(items);
@@ -148,16 +146,6 @@ async function getAllPaginated(apiKey, endpoint, baseParams = {}) {
       } else {
         break;
       }
-    }
-  } else if (usesPages) {
-    // Pagination par pages (ledger_accounts, journals, etc.)
-    const totalPages = firstResult.total_pages;
-    for (let page = 2; page <= Math.min(totalPages, maxPages); page++) {
-      const params = { ...baseParams, per_page: 100, page };
-      const result = await callPennylaneAPI(apiKey, endpoint, params);
-      const items = result.items || result.data || result.entries || [];
-      allItems = allItems.concat(items);
-      await sleep(150);
     }
   }
 
@@ -182,7 +170,7 @@ async function getAllPaginated(apiKey, endpoint, baseParams = {}) {
  * Structure API Pennylane v2 :
  * - /ledger_entry_lines : lignes avec debit, credit, ledger_account.number, date
  *   Filtre autorisés: id, date, journal_id, ledger_account_id
- *   Pagination par curseur, per_page max réel = 20
+ *   Pagination par curseur, limit max réel = 20
  * - /ledger_entries : en-têtes avec label (nom fournisseur), piece_number
  *   Pagination par curseur
  * - /ledger_accounts : plan comptable avec number, label
@@ -505,7 +493,7 @@ export async function getFECByAccountsToDate(apiKey, startDate, endDate, compteP
       { field: 'journal_id', operator: 'eq', value: anJournalId }
     ]);
     // On ne récupère que la première page (max 100 lignes) — suffisant pour trouver la date
-    const anSample = await callPennylaneAPI(apiKey, '/ledger_entry_lines', { filter: anFilter, per_page: 100 });
+    const anSample = await callPennylaneAPI(apiKey, '/ledger_entry_lines', { filter: anFilter, limit: 100 });
     const anItems = anSample.items || anSample.data || [];
 
     if (anItems.length > 0) {
