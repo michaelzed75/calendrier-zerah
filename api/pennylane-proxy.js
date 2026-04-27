@@ -1,50 +1,133 @@
 /**
- * Proxy API pour les appels Pennylane côté client
- * Cette fonction serverless permet d'éviter les problèmes CORS
- * lors des appels API Pennylane depuis le navigateur
+ * Proxy API pour les appels Pennylane côté client.
+ *
+ * 2 modes d'authentification supportés :
+ *
+ *   1) Mode Vault (recommandé — utilisé par Tests Comptables) :
+ *      Headers :
+ *        - Authorization: Bearer <JWT_supabase>
+ *        - X-Pennylane-Client-Id: <client.id>
+ *        - X-Pennylane-Scope: 'read' (par défaut) ou 'write'
+ *      → Le proxy authentifie le user, fetch la clé depuis Vault, appelle Pennylane.
+ *      → La clé n'est JAMAIS exposée au navigateur.
+ *
+ *   2) Mode legacy (clé brute en header — utilisé par Honoraires temporairement) :
+ *      Headers :
+ *        - X-Pennylane-Api-Key: <clé en clair>
+ *        - X-Company-Id: <id> (pour les clés cabinet)
+ *      → Le proxy transmet la clé telle quelle.
+ *      → À supprimer à terme une fois toute la chaîne migrée vers Vault.
  */
+
+import { createClient } from '@supabase/supabase-js';
 
 const API_BASE = 'https://app.pennylane.com/api/external/v2';
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
+  : null;
+
+/**
+ * Vérifie le JWT et renvoie le user (ou null si invalide).
+ */
+async function authenticateUser(authHeader) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  if (!supabaseAdmin) return null;
+  const token = authHeader.slice(7);
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user?.email) return null;
+  return data.user;
+}
+
+/**
+ * Récupère la clé API d'un client depuis Vault.
+ */
+async function getVaultKey(clientId, scope) {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase non configuré côté serveur');
+  }
+  const { data, error } = await supabaseAdmin.rpc('get_pennylane_client_key', {
+    p_client_id: clientId,
+    p_scope: scope
+  });
+  if (error) throw new Error(`Erreur lecture Vault: ${error.message}`);
+  if (!data) throw new Error(`Aucune clé ${scope.toUpperCase()} configurée pour le client ${clientId}`);
+  return data;
+}
+
 export default async function handler(req, res) {
-  // Autoriser CORS
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Pennylane-Api-Key, X-Company-Id');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Pennylane-Api-Key, X-Pennylane-Client-Id, X-Pennylane-Scope, X-Company-Id'
+  );
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Récupérer la clé API depuis les headers
-  const apiKey = req.headers['x-pennylane-api-key'];
+  // ─────────────────────────────────────────────
+  // Résoudre la clé API à utiliser
+  // ─────────────────────────────────────────────
+  let apiKey = null;
+  let usingVault = false;
 
-  if (!apiKey) {
-    return res.status(400).json({
-      error: 'Clé API manquante (header X-Pennylane-Api-Key)'
-    });
+  const clientIdHeader = req.headers['x-pennylane-client-id'];
+
+  if (clientIdHeader) {
+    // Mode Vault
+    const user = await authenticateUser(req.headers['authorization']);
+    if (!user) {
+      return res.status(401).json({
+        error: 'Authentification requise (header Authorization: Bearer <JWT>)'
+      });
+    }
+
+    const clientId = parseInt(clientIdHeader, 10);
+    if (isNaN(clientId)) {
+      return res.status(400).json({ error: 'X-Pennylane-Client-Id doit être un nombre' });
+    }
+
+    const scope = req.headers['x-pennylane-scope'] === 'write' ? 'write' : 'read';
+
+    try {
+      apiKey = await getVaultKey(clientId, scope);
+      usingVault = true;
+    } catch (err) {
+      return res.status(404).json({ error: err.message });
+    }
+  } else {
+    // Mode legacy : clé directement dans le header
+    apiKey = req.headers['x-pennylane-api-key'];
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'Clé API manquante. Utilisez X-Pennylane-Client-Id (mode Vault) ou X-Pennylane-Api-Key (mode legacy).'
+      });
+    }
   }
 
-  // Récupérer l'endpoint depuis les query params
+  // ─────────────────────────────────────────────
+  // Construire et exécuter la requête Pennylane
+  // ─────────────────────────────────────────────
   const { endpoint, ...queryParams } = req.query;
 
   if (!endpoint) {
-    return res.status(400).json({
-      error: 'Endpoint manquant (query param endpoint)'
-    });
+    return res.status(400).json({ error: 'Endpoint manquant (query param endpoint)' });
   }
 
-  // Construire l'URL Pennylane
   const url = new URL(`${API_BASE}${endpoint}`);
-
-  // Ajouter les paramètres de requête (sauf endpoint)
   Object.entries(queryParams).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       url.searchParams.append(key, String(value));
     }
   });
 
-  console.log(`[Pennylane Proxy] ${req.method} ${url.toString()}`);
+  console.log(`[Pennylane Proxy] ${req.method} ${url.toString()} ${usingVault ? '(Vault)' : '(legacy)'}`);
 
   try {
     const headers = {
@@ -53,7 +136,6 @@ export default async function handler(req, res) {
       'Content-Type': 'application/json'
     };
 
-    // Transférer le Company ID (requis par l'API Pennylane v2)
     const companyId = req.headers['x-company-id'];
     if (companyId) {
       headers['X-Company-Id'] = companyId;
@@ -64,14 +146,12 @@ export default async function handler(req, res) {
       headers
     };
 
-    // Ajouter le body pour les requêtes POST, PUT, PATCH
     if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
       fetchOptions.body = JSON.stringify(req.body);
     }
 
     const response = await fetch(url.toString(), fetchOptions);
 
-    // 204 No Content (typique pour DELETE)
     if (response.status === 204) {
       return res.status(204).end();
     }
@@ -85,7 +165,6 @@ export default async function handler(req, res) {
       const text = await response.text();
       return res.status(response.status).send(text);
     }
-
   } catch (error) {
     console.error('[Pennylane Proxy] Erreur:', error.message);
     return res.status(500).json({

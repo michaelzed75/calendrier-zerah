@@ -11,11 +11,10 @@ import { getTest } from './tests/index.js';
 
 /**
  * @typedef {Object} RunTestParams
- * @property {number} clientId - ID du client
+ * @property {number} clientId - ID du client (utilisé comme identifiant pour Vault)
  * @property {string} testCode - Code du test à exécuter
  * @property {number} millesime - Année fiscale
  * @property {number} collaborateurId - ID du collaborateur qui lance le test
- * @property {string} pennylaneApiKey - Clé API Pennylane du client
  * @property {Object} [options] - Options supplémentaires du test
  */
 
@@ -30,14 +29,16 @@ import { getTest } from './tests/index.js';
  */
 
 /**
- * Récupère les données requises par un test
+ * Récupère les données requises par un test.
  * @param {string[]} requiredData - Types de données requis
- * @param {string} apiKey - Clé API Pennylane
+ * @param {number|string} auth - client_id (number, mode Vault) ou clé API en clair (string, legacy)
  * @param {number} millesime - Année fiscale
  * @param {Object} [options] - Options du test (peut contenir comptesAchats pour filtrage optimisé)
  * @returns {Promise<Object>} Données récupérées
  */
-async function fetchRequiredData(requiredData, apiKey, millesime, options = {}) {
+async function fetchRequiredData(requiredData, auth, millesime, options = {}) {
+  // alias historique
+  const apiKey = auth;
   const data = {};
 
   for (const dataType of requiredData) {
@@ -106,6 +107,9 @@ export async function runTest(params) {
   const { clientId, testCode, millesime, collaborateurId, pennylaneApiKey, options = {} } = params;
   const startTime = Date.now();
 
+  // Auth : préférer le clientId (mode Vault). pennylaneApiKey reste accepté pour rétrocompat.
+  const auth = pennylaneApiKey || clientId;
+
   // Vérifier que le test existe
   const testDefinition = getTest(testCode);
   if (!testDefinition) {
@@ -138,7 +142,7 @@ export async function runTest(params) {
 
   try {
     // Récupérer les données nécessaires via l'API Pennylane
-    const data = await fetchRequiredData(testDefinition.requiredData, pennylaneApiKey, millesime, options);
+    const data = await fetchRequiredData(testDefinition.requiredData, auth, millesime, options);
 
     // Exécuter le test
     const testResult = await testDefinition.execute({

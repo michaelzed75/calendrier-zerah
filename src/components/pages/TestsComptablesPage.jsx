@@ -86,9 +86,50 @@ export default function TestsComptablesPage({
   // Messages
   const [message, setMessage] = useState(/** @type {{type: 'success'|'error'|'info', text: string}|null} */ (null));
 
+  // Statuts des clés Vault READ par client (Set des clientIds qui ont une clé read configurée)
+  const [vaultReadKeys, setVaultReadKeys] = useState(/** @type {Set<number>} */ (new Set()));
+
+  // Charger les statuts Vault au montage
+  useEffect(() => {
+    async function loadVaultStatuses() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const res = await fetch('/api/pennylane-key', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ action: 'list' })
+        });
+        if (!res.ok) return; // si non admin, on ignore — la modal ne sera juste pas pré-remplie
+        const data = await res.json();
+        const readClientIds = new Set(
+          (data.items || [])
+            .filter(item => item.scope === 'read')
+            .map(item => item.client_id)
+        );
+        setVaultReadKeys(readClientIds);
+      } catch (err) {
+        console.warn('[TestsComptables] Impossible de charger les statuts Vault:', err.message);
+      }
+    }
+    loadVaultStatuses();
+  }, []);
+
+  /**
+   * Indique si un client a une clé READ configurée dans Vault
+   * (avec fallback sur la colonne legacy pour les clients pas encore migrés).
+   */
+  const clientHasKey = (client) => {
+    if (!client) return false;
+    return vaultReadKeys.has(client.id) || !!client.pennylane_client_api_key;
+  };
+
   // Clients accessibles (triés alphabétiquement)
   const accessibleClients = [...getAccessibleClients(userCollaborateur)].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-  const clientsAvecApi = accessibleClients.filter(c => c.pennylane_client_api_key);
+  const clientsAvecApi = accessibleClients.filter(clientHasKey);
   const filteredClients = accessibleClients.filter(c =>
     c.nom.toLowerCase().includes(clientSearch.toLowerCase())
   );
@@ -97,7 +138,7 @@ export default function TestsComptablesPage({
   const handleClientSelect = (client) => {
     setSelectedClientId(client.id);
     localStorage.setItem('testsComptables_selectedClientId', String(client.id));
-    setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
+    setClientSearch(client.nom + (clientHasKey(client) ? ' ✓' : ' (pas d\'API)'));
     setShowClientDropdown(false);
   };
 
@@ -109,10 +150,10 @@ export default function TestsComptablesPage({
     if (selectedClientId && clients.length > 0 && clientSearch === '') {
       const client = clients.find(c => c.id === selectedClientId);
       if (client) {
-        setClientSearch(client.nom + (client.pennylane_client_api_key ? ' ✓' : ' (pas d\'API)'));
+        setClientSearch(client.nom + (clientHasKey(client) ? ' ✓' : ' (pas d\'API)'));
       }
     }
-  }, [clients.length]);
+  }, [clients.length, vaultReadKeys]);
 
   // Charger les tests disponibles
   useEffect(() => {
@@ -260,9 +301,11 @@ export default function TestsComptablesPage({
     }
 
     const client = clients.find(c => c.id === selectedClientId);
-    if (!client?.pennylane_client_api_key) {
-      setMessage({ type: 'error', text: 'Ce client n\'a pas de clé API Pennylane configurée' });
-      setShowApiKeyModal(true);
+    if (!clientHasKey(client)) {
+      setMessage({
+        type: 'error',
+        text: 'Ce client n\'a pas de clé API Pennylane configurée. Demandez à un admin de la configurer dans Clients > icône 🛡️ Shield (clé READ).'
+      });
       return;
     }
 
@@ -273,12 +316,17 @@ export default function TestsComptablesPage({
     setDonneesAnalysees(null);
 
     try {
+      // Mode Vault prioritaire : on passe clientId, le proxy fetchera la clé depuis Vault.
+      // Si le client n'a pas encore de clé Vault mais a la clé legacy, on bascule en mode legacy.
+      const useVault = vaultReadKeys.has(selectedClientId);
       const result = await runTest({
         clientId: selectedClientId,
         testCode: selectedTestCode,
         millesime: selectedMillesime,
         collaborateurId: userCollaborateur.id,
-        pennylaneApiKey: client.pennylane_client_api_key,
+        // En mode Vault : pennylaneApiKey reste undefined → testRunner utilisera clientId
+        // En mode legacy : on passe la clé en clair (rétrocompat tant que tous les clients ne sont pas migrés)
+        pennylaneApiKey: useVault ? undefined : client.pennylane_client_api_key,
         options: {
           fournisseursReleve: Array.from(fournisseursReleve),
           fournisseursIgnores: Array.from(fournisseursIgnores),
@@ -558,8 +606,8 @@ export default function TestsComptablesPage({
                     className="px-3 py-2 cursor-pointer hover:bg-slate-600 text-white flex justify-between items-center"
                   >
                     <span>{client.nom}</span>
-                    <span className={client.pennylane_client_api_key ? 'text-green-400' : 'text-white text-sm'}>
-                      {client.pennylane_client_api_key ? '✓' : '(pas d\'API)'}
+                    <span className={clientHasKey(client) ? 'text-green-400' : 'text-white text-sm'}>
+                      {clientHasKey(client) ? '✓' : '(pas d\'API)'}
                     </span>
                   </div>
                 ))}

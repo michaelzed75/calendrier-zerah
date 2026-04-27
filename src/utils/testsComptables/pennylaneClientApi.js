@@ -1,13 +1,47 @@
 // @ts-check
 
 /**
- * @file Client API Pennylane pour les données comptables d'un client spécifique
- * Ce module gère les appels API vers Pennylane avec la clé API propre à chaque client
- * Utilise le proxy serverless /api/pennylane-proxy pour éviter les problèmes CORS
+ * @file Client API Pennylane pour les données comptables d'un client spécifique.
+ *
+ * Mode Vault (recommandé) :
+ *   Passer un NUMBER (= client.id) en 1er paramètre.
+ *   Le proxy /api/pennylane-proxy authentifiera le user via JWT et fetchera
+ *   la clé READ depuis Supabase Vault — la clé n'est jamais exposée au navigateur.
+ *
+ * Mode legacy (rétrocompat) :
+ *   Passer une STRING (= clé API en clair) en 1er paramètre.
+ *   Le proxy transmet la clé telle quelle via X-Pennylane-Api-Key.
+ *   Mode amené à disparaître.
  */
+
+import { supabase } from '../../supabaseClient.js';
 
 // URL du proxy API (fonction serverless Vercel)
 const PROXY_URL = '/api/pennylane-proxy';
+
+/**
+ * Construit les headers d'authentification selon le type d'auth (clientId number ou apiKey string).
+ * @param {string|number} auth
+ * @returns {Promise<Object>} headers à ajouter à fetch
+ */
+async function buildAuthHeaders(auth) {
+  if (typeof auth === 'number') {
+    // Mode Vault : on envoie client_id + JWT
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Session expirée — veuillez vous reconnecter');
+    }
+    return {
+      'Authorization': `Bearer ${session.access_token}`,
+      'X-Pennylane-Client-Id': String(auth),
+      'X-Pennylane-Scope': 'read'
+    };
+  }
+  // Mode legacy : clé brute
+  return {
+    'X-Pennylane-Api-Key': String(auth)
+  };
+}
 
 /**
  * Pause utilitaire pour le rate limiting
@@ -19,15 +53,16 @@ function sleep(ms) {
 }
 
 /**
- * Effectue un appel à l'API Pennylane via le proxy
- * Gère automatiquement le rate limiting (429) avec retry + backoff
- * @param {string} apiKey - Clé API Pennylane du client
+ * Effectue un appel à l'API Pennylane via le proxy.
+ * Gère automatiquement le rate limiting (429) avec retry + backoff.
+ *
+ * @param {string|number} auth - Soit un client_id (number, mode Vault recommandé), soit une clé API (string, mode legacy)
  * @param {string} endpoint - Endpoint relatif (ex: '/accounting_entries')
  * @param {Object} [params] - Paramètres de requête optionnels
  * @param {number} [retries=3] - Nombre de tentatives en cas de rate limit
  * @returns {Promise<Object>} Réponse de l'API
  */
-export async function callPennylaneAPI(apiKey, endpoint, params = {}, retries = 3) {
+export async function callPennylaneAPI(auth, endpoint, params = {}, retries = 3) {
   const url = new URL(PROXY_URL, window.location.origin);
 
   // Ajouter l'endpoint comme paramètre
@@ -40,11 +75,13 @@ export async function callPennylaneAPI(apiKey, endpoint, params = {}, retries = 
     }
   });
 
+  const authHeaders = await buildAuthHeaders(auth);
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        'X-Pennylane-Api-Key': apiKey,
+        ...authHeaders,
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       }
