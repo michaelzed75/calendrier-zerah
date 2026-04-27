@@ -274,7 +274,7 @@ export default function TestsComptablesPage({
           // Initialiser la sélection fournisseurs attestation
           if (dernierTest.donnees_analysees.fournisseurs) {
             setSelectedFournisseursAttestation(new Set(
-              dernierTest.donnees_analysees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+              dernierTest.donnees_analysees.fournisseurs.map(f => f.nomNormalise || ((f.nom || f.libelle || '').toUpperCase().replace(/\s+/g, ' ').trim()))
             ));
           }
         }
@@ -351,7 +351,7 @@ export default function TestsComptablesPage({
         // Initialiser la sélection fournisseurs pour attestation avec tous les fournisseurs
         if (result.donneesAnalysees?.fournisseurs) {
           setSelectedFournisseursAttestation(new Set(
-            result.donneesAnalysees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+            result.donneesAnalysees.fournisseurs.map(f => f.nomNormalise || ((f.nom || f.libelle || '').toUpperCase().replace(/\s+/g, ' ').trim()))
           ));
         }
         if (result.executionId) {
@@ -1058,7 +1058,7 @@ export default function TestsComptablesPage({
                                 <span className="text-white">Sélection attestation Word :</span>
                                 <button
                                   onClick={() => setSelectedFournisseursAttestation(new Set(
-                                    resultat.donnees.fournisseurs.map(f => f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim())
+                                    resultat.donnees.fournisseurs.map(f => f.nomNormalise || ((f.nom || f.libelle || '').toUpperCase().replace(/\s+/g, ' ').trim()))
                                   ))}
                                   className="px-2 py-0.5 bg-slate-700 text-white rounded hover:bg-slate-600 transition"
                                 >
@@ -1087,7 +1087,7 @@ export default function TestsComptablesPage({
                                 {/* Lignes fournisseurs */}
                                 <div className="max-h-[400px] overflow-y-auto">
                                   {resultat.donnees.fournisseurs.map((f, idx) => {
-                                    const normKey = f.nomNormalise || f.nom.toUpperCase().replace(/\s+/g, ' ').trim();
+                                    const normKey = f.nomNormalise || ((f.nom || f.libelle || '').toUpperCase().replace(/\s+/g, ' ').trim());
                                     const isChecked = selectedFournisseursAttestation.has(normKey);
                                     return (
                                       <div
