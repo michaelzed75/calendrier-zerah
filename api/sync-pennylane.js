@@ -195,15 +195,29 @@ export default async function handler(req, res) {
     let emailDebug = '';
 
     try {
-      // Lire les clés API v2 depuis pennylane_api_keys
-      const { data: apiKeys, error: apiKeysError } = await supabase
+      // Lire les clés API v2 depuis Vault (via la SQL function get_pennylane_cabinet_key).
+      // On lit d'abord la liste des cabinets + company_id (non sensibles), puis on récupère
+      // chaque clé séparément via Vault.
+      const { data: cabinetsRows, error: apiKeysError } = await supabase
         .from('pennylane_api_keys')
-        .select('cabinet, api_key, company_id');
+        .select('cabinet, company_id, vault_secret_id');
+
+      let apiKeys = null;
+      if (!apiKeysError && cabinetsRows && cabinetsRows.length > 0) {
+        apiKeys = [];
+        for (const row of cabinetsRows) {
+          if (!row.vault_secret_id) continue; // pas encore migré dans Vault
+          const { data: keyData, error: keyErr } = await supabase
+            .rpc('get_pennylane_cabinet_key', { p_cabinet: row.cabinet });
+          if (keyErr || !keyData) continue;
+          apiKeys.push({ cabinet: row.cabinet, api_key: keyData, company_id: row.company_id });
+        }
+      }
 
       if (apiKeysError) {
         emailDebug = `erreur lecture cles: ${apiKeysError.message}`;
       } else if (!apiKeys || apiKeys.length === 0) {
-        emailDebug = 'aucune cle API dans pennylane_api_keys';
+        emailDebug = 'aucune cle API utilisable (Vault vide ou non migre)';
       } else {
         // Charger les clients actifs avec SIREN
         const { data: currentClients } = await supabase

@@ -45,7 +45,7 @@ async function authenticateUser(authHeader) {
 /**
  * Récupère la clé API d'un client depuis Vault.
  */
-async function getVaultKey(clientId, scope) {
+async function getVaultClientKey(clientId, scope) {
   if (!supabaseAdmin) {
     throw new Error('Supabase non configuré côté serveur');
   }
@@ -55,6 +55,21 @@ async function getVaultKey(clientId, scope) {
   });
   if (error) throw new Error(`Erreur lecture Vault: ${error.message}`);
   if (!data) throw new Error(`Aucune clé ${scope.toUpperCase()} configurée pour le client ${clientId}`);
+  return data;
+}
+
+/**
+ * Récupère la clé API d'un cabinet depuis Vault.
+ */
+async function getVaultCabinetKey(cabinet) {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase non configuré côté serveur');
+  }
+  const { data, error } = await supabaseAdmin.rpc('get_pennylane_cabinet_key', {
+    p_cabinet: cabinet
+  });
+  if (error) throw new Error(`Erreur lecture Vault: ${error.message}`);
+  if (!data) throw new Error(`Aucune clé configurée dans Vault pour le cabinet "${cabinet}"`);
   return data;
 }
 
@@ -73,14 +88,19 @@ export default async function handler(req, res) {
 
   // ─────────────────────────────────────────────
   // Résoudre la clé API à utiliser
+  // 3 modes possibles :
+  //   - X-Pennylane-Client-Id (Vault, par client)
+  //   - X-Pennylane-Cabinet  (Vault, par cabinet)
+  //   - X-Pennylane-Api-Key  (legacy, clé brute)
   // ─────────────────────────────────────────────
   let apiKey = null;
   let usingVault = false;
 
   const clientIdHeader = req.headers['x-pennylane-client-id'];
+  const cabinetHeader = req.headers['x-pennylane-cabinet'];
 
   if (clientIdHeader) {
-    // Mode Vault
+    // Mode Vault — clé client
     const user = await authenticateUser(req.headers['authorization']);
     if (!user) {
       return res.status(401).json({
@@ -96,7 +116,22 @@ export default async function handler(req, res) {
     const scope = req.headers['x-pennylane-scope'] === 'write' ? 'write' : 'read';
 
     try {
-      apiKey = await getVaultKey(clientId, scope);
+      apiKey = await getVaultClientKey(clientId, scope);
+      usingVault = true;
+    } catch (err) {
+      return res.status(404).json({ error: err.message });
+    }
+  } else if (cabinetHeader) {
+    // Mode Vault — clé cabinet
+    const user = await authenticateUser(req.headers['authorization']);
+    if (!user) {
+      return res.status(401).json({
+        error: 'Authentification requise (header Authorization: Bearer <JWT>)'
+      });
+    }
+
+    try {
+      apiKey = await getVaultCabinetKey(cabinetHeader);
       usingVault = true;
     } catch (err) {
       return res.status(404).json({ error: err.message });
@@ -106,7 +141,7 @@ export default async function handler(req, res) {
     apiKey = req.headers['x-pennylane-api-key'];
     if (!apiKey) {
       return res.status(400).json({
-        error: 'Clé API manquante. Utilisez X-Pennylane-Client-Id (mode Vault) ou X-Pennylane-Api-Key (mode legacy).'
+        error: 'Clé API manquante. Utilisez X-Pennylane-Client-Id, X-Pennylane-Cabinet (modes Vault) ou X-Pennylane-Api-Key (legacy).'
       });
     }
   }

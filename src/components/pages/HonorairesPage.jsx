@@ -212,7 +212,8 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
 
     try {
       console.log('[HonorairesPage] Test connexion API Pennylane (company_id:', trimmedCompanyId, ')...');
-      const result = await testConnection(trimmedKey);
+      // Mode Vault : on passe { cabinet } au lieu de la clé en clair → le proxy fetch depuis Vault
+      const result = await testConnection({ cabinet: apiCabinet });
       setConnectionStatus(result.success ? 'success' : 'error');
 
       if (!result.success) {
@@ -271,9 +272,9 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
    * Lance la synchronisation Pennylane (tous cabinets configurés)
    */
   const handleSync = async () => {
+    // Mode Vault : on n'utilise plus info.api_key, on charge la clé via le proxy avec X-Pennylane-Cabinet
     const cabinetsList = Object.entries(apiKeysMap).map(([cab, info]) => ({
       cabinet: cab,
-      apiKey: info.api_key,
       companyId: info.company_id || ''
     }));
 
@@ -291,9 +292,10 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
       const reports = [];
       for (const cab of cabinetsList) {
         if (cab.companyId) setCompanyId(cab.companyId);
+        // Mode Vault : on passe { cabinet } au lieu de la clé brute
         const report = await previewSync(
           supabase,
-          cab.apiKey,
+          { cabinet: cab.cabinet },
           cab.cabinet,
           (progress) => {
             setSyncProgress({ ...progress, message: `[${cab.cabinet}] ${progress.message}` });
@@ -1181,9 +1183,11 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           <div className="flex items-center gap-4 mb-6">
             <button
               onClick={async () => {
+                // Mode Vault : on passe l'objet { cabinet } à la place de la clé en clair
+                // (reconciliation.js → fetchAllDataForSync l'utilise comme auth)
                 const cabinetsList = Object.entries(apiKeysMap).map(([cab, info]) => ({
                   cabinet: cab,
-                  apiKey: info.api_key,
+                  apiKey: { cabinet: cab },
                   companyId: info.company_id || ''
                 }));
                 if (cabinetsList.length === 0) {

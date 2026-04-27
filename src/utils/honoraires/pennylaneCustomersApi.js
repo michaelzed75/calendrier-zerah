@@ -7,7 +7,14 @@
  *
  * Utilise le proxy serverless /api/pennylane-proxy pour éviter les problèmes CORS.
  * L'API Pennylane v2 exige un header X-Company-Id pour identifier la société.
+ *
+ * 2 modes d'auth :
+ *   - Mode legacy : auth = clé API en clair (string)
+ *   - Mode Vault  : auth = { cabinet: 'Audit Up' } → le proxy fetch la clé depuis Vault
+ *     Dans ce mode, un JWT Supabase valide doit être en session.
  */
+
+import { supabase } from '../../supabaseClient.js';
 
 // URL du proxy API (fonction serverless Vercel)
 const PROXY_URL = '/api/pennylane-proxy';
@@ -25,13 +32,38 @@ export function setCompanyId(companyId) {
 }
 
 /**
+ * Construit les headers d'authentification.
+ *   - auth = string                    → mode legacy (X-Pennylane-Api-Key)
+ *   - auth = { cabinet: 'Audit Up' }   → mode Vault (X-Pennylane-Cabinet + JWT)
+ * @param {string|{cabinet: string}} auth
+ * @returns {Promise<Object>}
+ */
+async function buildAuthHeaders(auth) {
+  if (typeof auth === 'object' && auth !== null && auth.cabinet) {
+    // Mode Vault — clé cabinet
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Session expirée — veuillez vous reconnecter');
+    }
+    return {
+      'Authorization': `Bearer ${session.access_token}`,
+      'X-Pennylane-Cabinet': auth.cabinet
+    };
+  }
+  // Mode legacy
+  return {
+    'X-Pennylane-Api-Key': String(auth)
+  };
+}
+
+/**
  * Effectue un appel à l'API Pennylane via le proxy
- * @param {string} apiKey - Clé API Pennylane
+ * @param {string|{cabinet: string}} auth - Clé API (legacy) OU objet {cabinet} (Vault)
  * @param {string} endpoint - Endpoint relatif (ex: '/customers')
  * @param {Object} [params] - Paramètres de requête optionnels
  * @returns {Promise<Object>} Réponse de l'API
  */
-async function callPennylaneAPI(apiKey, endpoint, params = {}) {
+async function callPennylaneAPI(auth, endpoint, params = {}) {
   const url = new URL(PROXY_URL, window.location.origin);
 
   // Ajouter l'endpoint comme paramètre
@@ -46,8 +78,9 @@ async function callPennylaneAPI(apiKey, endpoint, params = {}) {
 
   console.log(`[callPennylaneAPI] ${endpoint} → ${url.toString()}`);
 
+  const authHeaders = await buildAuthHeaders(auth);
   const headers = {
-    'X-Pennylane-Api-Key': apiKey,
+    ...authHeaders,
     'Accept': 'application/json',
     'Content-Type': 'application/json'
   };
