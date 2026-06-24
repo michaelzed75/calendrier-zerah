@@ -97,7 +97,7 @@ export default async function handler(req, res) {
   if (!BREVO_API_KEY) return res.status(500).json({ error: 'BREVO_API_KEY not configured' });
 
   try {
-    const { onlyEmail } = req.body || {};
+    const onlyEmail = (req.body && req.body.onlyEmail) || (req.query && req.query.onlyEmail) || null;
     const today = todayParis();
 
     const [{ data: taches }, { data: collaborateurs }, { data: liaisons }, { data: clients }] = await Promise.all([
