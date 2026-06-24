@@ -1,6 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock, ClipboardCheck, Euro, DollarSign } from 'lucide-react';
+import { Users, Building2, Calendar, Menu, Palette, LogOut, Receipt, FileText, Clock, ClipboardCheck, Euro, DollarSign, ListTodo } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import AuthPage from './components/pages/AuthPage';
 import CalendarPage from './components/pages/CalendarPage';
@@ -12,6 +12,7 @@ import RepartitionTVAPage from './components/pages/RepartitionTVAPage';
 import TestsComptablesPage from './components/pages/TestsComptablesPage';
 import HonorairesPage from './components/pages/HonorairesPage';
 import SalairesPage from './components/pages/SalairesPage';
+import TachesPage from './components/pages/TachesPage';
 import { ThemeModal } from './components/modals';
 import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
 
@@ -27,7 +28,7 @@ import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
  * @typedef {import('./types.js').ImageCredits} ImageCredits
  */
 
-/** @typedef {'calendar'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'|'tests-comptables'|'honoraires'|'salaires'} PageName */
+/** @typedef {'calendar'|'taches'|'collaborateurs'|'clients'|'impots'|'tva'|'temps-reels'|'tests-comptables'|'honoraires'|'salaires'} PageName */
 
 // ============================================
 // COMPOSANT PRINCIPAL - APP
@@ -386,6 +387,15 @@ export default function App() {
               Calendrier
             </button>
             <button
+              onClick={() => setCurrentPage('taches')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                currentPage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+              }`}
+            >
+              <ListTodo size={18} />
+              Tâches
+            </button>
+            <button
               onClick={() => setCurrentPage('collaborateurs')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                 currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
@@ -506,6 +516,15 @@ export default function App() {
               Calendrier
             </button>
             <button
+              onClick={() => { setCurrentPage('taches'); setShowMobileMenu(false); }}
+              className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
+                currentPage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+              }`}
+            >
+              <ListTodo size={18} />
+              Tâches
+            </button>
+            <button
               onClick={() => { setCurrentPage('collaborateurs'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
                 currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
@@ -622,6 +641,15 @@ export default function App() {
           impotsTaxes={impotsTaxes}
           suiviEcheances={suiviEcheances}
           setSuiviEcheances={setSuiviEcheances}
+        />
+      )}
+      {currentPage === 'taches' && (
+        <TachesPage
+          clients={clients}
+          collaborateurs={collaborateurs}
+          collaborateurChefs={collaborateurChefs}
+          accent={accent}
+          userCollaborateur={userCollaborateur}
         />
       )}
       {currentPage === 'collaborateurs' && (
