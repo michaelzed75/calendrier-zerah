@@ -133,6 +133,7 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
   const [detail, setDetail] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [reassignForId, setReassignForId] = useState(null);
+  const [clientForId, setClientForId] = useState(null);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -179,13 +180,13 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
 
   useEffect(() => { charger(); }, [charger]);
 
-  // Ferme le menu de réaffectation au clic à l'extérieur
+  // Ferme les menus déroulants (réaffectation, société) au clic à l'extérieur
   useEffect(() => {
-    if (reassignForId == null) return undefined;
-    const close = () => setReassignForId(null);
+    if (reassignForId == null && clientForId == null) return undefined;
+    const close = () => { setReassignForId(null); setClientForId(null); };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
-  }, [reassignForId]);
+  }, [reassignForId, clientForId]);
 
   const remplacer = (t) => setTaches(prev => prev.map(x => (x.id === t.id ? t : x)));
 
@@ -263,6 +264,12 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
           }),
         }).catch(() => {});
       }
+    });
+
+  const handleSetClient = (tache, client) =>
+    protege(async () => {
+      setClientForId(null);
+      remplacer(await updateTache(supabase, tache.id, { client_id: client ? client.id : null }));
     });
 
   const handleDrop = (statutCible) => {
@@ -366,10 +373,14 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
                       collab={collabsById.get(tache.collaborateur_id)}
                       createur={collabsById.get(tache.created_by)}
                       montrerCollab={filtreCollab !== 'mes'}
+                      clients={clients}
                       equipe={visibleCollabs}
                       reassignOpen={reassignForId === tache.id}
-                      onToggleReassign={(id) => setReassignForId(prev => (prev === id ? null : id))}
+                      clientOpen={clientForId === tache.id}
+                      onToggleReassign={(id) => { setClientForId(null); setReassignForId(prev => (prev === id ? null : id)); }}
+                      onToggleClient={(id) => { setReassignForId(null); setClientForId(prev => (prev === id ? null : id)); }}
                       onReassign={handleReassign}
+                      onSetClient={handleSetClient}
                       onDragStart={() => setDragId(tache.id)}
                       onOpen={() => setDetail(tache)}
                       onChangeEcheance={handleChangeEcheance}
@@ -411,9 +422,56 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
 }
 
 /**
- * Carte compacte d'une tâche (2 lignes) avec réaffectation via la pastille du destinataire.
+ * Menu déroulant de choix de la société (avec recherche parmi tous les clients).
  */
-function TacheCard({ tache, today, client, collab, createur, montrerCollab, equipe, reassignOpen, onToggleReassign, onReassign, onDragStart, onOpen, onChangeEcheance, onToggleUrgent, onFait, onRouvrir }) {
+function ClientPicker({ clients, currentId, onPick }) {
+  const [q, setQ] = useState('');
+  const liste = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const arr = [...clients].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    return term ? arr.filter(c => c.nom.toLowerCase().includes(term)) : arr;
+  }, [clients, q]);
+
+  return (
+    <div
+      className="absolute left-0 top-7 z-50 bg-slate-900 border border-slate-700 rounded-lg p-1.5 w-60 shadow-xl"
+      onClick={e => e.stopPropagation()}
+    >
+      <input
+        autoFocus
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        placeholder="Rechercher une société…"
+        className="w-full bg-slate-700 text-white text-[12px] border border-slate-600 rounded px-2 py-1 mb-1"
+      />
+      <div className="max-h-56 overflow-y-auto">
+        <button
+          onClick={() => onPick(null)}
+          className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-800 text-white text-[12px] opacity-70"
+        >
+          — Aucune —
+        </button>
+        {liste.map(c => (
+          <button
+            key={c.id}
+            onClick={() => onPick(c)}
+            className={`w-full text-left px-2 py-1.5 rounded hover:bg-slate-800 text-white text-[13px] truncate ${c.id === currentId ? 'bg-slate-800' : ''}`}
+          >
+            {c.nom}
+          </button>
+        ))}
+        {liste.length === 0 && (
+          <div className="text-white text-[12px] opacity-60 px-2 py-2">Aucun résultat</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Carte compacte d'une tâche (2 lignes) avec société et destinataire cliquables.
+ */
+function TacheCard({ tache, today, client, clients, collab, createur, montrerCollab, equipe, reassignOpen, clientOpen, onToggleReassign, onToggleClient, onReassign, onSetClient, onDragStart, onOpen, onChangeEcheance, onToggleUrgent, onFait, onRouvrir }) {
   const faite = tache.statut === 'faite';
   const urg = urgenceDate(tache.date_echeance, today);
   const estUrgent = tache.priorite === 'urgente';
@@ -459,9 +517,19 @@ function TacheCard({ tache, today, client, collab, createur, montrerCollab, equi
 
       {/* Ligne 2 : client · échéance · source · destinataire */}
       <div className="flex items-center gap-1.5 mt-1.5">
-        {client && (
-          <span className="bg-cyan-600 text-white text-[11px] px-1.5 py-0.5 rounded shrink-0 max-w-[45%] truncate">{client.nom}</span>
-        )}
+        {/* Société (cliquable : choisir / changer) */}
+        <div className="relative shrink-0 max-w-[45%]">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleClient(tache.id); }}
+            title={client ? `${client.nom} — changer la société` : 'Choisir la société'}
+            className={`text-[11px] px-1.5 py-0.5 rounded truncate max-w-full inline-block ${client ? 'bg-cyan-600 text-white' : 'border border-dashed border-slate-500 text-white opacity-70'}`}
+          >
+            {client ? client.nom : 'SOCIÉTÉ'}
+          </button>
+          {clientOpen && (
+            <ClientPicker clients={clients} currentId={tache.client_id} onPick={(c) => onSetClient(tache, c)} />
+          )}
+        </div>
         {!faite && (
           <DateChip value={tache.date_echeance} urg={urg} onCommit={(d) => onChangeEcheance(tache, d)} />
         )}
