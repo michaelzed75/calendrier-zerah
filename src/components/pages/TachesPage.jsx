@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ListTodo, Plus, Mail, Pencil, Flag, Trash2, X, AlertTriangle, Check,
-  RotateCcw, GripVertical,
+  RotateCcw, CalendarClock,
 } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import {
@@ -61,10 +61,27 @@ function comparerTaches(a, b) {
   return (a.created_at || '') < (b.created_at || '') ? -1 : 1;
 }
 
+/** Initiales d'un collaborateur (ex. "Jean Dupont" -> "JD"). */
+function initiales(nom) {
+  if (!nom) return '?';
+  const parts = nom.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+const AVATAR_COLORS = ['#7c3aed', '#0e7490', '#9d174d', '#a16207', '#15803d', '#4338ca', '#0f766e', '#b45309'];
+
+/** Couleur d'avatar stable selon l'id du collaborateur. */
+function avatarColor(id) {
+  if (id == null) return '#475569';
+  return AVATAR_COLORS[id % AVATAR_COLORS.length];
+}
+
 /**
- * Champ date d'échéance éditable (corrige la saisie : ne persiste qu'une année complète).
+ * Puce d'échéance cliquable : affiche la date en chip coloré (rouge=retard, orange=proche),
+ * clic → sélecteur de date natif. Ne persiste qu'une année complète (corrige la saisie).
  */
-function DateEcheanceInput({ value, urgence, onCommit }) {
+function DateChip({ value, urg, onCommit }) {
   const [local, setLocal] = useState(value || '');
   useEffect(() => { setLocal(value || ''); }, [value]);
 
@@ -74,19 +91,24 @@ function DateEcheanceInput({ value, urgence, onCommit }) {
     if (annee >= 1900 && annee <= 2999 && v !== value) onCommit(v);
   };
 
-  const border =
-    urgence === 'retard' ? 'border-red-500' :
-    urgence === 'proche' ? 'border-amber-500' : 'border-slate-600';
+  const bg = urg === 'retard' ? 'bg-red-900/50' : urg === 'proche' ? 'bg-amber-900/50' : 'bg-slate-700';
+  const ic = urg === 'retard' ? 'text-red-400' : urg === 'proche' ? 'text-amber-400' : 'text-white';
 
   return (
-    <input
-      type="date"
-      value={local}
-      onChange={e => { setLocal(e.target.value); commit(e.target.value); }}
-      onBlur={() => commit(local)}
-      className={`bg-slate-700 text-white text-xs border ${border} rounded px-2 py-1 flex-1 min-w-0`}
-      title="Date d'échéance"
-    />
+    <span className="relative inline-flex shrink-0" onClick={e => e.stopPropagation()}>
+      <span className={`${bg} text-white text-[11px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap`}>
+        <CalendarClock size={12} className={ic} />
+        {value ? formatFr(value) : 'échéance'}
+      </span>
+      <input
+        type="date"
+        value={local}
+        onChange={e => { setLocal(e.target.value); commit(e.target.value); }}
+        onClick={e => { e.stopPropagation(); if (e.currentTarget.showPicker) e.currentTarget.showPicker(); }}
+        className="absolute inset-0 w-full opacity-0 cursor-pointer"
+        title="Modifier l'échéance"
+      />
+    </span>
   );
 }
 
@@ -110,6 +132,7 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
   /** @type {[Object|null, function]} */
   const [detail, setDetail] = useState(null);
   const [dragId, setDragId] = useState(null);
+  const [reassignForId, setReassignForId] = useState(null);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -155,6 +178,14 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
   }, [scopeIds]);
 
   useEffect(() => { charger(); }, [charger]);
+
+  // Ferme le menu de réaffectation au clic à l'extérieur
+  useEffect(() => {
+    if (reassignForId == null) return undefined;
+    const close = () => setReassignForId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [reassignForId]);
 
   const remplacer = (t) => setTaches(prev => prev.map(x => (x.id === t.id ? t : x)));
 
@@ -210,6 +241,28 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
       await deleteTache(supabase, tache.id);
       setTaches(prev => prev.filter(x => x.id !== tache.id));
       setDetail(null);
+    });
+
+  const handleReassign = (tache, nouveau) =>
+    protege(async () => {
+      setReassignForId(null);
+      if (!nouveau || nouveau.id === tache.collaborateur_id) return;
+      remplacer(await updateTache(supabase, tache.id, { collaborateur_id: nouveau.id }));
+      // Prévient le nouveau destinataire (sauf si c'est soi-même)
+      if (nouveau.email && nouveau.id !== userCollaborateur?.id) {
+        fetch('/api/notify-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'tache_reassignee',
+            destinataireEmail: nouveau.email,
+            destinataireNom: nouveau.nom,
+            titre: tache.titre,
+            client: clientsById.get(tache.client_id)?.nom || null,
+            parQui: userCollaborateur?.nom || 'Un collaborateur',
+          }),
+        }).catch(() => {});
+      }
     });
 
   const handleDrop = (statutCible) => {
@@ -313,6 +366,10 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
                       collab={collabsById.get(tache.collaborateur_id)}
                       createur={collabsById.get(tache.created_by)}
                       montrerCollab={filtreCollab !== 'mes'}
+                      equipe={visibleCollabs}
+                      reassignOpen={reassignForId === tache.id}
+                      onToggleReassign={(id) => setReassignForId(prev => (prev === id ? null : id))}
+                      onReassign={handleReassign}
                       onDragStart={() => setDragId(tache.id)}
                       onOpen={() => setDetail(tache)}
                       onChangeEcheance={handleChangeEcheance}
@@ -354,84 +411,117 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
 }
 
 /**
- * Carte d'une tâche dans le kanban.
+ * Carte compacte d'une tâche (2 lignes) avec réaffectation via la pastille du destinataire.
  */
-function TacheCard({ tache, today, client, collab, createur, montrerCollab, onDragStart, onOpen, onChangeEcheance, onToggleUrgent, onFait, onRouvrir }) {
+function TacheCard({ tache, today, client, collab, createur, montrerCollab, equipe, reassignOpen, onToggleReassign, onReassign, onDragStart, onOpen, onChangeEcheance, onToggleUrgent, onFait, onRouvrir }) {
   const faite = tache.statut === 'faite';
   const urg = urgenceDate(tache.date_echeance, today);
   const estUrgent = tache.priorite === 'urgente';
-  const urgent = estUrgent && !faite;
+  const autres = equipe ? equipe.filter(c => c.id !== tache.collaborateur_id) : [];
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
-      className="relative bg-slate-800 border border-slate-700 rounded-lg p-3 pt-5 cursor-pointer hover:border-slate-500 transition"
-      style={faite ? { opacity: 0.85 } : undefined}
+      className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-2 hover:border-slate-500 transition"
+      style={faite ? { opacity: 0.7 } : undefined}
     >
-      <GripVertical size={14} className="absolute left-2 top-2 text-slate-500" />
-
-      <div onClick={onOpen}>
-        {/* Titre centré + URGENT */}
-        <div className="flex items-center justify-center gap-2 text-center px-2">
-          {urgent && <span className="text-red-500 font-bold text-base">URGENT</span>}
-          <span className={`text-white text-base font-semibold leading-snug ${faite ? 'line-through' : ''}`}>
-            {tache.titre}
-          </span>
-        </div>
-
-        {/* Client */}
-        {client && (
-          <div className="mt-2 flex justify-center">
-            <span className="bg-cyan-600 text-white text-xs font-medium px-2.5 py-0.5 rounded">
-              {client.nom}
-            </span>
-          </div>
-        )}
-
-        {/* Source / créateur */}
-        <div className="mt-2 flex items-center justify-center gap-2 text-white text-[11px] opacity-80">
-          {tache.source === 'email' ? (
-            <span className="inline-flex items-center gap-1"><Mail size={11} /> de {createur?.nom.split(' ')[0] || tache.email_from}</span>
-          ) : (
-            <span className="inline-flex items-center gap-1"><Pencil size={11} /> {createur?.nom.split(' ')[0] || 'manuel'}</span>
-          )}
-          {montrerCollab && collab && <span>→ {collab.nom.split(' ')[0]}</span>}
-        </div>
-      </div>
-
-      {/* Date + actions */}
-      <div className="mt-3 pt-2 border-t border-slate-700 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+      {/* Ligne 1 : priorité · titre · action */}
+      <div className="flex items-center gap-2">
         {!faite ? (
-          <>
-            <button
-              onClick={() => onToggleUrgent(tache)}
-              title={estUrgent ? 'Retirer urgent' : 'Marquer urgent'}
-              className="shrink-0 hover:opacity-80"
-            >
-              <Flag size={16} className={estUrgent ? 'text-red-500' : 'text-white'} fill={estUrgent ? '#ef4444' : 'none'} />
-            </button>
-            <DateEcheanceInput
-              value={tache.date_echeance}
-              urgence={urg}
-              onCommit={(d) => onChangeEcheance(tache, d)}
-            />
-            <button
-              onClick={() => onFait(tache)}
-              className="bg-green-700/50 hover:bg-green-700 text-white text-[11px] px-2 py-1 rounded inline-flex items-center gap-1"
-              title="Marquer comme fait"
-            >
-              <Check size={12} /> Fait
-            </button>
-          </>
-        ) : (
           <button
-            onClick={() => onRouvrir(tache)}
-            className="bg-slate-700 hover:bg-slate-600 text-white text-[11px] px-2 py-1 rounded inline-flex items-center gap-1"
+            onClick={() => onToggleUrgent(tache)}
+            title={estUrgent ? 'Retirer urgent' : 'Marquer urgent'}
+            className="shrink-0 hover:opacity-80"
           >
-            <RotateCcw size={12} /> Rouvrir
+            <Flag size={14} className={estUrgent ? 'text-red-500' : 'text-white opacity-40'} fill={estUrgent ? '#ef4444' : 'none'} />
+          </button>
+        ) : (
+          <Check size={15} className="text-green-500 shrink-0" />
+        )}
+        <span
+          onClick={onOpen}
+          className={`flex-1 min-w-0 truncate text-white text-[13px] font-medium cursor-pointer ${faite ? 'line-through' : ''}`}
+          title={tache.titre}
+        >
+          {tache.titre}
+        </span>
+        {!faite ? (
+          <button onClick={() => onFait(tache)} title="Marquer comme fait" className="shrink-0 text-green-500 hover:text-green-400">
+            <Check size={18} />
+          </button>
+        ) : (
+          <button onClick={() => onRouvrir(tache)} title="Rouvrir" className="shrink-0 text-white opacity-70 hover:opacity-100">
+            <RotateCcw size={14} />
           </button>
         )}
+      </div>
+
+      {/* Ligne 2 : client · échéance · source · destinataire */}
+      <div className="flex items-center gap-1.5 mt-1.5">
+        {client && (
+          <span className="bg-cyan-600 text-white text-[11px] px-1.5 py-0.5 rounded shrink-0 max-w-[45%] truncate">{client.nom}</span>
+        )}
+        {!faite && (
+          <DateChip value={tache.date_echeance} urg={urg} onCommit={(d) => onChangeEcheance(tache, d)} />
+        )}
+        {faite && tache.date_faite && (
+          <span className="text-white text-[11px] opacity-70">fait le {formatFr(tache.date_faite.slice(0, 10))}</span>
+        )}
+
+        <span className="flex-1" />
+
+        {createur && !faite && (
+          <span className="text-white text-[11px] opacity-70 inline-flex items-center gap-1 shrink-0">
+            {tache.source === 'email' ? <Mail size={11} /> : <Pencil size={11} />}
+            <span className="truncate max-w-[70px]">{tache.source === 'email' ? 'de ' : ''}{createur.nom.split(' ')[0]}</span>
+          </span>
+        )}
+
+        {/* Pastille destinataire + menu de réaffectation */}
+        <div className="relative shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleReassign(tache.id); }}
+            title={`${collab ? collab.nom : 'Non assignée'} — réaffecter`}
+            className="rounded-full block"
+            style={{ outline: reassignOpen ? '2px solid #a78bfa' : 'none' }}
+          >
+            <span
+              className="w-[22px] h-[22px] rounded-full inline-flex items-center justify-center text-white text-[10px] font-medium"
+              style={{ background: avatarColor(collab?.id) }}
+            >
+              {initiales(collab?.nom)}
+            </span>
+          </button>
+          {reassignOpen && (
+            <div
+              className="absolute right-0 top-8 z-50 bg-slate-900 border border-slate-700 rounded-lg p-1.5 w-52 shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="text-white text-[10px] uppercase tracking-wide opacity-60 px-2 py-1">Réaffecter à</div>
+              <div className="max-h-56 overflow-y-auto">
+                {autres.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => onReassign(tache, c)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-800 text-left"
+                  >
+                    <span
+                      className="w-[22px] h-[22px] rounded-full inline-flex items-center justify-center text-white text-[10px] font-medium shrink-0"
+                      style={{ background: avatarColor(c.id) }}
+                    >
+                      {initiales(c.nom)}
+                    </span>
+                    <span className="text-white text-[13px] truncate">{c.nom}</span>
+                  </button>
+                ))}
+                {autres.length === 0 && (
+                  <div className="text-white text-[12px] opacity-60 px-2 py-2">Aucun autre collègue dans votre périmètre</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -91,6 +91,18 @@ export default async function handler(req, res) {
     const clientLigne = client ? ` (client ${client})` : '';
     const prenom = destinataireNom ? destinataireNom.split(' ')[0] : '';
 
+    if (type === 'tache_reassignee') {
+      const corps = `
+        <p>Bonjour ${prenom},</p>
+        <p><strong>${parQui || 'Un collaborateur'}</strong> vous a confié une tâche&nbsp;:</p>
+        <p style="background:#f5f3ff;border-left:3px solid #7c3aed;padding:10px 14px;margin:16px 0;">
+          <strong>${titre}</strong>${clientLigne}
+        </p>
+      `;
+      await sendEmail(destinataireEmail, destinataireNom || '', `Une tâche vous a été confiée : ${titre}`, gabarit('Une tâche vous a été confiée', corps));
+      return res.status(200).json({ success: true });
+    }
+
     if (type === 'tache_faite') {
       const corps = `
         <p>Bonjour ${prenom},</p>
