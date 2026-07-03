@@ -29,10 +29,18 @@ function diffJours(aIso, bIso) {
   return Math.round((Date.parse(`${bIso}T00:00:00Z`) - Date.parse(`${aIso}T00:00:00Z`)) / 86400000);
 }
 
-function formaterDateFr(iso) {
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/** Date ISO -> "20 juin" (format court français). */
+function formaterJourMois(iso) {
   if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
+  try {
+    return new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  } catch (e) {
+    return iso;
+  }
 }
 
 async function sendEmail(to, toName, subject, htmlContent) {
@@ -50,41 +58,65 @@ async function sendEmail(to, toName, subject, htmlContent) {
   return response.json();
 }
 
-function ligne(t, clientsById, avecAssigne, collabsById) {
+/** Une ligne de tâche (style iOS : accent couleur à gauche, date à droite). */
+function ligne(t, couleur, clientsById, avecAssigne, collabsById) {
   const client = t.client_id && clientsById.get(t.client_id);
-  const clientTxt = client ? ` <span style="color:#0e7490;">(${client.nom})</span>` : '';
-  const ech = t.date_echeance ? ` — échéance ${formaterDateFr(t.date_echeance)}` : '';
-  const urg = t.priorite === 'urgente' ? ' <strong style="color:#dc2626;">URGENT</strong>' : '';
-  const qui = avecAssigne && t.collaborateur_id && collabsById.get(t.collaborateur_id)
-    ? ` <span style="color:#6b7280;">→ ${collabsById.get(t.collaborateur_id).nom}</span>` : '';
-  return `<li style="margin:4px 0;">${t.titre}${clientTxt}${ech}${urg}${qui}</li>`;
-}
-
-function section(titre, couleur, items) {
-  if (!items.length) return '';
+  const meta = [];
+  if (client) meta.push(escapeHtml(client.nom));
+  if (avecAssigne && t.collaborateur_id && collabsById && collabsById.get(t.collaborateur_id)) {
+    meta.push('&rarr; ' + escapeHtml(collabsById.get(t.collaborateur_id).nom));
+  }
+  const urgent = t.priorite === 'urgente'
+    ? '<span style="color:#ff3b30;font-weight:700;">URGENT&nbsp;&middot;&nbsp;</span>' : '';
+  const dateTxt = t.date_echeance ? formaterJourMois(t.date_echeance) : 'à dater';
+  const metaHtml = meta.length
+    ? `<div style="font-size:13px;color:#8e8e93;margin-top:1px;">${meta.join(' &middot; ')}</div>` : '';
   return `
-    <p style="margin:18px 0 6px;font-weight:600;color:${couleur};">${titre}</p>
-    <ul style="margin:0;padding-left:20px;color:#374151;font-size:14px;">${items.join('')}</ul>`;
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">
+    <tr>
+      <td width="3" style="background:${couleur};border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+      <td style="padding:3px 8px 3px 12px;">
+        <div style="font-size:15px;color:#1c1c1e;font-weight:500;line-height:1.3;">${urgent}${escapeHtml(t.titre)}</div>
+        ${metaHtml}
+      </td>
+      <td align="right" valign="top" style="padding:3px 0;white-space:nowrap;">
+        <span style="color:${couleur};font-size:13px;font-weight:600;">${dateTxt}</span>
+      </td>
+    </tr>
+  </table>`;
 }
 
+/** Une section (titre coloré en petites majuscules + ses lignes). */
+function section(titre, couleur, taches, clientsById, avecAssigne, collabsById) {
+  if (!taches.length) return '';
+  const rows = taches.map(t => ligne(t, couleur, clientsById, avecAssigne, collabsById)).join('');
+  return `<div style="color:${couleur};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin:20px 0 8px;">${escapeHtml(titre)}</div>${rows}`;
+}
+
+/** Enveloppe email — style épuré iOS (fond gris clair, carte blanche arrondie). */
 function gabarit(prenom, contenu) {
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,sans-serif;background:#f3f4f6;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td align="center" style="padding:32px 16px;">
-    <table role="presentation" style="width:100%;max-width:600px;border-collapse:collapse;">
-      <tr><td style="background:#5b21b6;border-radius:14px 14px 0 0;padding:26px;text-align:center;">
-        <h1 style="margin:0;color:#fff;font-size:20px;font-weight:600;">Vos tâches de la semaine</h1>
-      </td></tr>
-      <tr><td style="background:#fff;padding:26px;color:#374151;font-size:15px;line-height:1.5;">
-        <p style="margin:0 0 8px;">Bonjour ${prenom},</p>
-        ${contenu}
-        <div style="margin-top:22px;"><a href="${APP_URL}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:600;">Ouvrir mes tâches</a></div>
-      </td></tr>
-      <tr><td style="background:#1e293b;border-radius:0 0 14px 14px;padding:16px;text-align:center;">
-        <p style="margin:0;color:#e2e8f0;font-size:14px;font-weight:600;">AUDIT UP</p>
-      </td></tr>
-    </table>
-  </td></tr></table>
+  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f2f2f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7;font-family:${font};">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:20px;">
+        <tr><td style="padding:26px 22px 4px;">
+          <div style="font-size:22px;font-weight:700;color:#1c1c1e;letter-spacing:-0.3px;">Bonjour ${escapeHtml(prenom)}</div>
+          <div style="font-size:14px;color:#8e8e93;margin-top:3px;">Voici vos tâches de la semaine.</div>
+        </td></tr>
+        <tr><td style="padding:0 22px 6px;">
+          ${contenu}
+          <div style="margin:24px 0 6px;">
+            <a href="${APP_URL}" style="display:block;text-align:center;border:1.5px solid #7c3aed;color:#7c3aed;text-decoration:none;font-size:15px;font-weight:600;padding:12px;border-radius:14px;">Ouvrir mes tâches</a>
+          </div>
+        </td></tr>
+        <tr><td style="padding:14px 22px 24px;text-align:center;">
+          <div style="font-size:12px;color:#b0b0b5;">AUDIT UP &middot; Calendrier</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body></html>`;
 }
 
@@ -138,11 +170,11 @@ export default async function handler(req, res) {
         .sort((a, b) => (a.date_echeance || '').localeCompare(b.date_echeance || ''));
 
       const blocs = [
-        section('⚠️ En retard', '#dc2626', mesEnRetard.map(t => ligne(t, clientsById))),
-        section('À venir (≤ 2 jours)', '#d97706', mesProche.map(t => ligne(t, clientsById))),
-        section('Sans date — à planifier', '#6b7280', mesSansDate.map(t => ligne(t, clientsById))),
-        section('Tâches que vous avez confiées, sans date', '#6b7280', aDater.map(t => ligne(t, clientsById, true, collabsById))),
-        section('Équipe — en retard', '#dc2626', equipeRetard.map(t => ligne(t, clientsById, true, collabsById))),
+        section('En retard', '#ff3b30', mesEnRetard, clientsById),
+        section('À venir (≤ 2 jours)', '#ff9500', mesProche, clientsById),
+        section('Sans date — à planifier', '#8e8e93', mesSansDate, clientsById),
+        section('Tâches que vous avez confiées, sans date', '#8e8e93', aDater, clientsById, true, collabsById),
+        section('Équipe — en retard', '#ff3b30', equipeRetard, clientsById, true, collabsById),
       ].join('');
 
       if (!blocs.trim()) continue;
