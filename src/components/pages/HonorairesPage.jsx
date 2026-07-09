@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import { RefreshCw, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp, Download, TrendingUp, BarChart3, ShieldCheck, XCircle, GitCompare, Search, FileSpreadsheet, Scissors, Calculator } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
@@ -44,7 +45,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [auditLoading, setAuditLoading] = useState(false);
 
   // Onglets
-  const [activeTab, setActiveTab] = useState('vue'); // 'vue' | 'augmentation' | 'restructuration' | 'facturation' | 'audit' | 'reconciliation'
+  const [activeTab, setActiveTab] = usePersistedState('honoraires_activeTab', 'vue'); // 'vue' | 'augmentation' | 'restructuration' | 'facturation' | 'audit' | 'reconciliation'
 
   // Réconciliation (persisté en sessionStorage)
   const [reconData, setReconDataRaw] = useState(() => {
@@ -68,8 +69,8 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [reconSort, setReconSort] = useState({ column: 'statut', direction: 'asc' });
 
   // Filtres
-  const [filterCabinet, setFilterCabinet] = useState('tous');
-  const [filterStatus, setFilterStatus] = useState('tous');
+  const [filterCabinet, setFilterCabinet] = usePersistedState('honoraires_filterCabinet', 'tous');
+  const [filterStatus, setFilterStatus] = usePersistedState('honoraires_filterStatus', 'tous');
 
   // Clés API Pennylane (persistées en base Supabase)
   const [apiKey, setApiKey] = useState('');

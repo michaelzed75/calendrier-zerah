@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useMemo } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import {
   Users, Plus, Edit2, Trash2, Download, TrendingUp, Award,
   Calculator, ChevronDown, ChevronUp, Search, AlertCircle,
@@ -76,7 +77,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
   // ===========================================
   // ÉTATS
   // ===========================================
-  const [activeTab, setActiveTab] = useState('salaires'); // 'salaires' | 'primes' | 'simulations'
+  const [activeTab, setActiveTab] = usePersistedState('salaires_activeTab', 'salaires'); // 'salaires' | 'primes' | 'simulations'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -87,8 +88,8 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
 
   // Filtres
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterAnnee, setFilterAnnee] = useState(new Date().getFullYear());
-  const [showInactifs, setShowInactifs] = useState(false);
+  const [filterAnnee, setFilterAnnee] = usePersistedState('salaires_filterAnnee', new Date().getFullYear());
+  const [showInactifs, setShowInactifs] = usePersistedState('salaires_showInactifs', false);
 
   // Modals
   const [showSalaireModal, setShowSalaireModal] = useState(false);

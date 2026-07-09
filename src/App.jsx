@@ -15,6 +15,7 @@ import SalairesPage from './components/pages/SalairesPage';
 import TachesPage from './components/pages/TachesPage';
 import { ThemeModal } from './components/modals';
 import { GRADIENT_THEMES, ACCENT_COLORS } from './constants/theme';
+import usePersistedState from './hooks/usePersistedState';
 
 /**
  * @typedef {import('./types.js').Collaborateur} Collaborateur
@@ -51,7 +52,11 @@ export default function App() {
   const [authPage, setAuthPage] = useState('login');
 
   /** @type {[PageName, function]} */
-  const [currentPage, setCurrentPage] = useState(/** @type {PageName} */ ('calendar'));
+  const [currentPage, setCurrentPage] = usePersistedState('app_currentPage', /** @type {PageName} */ ('calendar'));
+  // Pages déjà visitées : elles restent montées (cachées en display:none)
+  // pour conserver leurs filtres/onglets/saisies quand on navigue
+  /** @type {[PageName[], function]} */
+  const [visitedPages, setVisitedPages] = useState([]);
   /** @type {[Collaborateur[], function]} */
   const [collaborateurs, setCollaborateurs] = useState([]);
   /** @type {[CollaborateurChef[], function]} */
@@ -293,6 +298,54 @@ export default function App() {
   };
 
   /**
+   * Vérifie si une page est accessible pour l'utilisateur connecté
+   * @param {PageName} page
+   * @returns {boolean}
+   */
+  const isPageAllowed = (page) => {
+    switch (page) {
+      case 'impots':
+        return Boolean(userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin);
+      case 'tva':
+      case 'temps-reels':
+        return Boolean(userCollaborateur?.est_chef_mission);
+      case 'honoraires':
+      case 'salaires':
+        return Boolean(userCollaborateur?.is_admin);
+      default:
+        return true;
+    }
+  };
+
+  // Page réellement affichée : si la page persistée n'est pas (ou plus)
+  // autorisée pour cet utilisateur, on retombe sur le calendrier
+  /** @type {PageName} */
+  const activePage = isPageAllowed(currentPage) ? currentPage : 'calendar';
+
+  // Marquer la page active comme visitée (keep-alive)
+  useEffect(() => {
+    setVisitedPages(prev => (prev.includes(activePage) ? prev : [...prev, activePage]));
+  }, [activePage]);
+
+  /**
+   * Rend une page en mode keep-alive : montée à la première visite,
+   * puis cachée en display:none (au lieu d'être démontée) quand une autre
+   * page est active — ses filtres/onglets/saisies sont ainsi conservés.
+   * @param {PageName} name
+   * @param {JSX.Element} element
+   * @returns {JSX.Element|null}
+   */
+  const renderPage = (name, element) => {
+    if (!isPageAllowed(name)) return null;
+    if (activePage !== name && !visitedPages.includes(name)) return null;
+    return (
+      <div style={activePage === name ? undefined : { display: 'none' }}>
+        {element}
+      </div>
+    );
+  };
+
+  /**
    * Calcule le style CSS pour le fond
    * @returns {React.CSSProperties} Style CSS pour le fond
    */
@@ -380,7 +433,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('calendar')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                activePage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Calendar size={18} />
@@ -389,7 +442,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('taches')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                activePage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <ListTodo size={18} />
@@ -398,7 +451,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('collaborateurs')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                activePage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Users size={18} />
@@ -407,7 +460,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('clients')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                activePage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <Building2 size={18} />
@@ -417,7 +470,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('impots')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                  activePage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <FileText size={18} />
@@ -428,7 +481,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('tva')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                  activePage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Receipt size={18} />
@@ -439,7 +492,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('temps-reels')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                  activePage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Clock size={18} />
@@ -449,7 +502,7 @@ export default function App() {
             <button
               onClick={() => setCurrentPage('tests-comptables')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                activePage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
               }`}
             >
               <ClipboardCheck size={18} />
@@ -459,7 +512,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('honoraires')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                  activePage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <Euro size={18} />
@@ -470,7 +523,7 @@ export default function App() {
               <button
                 onClick={() => setCurrentPage('salaires')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
-                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
+                  activePage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 <DollarSign size={18} />
@@ -509,7 +562,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('calendar'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                activePage === 'calendar' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Calendar size={18} />
@@ -518,7 +571,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('taches'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                activePage === 'taches' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <ListTodo size={18} />
@@ -527,7 +580,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('collaborateurs'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                activePage === 'collaborateurs' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Users size={18} />
@@ -536,7 +589,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('clients'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                activePage === 'clients' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <Building2 size={18} />
@@ -546,7 +599,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('impots'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                  activePage === 'impots' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <FileText size={18} />
@@ -557,7 +610,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('tva'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                  activePage === 'tva' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Receipt size={18} />
@@ -568,7 +621,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('temps-reels'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                  activePage === 'temps-reels' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Clock size={18} />
@@ -578,7 +631,7 @@ export default function App() {
             <button
               onClick={() => { setCurrentPage('tests-comptables'); setShowMobileMenu(false); }}
               className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                currentPage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                activePage === 'tests-comptables' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
               }`}
             >
               <ClipboardCheck size={18} />
@@ -588,7 +641,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('honoraires'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                  activePage === 'honoraires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <Euro size={18} />
@@ -599,7 +652,7 @@ export default function App() {
               <button
                 onClick={() => { setCurrentPage('salaires'); setShowMobileMenu(false); }}
                 className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition ${
-                  currentPage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
+                  activePage === 'salaires' ? `${accent.color} text-white` : 'bg-slate-700 text-white'
                 }`}
               >
                 <DollarSign size={18} />
@@ -625,8 +678,8 @@ export default function App() {
         )}
       </nav>
 
-      {/* Contenu des pages */}
-      {currentPage === 'calendar' && (
+      {/* Contenu des pages (keep-alive : les pages visitées restent montées) */}
+      {renderPage('calendar',
         <CalendarPage
           collaborateurs={collaborateurs}
           collaborateurChefs={collaborateurChefs}
@@ -643,7 +696,7 @@ export default function App() {
           setSuiviEcheances={setSuiviEcheances}
         />
       )}
-      {currentPage === 'taches' && (
+      {renderPage('taches',
         <TachesPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -652,7 +705,7 @@ export default function App() {
           userCollaborateur={userCollaborateur}
         />
       )}
-      {currentPage === 'collaborateurs' && (
+      {renderPage('collaborateurs',
         <CollaborateursPage
           collaborateurs={collaborateurs}
           setCollaborateurs={setCollaborateurs}
@@ -666,7 +719,7 @@ export default function App() {
           userCollaborateur={userCollaborateur}
         />
       )}
-      {currentPage === 'clients' && (
+      {renderPage('clients',
         <ClientsPage
           clients={clients}
           setClients={setClients}
@@ -677,7 +730,7 @@ export default function App() {
           userCollaborateur={userCollaborateur}
         />
       )}
-      {currentPage === 'tva' && userCollaborateur?.est_chef_mission && (
+      {renderPage('tva',
         <RepartitionTVAPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -689,7 +742,7 @@ export default function App() {
           impotsTaxes={impotsTaxes}
         />
       )}
-      {currentPage === 'impots' && (userCollaborateur?.est_chef_mission || userCollaborateur?.is_admin) && (
+      {renderPage('impots',
         <ImpotsTaxesPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -700,7 +753,7 @@ export default function App() {
           userCollaborateur={userCollaborateur}
         />
       )}
-      {currentPage === 'temps-reels' && userCollaborateur?.est_chef_mission && (
+      {renderPage('temps-reels',
         <TempsReelsPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -709,7 +762,7 @@ export default function App() {
           accent={accent}
         />
       )}
-      {currentPage === 'tests-comptables' && (
+      {renderPage('tests-comptables',
         <TestsComptablesPage
           clients={clients}
           collaborateurs={collaborateurs}
@@ -718,7 +771,7 @@ export default function App() {
           accent={accent}
         />
       )}
-      {currentPage === 'honoraires' && userCollaborateur?.is_admin && (
+      {renderPage('honoraires',
         <HonorairesPage
           clients={clients}
           setClients={setClients}
@@ -727,7 +780,7 @@ export default function App() {
           userCollaborateur={userCollaborateur}
         />
       )}
-      {currentPage === 'salaires' && (
+      {renderPage('salaires',
         <SalairesPage
           collaborateurs={collaborateurs}
           accent={accent}

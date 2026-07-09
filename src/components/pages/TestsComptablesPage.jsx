@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import {
   ClipboardCheck,
   Play,
@@ -48,7 +49,7 @@ export default function TestsComptablesPage({
     const saved = localStorage.getItem('testsComptables_selectedClientId');
     return saved ? Number(saved) : null;
   }));
-  const [selectedMillesime, setSelectedMillesime] = useState(new Date().getFullYear());
+  const [selectedMillesime, setSelectedMillesime] = usePersistedState('testsComptables_selectedMillesime', new Date().getFullYear());
   const [selectedTestCode, setSelectedTestCode] = useState('');
 
   // États UI

@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import {
   ListTodo, Plus, Mail, Pencil, Flag, Trash2, X, AlertTriangle, Check,
   RotateCcw, CalendarClock,
@@ -127,7 +128,7 @@ function TachesPage({ clients, collaborateurs, collaborateurChefs, accent, userC
   const [taches, setTaches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState('');
-  const [filtreCollab, setFiltreCollab] = useState('mes');
+  const [filtreCollab, setFiltreCollab] = usePersistedState('taches_filtreCollab', 'mes');
   const [showCreate, setShowCreate] = useState(false);
   /** @type {[Object|null, function]} */
   const [detail, setDetail] = useState(null);

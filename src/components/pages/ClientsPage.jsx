@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect, useRef } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import { Plus, Pencil, Trash2, RefreshCw, Check, Download, Key, X, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff, ChevronUp, ChevronDown, Shield, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../supabaseClient';
@@ -24,11 +25,11 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [mergingClient, setMergingClient] = useState(null);
-  const [filterCabinet, setFilterCabinet] = useState('tous');
-  const [filterChef, setFilterChef] = useState('tous');
+  const [filterCabinet, setFilterCabinet] = usePersistedState('clients_filterCabinet', 'tous');
+  const [filterChef, setFilterChef] = usePersistedState('clients_filterChef', 'tous');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState('nom');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortField, setSortField] = usePersistedState('clients_sortField', 'nom');
+  const [sortDirection, setSortDirection] = usePersistedState('clients_sortDirection', 'asc');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
 

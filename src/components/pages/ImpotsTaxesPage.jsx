@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import { FileText, Search, X, Download } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { supabase } from '../../supabaseClient';
@@ -22,14 +23,14 @@ import { supabase } from '../../supabaseClient';
  * @returns {JSX.Element}
  */
 function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes, suiviEcheances, accent, userCollaborateur }) {
-  const [anneeFiscale, setAnneeFiscale] = useState(new Date().getFullYear());
+  const [anneeFiscale, setAnneeFiscale] = usePersistedState('impotsTaxes_anneeFiscale', new Date().getFullYear());
   const [saving, setSaving] = useState({});
   const [editingCell, setEditingCell] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [copyingData, setCopyingData] = useState(false);
 
   // Nouveaux états pour filtres, recherche et tri
-  const [filtreChefMission, setFiltreChefMission] = useState('tous');
+  const [filtreChefMission, setFiltreChefMission] = usePersistedState('impotsTaxes_filtreChefMission', 'tous');
   const [recherche, setRecherche] = useState('');
   const [tri, setTri] = useState(() => {
     const saved = localStorage.getItem('impotsTaxes_tri');

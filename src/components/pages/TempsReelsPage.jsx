@@ -1,5 +1,6 @@
 // @ts-check
 import React, { useState, useEffect } from 'react';
+import usePersistedState from '../../hooks/usePersistedState';
 import { Upload, Search, RefreshCw, Check, X, Trash2, AlertCircle, Pencil, Link2, BarChart3, ArrowUpDown, Clock, ChevronDown, ChevronUp, FileText, Users, Building2, Download, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -27,7 +28,7 @@ import { formatDateToYMD } from '../../utils/dateUtils';
  * @returns {JSX.Element}
  */
 function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }) {
-  const [activeTab, setActiveTab] = useState('mapping'); // 'mapping', 'import', 'ecarts', 'journal'
+  const [activeTab, setActiveTab] = usePersistedState('tempsReels_activeTab', 'mapping'); // 'mapping', 'import', 'ecarts', 'journal'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -49,7 +50,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   // Filtres pour l'analyse des écarts
   const [filtreCollaborateur, setFiltreCollaborateur] = useState('');
   const [filtreClient, setFiltreClient] = useState('');
-  const [filtrePeriode, setFiltrePeriode] = useState('jour'); // 'jour', 'mois', 'trimestre', 'annee', 'custom'
+  const [filtrePeriode, setFiltrePeriode] = usePersistedState('tempsReels_filtrePeriode', 'jour'); // 'jour', 'mois', 'trimestre', 'annee', 'custom'
   // Par défaut : J-1 (hier)
   const [dateDebut, setDateDebut] = useState(() => {
     const d = new Date();
@@ -66,7 +67,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
   const [filtreCode, setFiltreCode] = useState('');
   const [filtreMillesime, setFiltreMillesime] = useState('');
   const [filtreFacturable, setFiltreFacturable] = useState('');
-  const [sortEcarts, setSortEcarts] = useState({ column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
+  const [sortEcarts, setSortEcarts] = usePersistedState('tempsReels_sortEcarts', { column: 'ecart', direction: 'desc' }); // column: 'collaborateur', 'client', 'budgetees', 'reelles', 'ecart', 'ecartPourcent'
 
   // Charger les données depuis Supabase au démarrage
   useEffect(() => {
