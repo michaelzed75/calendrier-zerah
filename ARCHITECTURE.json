@@ -231,6 +231,7 @@
         "documentation": "docs/taches.md (doc complète : règles email, digest, infra Brevo/IONOS)",
         "features": [
           "Création par email : CC taches@inbox.zerah.fr → webhook Brevo → api/inbound-task.js",
+          "Assignation : destinataires du champ À (To) uniquement — le Cc est pour info ; repli sur le Cc si aucun collaborateur dans le To",
           "Parsing objet : date JJ/MM/AA → échéance, [URGENT]/! → priorité, client détecté par nom",
           "Kanban 2 colonnes (À faire / Fait), tri urgentes puis échéance, drag & drop",
           "Carte compacte 2 lignes : drapeau urgent cliquable, société cyan cliquable (ClientPicker avec recherche), DateChip échéance colorée (rouge=retard, orange=proche), pastille initiales → réaffectation à un collègue (notifié par mail)",

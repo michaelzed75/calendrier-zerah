@@ -222,6 +222,39 @@ describe('parseInboundEmail', () => {
     expect(res.code).toBe('empty_subject');
   });
 
+  it('n\'assigne PAS aux collaborateurs en simple copie (Cc) quand le To contient un collaborateur', () => {
+    // Cas réel : mail À Dany, Cc Thérèse + adresse dédiée → tâche pour Dany UNIQUEMENT
+    const res = parseInboundEmail(
+      {
+        subject: 'Faire le bilan',
+        from: 'michael@zerah.fr',
+        to: 'jean@zerah.fr',
+        cc: `lucie@zerah.fr, ${INBOX}`,
+      },
+      ctx
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.taches).toHaveLength(1);
+    expect(res.taches[0].collaborateur_id).toBe(2); // Jean (To), pas Lucie (Cc)
+  });
+
+  it('repli sur le Cc si le To ne contient aucun collaborateur (réponse à un client externe)', () => {
+    const res = parseInboundEmail(
+      {
+        subject: 'RE: question du client',
+        from: 'michael@zerah.fr',
+        to: 'client@externe.com',
+        cc: `jean@zerah.fr, ${INBOX}`,
+      },
+      ctx
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.taches).toHaveLength(1);
+    expect(res.taches[0].collaborateur_id).toBe(2); // Jean via le Cc (repli)
+  });
+
   it('dédoublonne un destinataire présent dans To et Cc', () => {
     const res = parseInboundEmail(
       { subject: 'Tâche', from: 'michael@zerah.fr', to: 'jean@zerah.fr', cc: `jean@zerah.fr, ${INBOX}` },

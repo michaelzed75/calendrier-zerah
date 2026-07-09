@@ -23,7 +23,7 @@ Email (Cc taches@inbox.zerah.fr)
 | `[URGENT]` ou `!` dans l'objet | `priorite = urgente` (retiré du titre) |
 | Corps du mail | `detail` |
 | Nom d'un client connu dans objet+corps | `client_id` (match le plus long, insensible casse/accents, min 4 caractères) |
-| Destinataires To+Cc (hors adresse dédiée) | 1 tâche **par** collaborateur matché sur `collaborateurs.email` (actifs uniquement) |
+| Destinataires du champ **À (To)**, hors adresse dédiée | 1 tâche **par** collaborateur du To matché sur `collaborateurs.email` (actifs uniquement). Le **Cc est « pour info »** : un collègue en copie ne reçoit PAS de tâche. **Repli sur le Cc** uniquement si le To ne contient aucun collaborateur (ex. réponse à un client externe avec le collègue en copie). |
 
 **Garde-fou** : l'expéditeur (`From`) doit être un collaborateur connu et actif, sinon rejet (`unknown_sender`). Assignation **ouverte** : n'importe quel collaborateur peut assigner à n'importe quel autre (peer-to-peer).
 

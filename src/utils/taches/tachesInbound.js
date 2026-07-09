@@ -189,23 +189,30 @@ export function parseInboundEmail(email, context) {
     };
   }
 
-  // 2. Destinataires : To + Cc, hors adresse dédiée, matchés sur collaborateurs
+  // 2. Destinataires : le champ À (To) désigne QUI doit faire la tâche.
+  //    Le Cc est "pour info" (il contient l'adresse dédiée + éventuels collègues en copie)
+  //    → repli sur le Cc UNIQUEMENT si aucun collaborateur dans le To
+  //    (cas : réponse à un client externe avec le collègue en copie).
   const inbox = normalizeEmail(inboxAddress) || (inboxAddress || '').toLowerCase().trim();
-  const recipientEmails = [...parseRecipients(email.to), ...parseRecipients(email.cc)]
-    .filter(e => e !== inbox);
-  const uniqueEmails = [...new Set(recipientEmails)];
+  const matchList = (field) => {
+    const emails = [...new Set(parseRecipients(field).filter(e => e !== inbox))];
+    const found = emails
+      .map(e => matchCollaborateurByEmail(e, collaborateurs))
+      .filter(/** @returns {c is Collaborateur} */ (c) => Boolean(c));
+    // Dédoublonnage par id (au cas où plusieurs alias mènent au même collab)
+    return [...new Map(found.map(c => [c.id, c])).values()];
+  };
 
-  const assignees = uniqueEmails
-    .map(e => matchCollaborateurByEmail(e, collaborateurs))
-    .filter(/** @returns {c is Collaborateur} */ (c) => Boolean(c));
-  // Dédoublonnage par id (au cas où plusieurs alias mènent au même collab)
-  const uniqueAssignees = [...new Map(assignees.map(c => [c.id, c])).values()];
+  let uniqueAssignees = matchList(email.to);
+  if (uniqueAssignees.length === 0) {
+    uniqueAssignees = matchList(email.cc);
+  }
 
   if (uniqueAssignees.length === 0) {
     return {
       ok: false,
       code: 'no_assignee',
-      error: 'Aucun destinataire collaborateur identifié (To/Cc)',
+      error: 'Aucun destinataire collaborateur identifié (To, puis Cc en repli)',
     };
   }
 
