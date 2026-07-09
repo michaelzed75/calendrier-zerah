@@ -225,6 +225,26 @@
           "Niveau 3: RLS Supabase - requêtes retournent 0 lignes si non-admin"
         ]
       },
+      "TachesPage.jsx": {
+        "lines": 802,
+        "role": "Délégation de tâches par email — kanban À faire / Fait",
+        "documentation": "docs/taches.md (doc complète : règles email, digest, infra Brevo/IONOS)",
+        "features": [
+          "Création par email : CC taches@inbox.zerah.fr → webhook Brevo → api/inbound-task.js",
+          "Parsing objet : date JJ/MM/AA → échéance, [URGENT]/! → priorité, client détecté par nom",
+          "Kanban 2 colonnes (À faire / Fait), tri urgentes puis échéance, drag & drop",
+          "Carte compacte 2 lignes : drapeau urgent cliquable, société cyan cliquable (ClientPicker avec recherche), DateChip échéance colorée (rouge=retard, orange=proche), pastille initiales → réaffectation à un collègue (notifié par mail)",
+          "Vue patron : sélecteur Mes tâches / Toute l'équipe / par collaborateur (filtre persisté via usePersistedState)",
+          "Notifications au demandeur (api/notify-task.js) : tache_faite, date_modifiee, tache_reassignee, tache_supprimee",
+          "Digest hebdo lundi 10h Paris (api/relance-taches.js + .github/workflows/relance-taches.yml) : en retard, à venir ≤2j, sans date, tâches confiées à suivre (basé sur created_by, indépendant de l'équipe), équipe en retard (chefs/admin)"
+        ],
+        "props": [
+          "clients", "collaborateurs", "collaborateurChefs", "accent", "userCollaborateur"
+        ],
+        "access": "Tous — périmètre via getVisibleCollaborateurIds (collab=lui, chef=+équipe, admin=tous)",
+        "module": "src/utils/taches/ (tachesInbound.js parsing pur, tachesStatus.js classification retard, tachesService.js CRUD) — 45 tests",
+        "database": "Table taches (migrations 018_taches.sql + 019_taches_unique.sql, unicité email_message_id+collaborateur_id)"
+      },
       "ImpotsTaxesPage.jsx": {
         "lines": 989,
         "role": "Suivi des échéances fiscales",
@@ -1007,6 +1027,25 @@
         "fait": "BOOLEAN DEFAULT false",
         "date_realisation": "TIMESTAMP"
       }
+    },
+    "taches": {
+      "description": "Tâches déléguées entre collaborateurs (par email en CC ou manuellement) — voir docs/taches.md",
+      "fields": {
+        "id": "SERIAL PRIMARY KEY",
+        "collaborateur_id": "INTEGER REFERENCES collaborateurs(id) NOT NULL (destinataire)",
+        "client_id": "INTEGER REFERENCES clients(id) (société, nullable)",
+        "titre": "TEXT NOT NULL (= objet du mail)",
+        "detail": "TEXT (= corps du mail)",
+        "statut": "TEXT ('a_faire' | 'faite' — 'planifiee' legacy traité comme a_faire)",
+        "priorite": "TEXT ('normale' | 'urgente')",
+        "date_echeance": "DATE (SEULE date métier — depuis JJ/MM/AA dans l'objet ou l'UI)",
+        "source": "TEXT ('email' | 'manuel')",
+        "email_message_id": "TEXT (idempotence webhook, unicité composite avec collaborateur_id)",
+        "email_from": "TEXT (expéditeur du mail source)",
+        "created_by": "INTEGER REFERENCES collaborateurs(id) (le demandeur)",
+        "date_faite": "TIMESTAMP (clôture)"
+      },
+      "indexes": "collaborateur_id, statut, date_echeance, created_by + UNIQUE(email_message_id, collaborateur_id) WHERE email_message_id IS NOT NULL"
     }
   },
   "user_roles": {
@@ -1114,7 +1153,9 @@
       "006_type_personne_siret.sql": "Ajout colonnes type_personne (PM/PP) + siret_complement sur clients",
       "007_unique_siren.sql": "UNIQUE INDEX sur (siren, COALESCE(siret_complement, '')) WHERE actif=true",
       "011_client_email.sql": "Ajout colonne email TEXT sur clients (contact synchronisé depuis Pennylane v2/customers)",
-      "012_tarifs_reference.sql": "Table tarifs_reference: tarifs de référence 2025 par axe (compta, bilan, social, juridique, support) avec verrouillage"
+      "012_tarifs_reference.sql": "Table tarifs_reference: tarifs de référence 2025 par axe (compta, bilan, social, juridique, support) avec verrouillage",
+      "018_taches.sql": "Table taches: délégation de tâches par email (statut, priorite, date_echeance, source, email_message_id, created_by)",
+      "019_taches_unique.sql": "Unicité composite (email_message_id, collaborateur_id) — un mail multi-destinataires crée N tâches, idempotence webhook"
     },
   "known_issues_and_todos": [
     "Pas de gestion d'erreurs centralisée",
@@ -1149,6 +1190,26 @@
       "email_enrichment": "Lit les clés API depuis pennylane_api_keys (Supabase), appelle v2/customers directement côté serveur, match par SIREN, met à jour email",
       "anti_doublon": "Fallback SIREN élargi empêche la création de doublons même si le client existe via une autre source",
       "soft_delete": "Désactivé — la désactivation des clients est gérée manuellement par l'utilisateur"
+    },
+    "inbound-task.js": {
+      "role": "Webhook Brevo Inbound : email reçu sur *@inbox.zerah.fr → création de tâche(s)",
+      "endpoint": "/api/inbound-task?token=INBOUND_TASK_TOKEN",
+      "method": "POST (par Brevo, webhook id 2063192)",
+      "logic": "parseInboundEmail (src/utils/taches/tachesInbound.js) + filtre doublons (email_message_id, collaborateur_id) + insert. Répond toujours 200.",
+      "env_vars": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "INBOUND_TASK_TOKEN", "TASK_INBOX_ADDRESS (optionnel)"]
+    },
+    "notify-task.js": {
+      "role": "Notifications email liées aux tâches (via Brevo) → au demandeur",
+      "endpoint": "/api/notify-task",
+      "types": ["tache_faite", "date_modifiee", "tache_reassignee", "tache_supprimee"],
+      "note": "Appelé fire-and-forget depuis TachesPage ; jamais de mail si on agit sur sa propre tâche"
+    },
+    "relance-taches.js": {
+      "role": "Digest hebdomadaire des tâches (lundi 10h Paris via .github/workflows/relance-taches.yml)",
+      "endpoint": "/api/relance-taches (GET/POST, test ciblé avec ?onlyEmail=xxx)",
+      "sections": ["En retard", "À venir ≤2j", "Sans date", "Tâches confiées à suivre (created_by, hors équipe)", "Équipe en retard (chefs/admin, hors mes délégations)"],
+      "design": "Épuré style iOS : carte blanche arrondie, sections en majuscules colorées, accent gauche par tâche",
+      "note": "1 seul mail par personne, envoyé uniquement s'il y a du contenu. Voir docs/taches.md"
     }
   },
   "database_tables_honoraires": {
