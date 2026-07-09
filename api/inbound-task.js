@@ -112,7 +112,7 @@ export default async function handler(req, res) {
     }
 
     // Toujours 200 pour éviter que Brevo ne renvoie en boucle
-    return res.status(200).json({ ok: true, results });
+    return res.status(200).json({ ok: true, v: 3, results });
   } catch (err) {
     console.error('Erreur inbound-task:', err);
     return res.status(500).json({ error: err.message });
