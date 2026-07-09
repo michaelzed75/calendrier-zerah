@@ -87,7 +87,7 @@ function SalairesPage({ collaborateurs, accent, userCollaborateur }) {
   const [simulations, setSimulations] = useState([]);
 
   // Filtres
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = usePersistedState('salaires_searchTerm', '');
   const [filterAnnee, setFilterAnnee] = usePersistedState('salaires_filterAnnee', new Date().getFullYear());
   const [showInactifs, setShowInactifs] = usePersistedState('salaires_showInactifs', false);
 

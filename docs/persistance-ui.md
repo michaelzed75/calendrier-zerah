@@ -43,17 +43,17 @@ const [filterCabinet, setFilterCabinet] = usePersistedState('clients_filterCabin
 |------|-------|
 | App | `app_currentPage` (page courante) |
 | Tâches | `taches_filtreCollab` |
-| Clients | `clients_filterCabinet`, `clients_filterChef`, `clients_sortField`, `clients_sortDirection` |
-| Honoraires | `honoraires_activeTab`, `honoraires_filterCabinet`, `honoraires_filterStatus` |
-| Impôts et Taxes | `impotsTaxes_anneeFiscale`, `impotsTaxes_filtreChefMission` (+ `impotsTaxes_tri`, préexistant) |
-| Temps Réels | `tempsReels_activeTab`, `tempsReels_filtrePeriode`, `tempsReels_sortEcarts` |
-| Salaires | `salaires_activeTab`, `salaires_filterAnnee`, `salaires_showInactifs` |
+| Clients | `clients_filterCabinet`, `clients_filterChef`, `clients_sortField`, `clients_sortDirection`, `clients_searchTerm` |
+| Honoraires | `honoraires_activeTab`, `honoraires_filterCabinet`, `honoraires_filterStatus`, `honoraires_reconSearch` |
+| Impôts et Taxes | `impotsTaxes_anneeFiscale`, `impotsTaxes_filtreChefMission`, `impotsTaxes_recherche` (+ `impotsTaxes_tri`, préexistant) |
+| Temps Réels | `tempsReels_activeTab`, `tempsReels_filtrePeriode`, `tempsReels_sortEcarts`, `tempsReels_searchEcarts` |
+| Salaires | `salaires_activeTab`, `salaires_filterAnnee`, `salaires_showInactifs`, `salaires_searchTerm` |
 | Tests Comptables | `testsComptables_selectedMillesime` (+ `testsComptables_selectedClientId`, préexistant) |
 
 ## Cas particuliers
 
 - **CalendarPage** : non modifiée — elle a son propre système `userPreferences` en localStorage (restaure `selectedCollaborateurs` / `expandedEquipes`, force `viewMode='month'` au montage). Ne pas y introduire `usePersistedState` sans démonter ce mécanisme.
-- **Champs de recherche texte et modales** : volontairement non persistés après F5 (mais conservés au changement de page grâce au keep-alive).
+- **Champs de recherche des listes principales** : persistés depuis le 09/07/2026 (demande utilisateur — la recherche client se perdait en quittant le site). Les modales et formulaires non validés restent volontairement non persistés après F5 (mais conservés au changement de page grâce au keep-alive).
 - **Réconciliation honoraires** : `reconData` reste en `sessionStorage` (données volumineuses, durée de vie session voulue).
 
 ## Ajouter un nouvel état persistant

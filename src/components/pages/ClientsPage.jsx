@@ -27,7 +27,7 @@ function ClientsPage({ clients, setClients, charges, setCharges, collaborateurs,
   const [mergingClient, setMergingClient] = useState(null);
   const [filterCabinet, setFilterCabinet] = usePersistedState('clients_filterCabinet', 'tous');
   const [filterChef, setFilterChef] = usePersistedState('clients_filterChef', 'tous');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = usePersistedState('clients_searchTerm', '');
   const [sortField, setSortField] = usePersistedState('clients_sortField', 'nom');
   const [sortDirection, setSortDirection] = usePersistedState('clients_sortDirection', 'asc');
   const [syncing, setSyncing] = useState(false);

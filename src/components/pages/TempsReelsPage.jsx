@@ -62,7 +62,7 @@ function TempsReelsPage({ clients, collaborateurs, charges, setCharges, accent }
     d.setDate(d.getDate() - 1); // J-1
     return formatDateToYMD(d);
   });
-  const [searchEcarts, setSearchEcarts] = useState('');
+  const [searchEcarts, setSearchEcarts] = usePersistedState('tempsReels_searchEcarts', '');
   const [filtreTypeMission, setFiltreTypeMission] = useState('');
   const [filtreCode, setFiltreCode] = useState('');
   const [filtreMillesime, setFiltreMillesime] = useState('');

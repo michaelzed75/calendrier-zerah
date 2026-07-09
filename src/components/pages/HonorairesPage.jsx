@@ -64,7 +64,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [reconLoading, setReconLoading] = useState(false);
   const [reconProgress, setReconProgress] = useState(null);
   const [reconFilter, setReconFilter] = useState('tous');
-  const [reconSearch, setReconSearch] = useState('');
+  const [reconSearch, setReconSearch] = usePersistedState('honoraires_reconSearch', '');
   const [reconExpanded, setReconExpanded] = useState(null);
   const [reconSort, setReconSort] = useState({ column: 'statut', direction: 'asc' });
 

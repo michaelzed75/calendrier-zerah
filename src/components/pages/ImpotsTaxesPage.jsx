@@ -31,7 +31,7 @@ function ImpotsTaxesPage({ clients, collaborateurs, impotsTaxes, setImpotsTaxes,
 
   // Nouveaux états pour filtres, recherche et tri
   const [filtreChefMission, setFiltreChefMission] = usePersistedState('impotsTaxes_filtreChefMission', 'tous');
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = usePersistedState('impotsTaxes_recherche', '');
   const [tri, setTri] = useState(() => {
     const saved = localStorage.getItem('impotsTaxes_tri');
     return saved ? JSON.parse(saved) : { colonne: 'nom', direction: 'asc' };
