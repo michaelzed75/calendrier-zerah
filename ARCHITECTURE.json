@@ -1196,7 +1196,7 @@
       "role": "Webhook Brevo Inbound : email reçu sur *@inbox.zerah.fr → création de tâche(s)",
       "endpoint": "/api/inbound-task?token=INBOUND_TASK_TOKEN",
       "method": "POST (par Brevo, webhook id 2063192)",
-      "logic": "parseInboundEmail (src/utils/taches/tachesInbound.js) + filtre doublons (email_message_id, collaborateur_id) + insert. Répond toujours 200.",
+      "logic": "parseInboundEmail (src/utils/taches/tachesInbound.js) + filtre doublons (email_message_id, collaborateur_id) + anti-doublon de fil (In-Reply-To/References → skip reply_in_thread si le fil a déjà créé une tâche) + insert. Répond toujours 200.",
       "env_vars": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "INBOUND_TASK_TOKEN", "TASK_INBOX_ADDRESS (optionnel)"]
     },
     "notify-task.js": {

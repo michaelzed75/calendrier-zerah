@@ -13,6 +13,8 @@ export {
   detectClient,
   normalizeText,
   parseInboundEmail,
+  extractMessageIds,
+  extractThreadIds,
 } from './tachesInbound.js';
 
 export {

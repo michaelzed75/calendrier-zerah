@@ -29,6 +29,8 @@ Email (Cc taches@inbox.zerah.fr)
 
 **Idempotence** : unicité `(email_message_id, collaborateur_id)` (migration 019) — les renvois de webhook Brevo ne créent pas de doublons, et un même mail multi-destinataires crée bien N tâches.
 
+**Anti-doublon de fil (réponses)** : si le mail est une **réponse** (`In-Reply-To`/`References`) à un message qui a **déjà créé une tâche**, il est ignoré (`skip: reply_in_thread`) — sinon chaque « Répondre à tous » (qui garde `taches@` en copie) dupliquerait la tâche. En revanche, répondre à un fil *client* (jamais passé par `taches@`) en ajoutant l'adresse en copie crée bien une tâche. Conséquence : pour créer une **2ᵉ tâche depuis un même fil**, envoyer un nouveau mail (ou changer d'objet).
+
 ## Modèle de données — table `taches` (migrations 018 + 019)
 
 - `collaborateur_id` (destinataire), `client_id` (nullable), `titre`, `detail`

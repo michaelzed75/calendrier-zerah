@@ -8,6 +8,8 @@ import {
   matchCollaborateurByEmail,
   detectClient,
   parseInboundEmail,
+  extractMessageIds,
+  extractThreadIds,
 } from './tachesInbound.js';
 
 const COLLABS = [
@@ -133,6 +135,28 @@ describe('detectClient', () => {
   it('choisit le nom le plus long en cas de chevauchement', () => {
     const clients = [{ id: 1, nom: 'PARIS' }, { id: 2, nom: 'CAFÉ DE PARIS' }];
     expect(detectClient('relance cafe de paris', clients)?.id).toBe(2);
+  });
+});
+
+describe('extractMessageIds / extractThreadIds', () => {
+  it('extrait les message-ids d\'une chaîne', () => {
+    expect(extractMessageIds('<abc@mail.com> <def@out.look>')).toEqual(['<abc@mail.com>', '<def@out.look>']);
+    expect(extractMessageIds(null)).toEqual([]);
+    expect(extractMessageIds('rien ici')).toEqual([]);
+  });
+
+  it('lit InReplyTo du payload Brevo', () => {
+    expect(extractThreadIds({ InReplyTo: '<orig@outlook.com>' })).toEqual(['<orig@outlook.com>']);
+  });
+
+  it('lit les en-têtes In-Reply-To et References (insensible à la casse)', () => {
+    const item = { Headers: { 'In-Reply-To': '<a@x>', References: '<root@x> <a@x>' } };
+    expect(extractThreadIds(item).sort()).toEqual(['<a@x>', '<root@x>']);
+  });
+
+  it('renvoie [] pour un mail initial (pas une réponse)', () => {
+    expect(extractThreadIds({ Subject: 'nouveau', Headers: {} })).toEqual([]);
+    expect(extractThreadIds(null)).toEqual([]);
   });
 });
 

@@ -11,7 +11,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { parseInboundEmail } from '../src/utils/taches/tachesInbound.js';
+import { parseInboundEmail, extractThreadIds } from '../src/utils/taches/tachesInbound.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const INBOX = process.env.TASK_INBOX_ADDRESS || 'taches@inbox.zerah.fr';
@@ -72,6 +72,22 @@ export default async function handler(req, res) {
       if (!parsed.ok) {
         results.push({ skip: parsed.code });
         continue;
+      }
+
+      // Anti-doublon de fil : si ce mail est une RÉPONSE à un message qui a déjà
+      // créé une tâche (In-Reply-To/References), on n'en recrée pas une.
+      // (Répondre à tous garde taches@ en copie → sans ça, chaque réponse dupliquerait.)
+      const threadIds = extractThreadIds(item);
+      if (threadIds.length > 0) {
+        const { data: parents } = await supabase
+          .from('taches')
+          .select('id')
+          .in('email_message_id', threadIds)
+          .limit(1);
+        if (parents && parents.length > 0) {
+          results.push({ skip: 'reply_in_thread' });
+          continue;
+        }
       }
 
       // Idempotence : retire les destinataires déjà créés pour ce message_id

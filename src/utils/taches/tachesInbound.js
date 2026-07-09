@@ -105,6 +105,38 @@ export function toIsoDate(d, m, y) {
 }
 
 /**
+ * Extrait les identifiants de message (<...@...>) d'une chaîne d'en-tête.
+ * @param {string|null|undefined} str
+ * @returns {string[]}
+ */
+export function extractMessageIds(str) {
+  if (!str) return [];
+  return String(str).match(/<[^<>\s]+>/g) || [];
+}
+
+/**
+ * Extrait les identifiants du fil de discussion d'un item Brevo (In-Reply-To + References).
+ * Sert à détecter qu'un mail est une RÉPONSE à un message qui a déjà créé une tâche
+ * (Répondre à tous garde l'adresse dédiée en copie → sans ce filtre, chaque réponse
+ * recréerait une tâche).
+ * @param {Object} item - Item du payload Brevo Inbound
+ * @returns {string[]} message-ids du fil (parent immédiat + ancêtres)
+ */
+export function extractThreadIds(item) {
+  if (!item) return [];
+  const headers = item.Headers || item.headers || {};
+  const header = (name) => {
+    const k = Object.keys(headers).find(h => h.toLowerCase() === name);
+    return k ? headers[k] : null;
+  };
+  const raw = [
+    item.InReplyTo, item.inReplyTo,
+    header('in-reply-to'), header('references'),
+  ].filter(Boolean).join(' ');
+  return [...new Set(extractMessageIds(raw))];
+}
+
+/**
  * Trouve le collaborateur (actif) correspondant à un email.
  * @param {string} email
  * @param {Collaborateur[]} collaborateurs
