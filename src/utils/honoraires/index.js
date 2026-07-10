@@ -61,6 +61,8 @@ export {
 // Silae
 export {
   parseSilaeExcel,
+  excludeTotalRows,
+  aggregatePeriodRows,
   getSilaeMapping,
   updateSilaeMapping,
   importSilaeData,

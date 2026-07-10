@@ -14,6 +14,8 @@ import * as XLSX from 'xlsx';
  * @property {string} code - Numero Dossier (col A)
  * @property {string} nom - Societe (col B)
  * @property {string} siren - SIREN (col C)
+ * @property {number} extras - Bulletins extra (col D, parfois texte "6 extras")
+ * @property {number} bulletinsRefaits - Bulletins refaits (col E)
  * @property {number} bulletins - Bulletins originaux non 0 (col F)
  * @property {number} bulletinsTotal - Total général bulletins (col M)
  * @property {number} coffreFort - Bulletins déposés coffre-fort (col K)
@@ -86,6 +88,8 @@ export function parseSilaeExcel(fileBuffer) {
       code,
       nom,
       siren: String(row[2] || '').trim(),
+      extras: parseInt(row[3]) || 0,             // Col D (index 3) — "Bulletins extra", parfois texte "6 extras"
+      bulletinsRefaits: parseInt(row[4]) || 0,   // Col E (index 4) — "Bulletins refaits"
       bulletins: parseInt(row[5]) || 0,         // Col F (index 5)
       bulletinsTotal: parseInt(row[12]) || 0,    // Col M (index 12)
       coffreFort: parseInt(row[10]) || 0,        // Col K (index 10)
@@ -95,6 +99,125 @@ export function parseSilaeExcel(fileBuffer) {
       declarations: parseInt(row[16]) || 0,      // Col Q (index 16)
       attestationsPE: parseInt(row[18]) || 0     // Col S (index 18)
     });
+  }
+
+  return excludeTotalRows(aggregatePeriodRows(result));
+}
+
+/** Champs numériques d'une SilaeRow (pour agrégation) */
+const SILAE_NUMERIC_FIELDS = [
+  'extras', 'bulletinsRefaits', 'bulletins', 'bulletinsTotal', 'coffreFort',
+  'editique', 'entrees', 'sorties', 'declarations', 'attestationsPE'
+];
+
+/**
+ * Additionne les lignes d'un même dossier éclaté par période de paie.
+ *
+ * Le fichier Silae "par période de paie" peut lister un même dossier sur
+ * plusieurs lignes (même code + même nom, ex: MAZEL avec paies décalées),
+ * souvent sans SIREN sur les lignes suivantes → on les fusionne en sommant
+ * les quantités. Ne concerne PAS les multi-établissements (noms différents).
+ *
+ * @param {SilaeRow[]} rows
+ * @returns {SilaeRow[]}
+ */
+export function aggregatePeriodRows(rows) {
+  /** @type {Map<string, SilaeRow>} */
+  const byKey = new Map();
+  const result = [];
+  for (const r of rows) {
+    const key = `${r.code}||${normalizeString(r.nom)}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      const copy = { ...r };
+      byKey.set(key, copy);
+      result.push(copy);
+    } else {
+      for (const f of SILAE_NUMERIC_FIELDS) existing[f] += r[f];
+      if (!existing.siren && r.siren) existing.siren = r.siren;
+    }
+  }
+  return result;
+}
+
+/** Libellés français des champs numériques (messages d'erreur) */
+const SILAE_FIELD_LABELS = {
+  extras: 'Bulletins extra',
+  bulletinsRefaits: 'Bulletins refaits',
+  bulletins: 'Bulletins',
+  bulletinsTotal: 'Total général bulletins',
+  coffreFort: 'Coffre-fort',
+  editique: 'Éditique',
+  entrees: 'Entrées',
+  sorties: 'Sorties',
+  declarations: 'Déclarations',
+  attestationsPE: 'Attestations PE'
+};
+
+/**
+ * Écarte les lignes de total des groupes multi-établissements.
+ *
+ * Quand un même Numéro Dossier apparaît sur plusieurs lignes (ex: SNC CHRISTINE
+ * avec une ligne de total + une ligne par établissement "SNC CHRISTINE - SAINT JAMES"
+ * et "SNC CHRISTINE - RELAIS CHRISTINE"), la ligne dont le nom est un préfixe
+ * de toutes les autres est le total → on ne garde que les lignes détail.
+ *
+ * CONTRÔLE DE COHÉRENCE : avant d'écarter un total, chaque champ renseigné
+ * (non nul) sur la ligne de total doit être égal à la somme des lignes détail.
+ * Sinon le fichier est REJETÉ (throw) — des quantités seraient perdues à la
+ * facturation (ex: coffre-fort présent sur le total mais absent du détail).
+ * Un champ à 0/vide sur le total n'est pas contrôlé : le détail peut être
+ * plus riche que le total (ex: Bulletins extra non agrégés par Silae).
+ *
+ * @param {SilaeRow[]} rows
+ * @returns {SilaeRow[]}
+ * @throws {Error} si un total ne correspond pas à la somme de ses lignes détail
+ */
+export function excludeTotalRows(rows) {
+  /** @type {Map<string, SilaeRow[]>} */
+  const byCode = new Map();
+  for (const r of rows) {
+    if (!byCode.has(r.code)) byCode.set(r.code, []);
+    byCode.get(r.code).push(r);
+  }
+
+  /** @type {string[]} */
+  const incoherences = [];
+
+  const result = rows.filter(r => {
+    const group = byCode.get(r.code);
+    if (group.length < 2) return true;
+    const nomNorm = normalizeString(r.nom);
+    // Ligne de total = son nom est un préfixe strict du nom de toutes les autres lignes du groupe
+    const isTotal = group.every(o =>
+      o === r ||
+      (normalizeString(o.nom).startsWith(nomNorm) && normalizeString(o.nom).length > nomNorm.length)
+    );
+    if (!isTotal) return true;
+
+    // Contrôle de cohérence total vs somme des lignes détail
+    const details = group.filter(o => o !== r);
+    const ecarts = [];
+    for (const field of SILAE_NUMERIC_FIELDS) {
+      const totalVal = r[field] || 0;
+      if (totalVal === 0) continue; // champ non renseigné sur le total → pas de contrôle
+      const sommeDetails = details.reduce((s, d) => s + (d[field] || 0), 0);
+      if (totalVal !== sommeDetails) {
+        ecarts.push(`${SILAE_FIELD_LABELS[field] || field} : ${totalVal} (total) ≠ ${sommeDetails} (somme détails)`);
+      }
+    }
+    if (ecarts.length > 0) {
+      incoherences.push(`${r.nom} (dossier ${r.code}) — ${ecarts.join(' ; ')}`);
+    }
+    return false;
+  });
+
+  if (incoherences.length > 0) {
+    throw new Error(
+      `Fichier Silae rejeté : incohérence entre la ligne de total et les lignes détail. ` +
+      `${incoherences.join(' | ')}. ` +
+      `Corrigez l'export Silae (le détail par établissement doit porter les mêmes quantités que le total) puis réimportez.`
+    );
   }
 
   return result;
@@ -197,6 +320,8 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
   /** @type {Set<string>} SIRENs partagés par plusieurs clients (multi-établissements) */
   const sharedSirens = new Set();
   const clientByNom = new Map();
+  /** @type {Map<number, Object>} */
+  const clientById = new Map();
   for (const c of clients) {
     if (c.code_silae) clientByCode.set(c.code_silae, c);
     if (c.siren) {
@@ -207,6 +332,15 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
       clientBySiren.set(c.siren, c);
     }
     clientByNom.set(normalizeString(c.nom), c);
+    clientById.set(c.id, c);
+  }
+
+  // Compter les occurrences de chaque code : un code présent sur plusieurs lignes
+  // = dossier multi-établissements (1 ligne détail par établissement, ex: SNC CHRISTINE)
+  /** @type {Map<string, number>} */
+  const codeOccurrences = new Map();
+  for (const r of silaeRows) {
+    codeOccurrences.set(r.code, (codeOccurrences.get(r.code) || 0) + 1);
   }
 
   // 3. Matcher chaque ligne
@@ -217,44 +351,70 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
   for (const row of silaeRows) {
     /** @type {number[]} */
     let clientIds = [];
+    const isMultiEtab = (codeOccurrences.get(row.code) || 0) > 1;
 
-    // Essai 1 : mapping existant en BDD (peut être 1→N)
-    if (mappingByCode.has(row.code)) {
-      clientIds = mappingByCode.get(row.code);
-    }
+    if (isMultiEtab) {
+      // Multi-établissements : plusieurs lignes partagent le même code Silae,
+      // le nom de la ligne détail désigne l'établissement ("SNC CHRISTINE - SAINT JAMES").
+      // On ne garde, parmi les clients mappés, que ceux dont le nom apparaît dans la ligne.
+      // Les essais génériques (code_silae, nom partiel) sont désactivés car ils
+      // enverraient toutes les lignes du groupe vers le même client.
+      const nomNorm = normalizeString(row.nom);
+      const mapped = mappingByCode.get(row.code) || [];
+      clientIds = mapped.filter(cid => {
+        const c = clientById.get(cid);
+        const cNorm = c ? normalizeString(c.nom) : '';
+        return cNorm && nomNorm.includes(cNorm);
+      });
 
-    // Essai 2 : par SIREN (CLÉ UNIVERSELLE) — sauf si SIREN partagé par plusieurs clients
-    if (clientIds.length === 0 && row.siren) {
-      const sirenClean = row.siren.replace(/\s/g, '').trim();
-      if (sirenClean && clientBySiren.has(sirenClean) && !sharedSirens.has(sirenClean)) {
-        const client = clientBySiren.get(sirenClean);
+      // Pas de mapping utilisable → candidats par SIREN partagé + nom, si non ambigu
+      if (clientIds.length === 0 && row.siren) {
+        const sirenClean = row.siren.replace(/\s/g, '').trim();
+        const candidats = clients.filter(c => {
+          const cNorm = normalizeString(c.nom);
+          return c.siren === sirenClean && cNorm && nomNorm.includes(cNorm);
+        });
+        if (candidats.length === 1) clientIds = [candidats[0].id];
+      }
+    } else {
+      // Essai 1 : mapping existant en BDD (peut être 1→N)
+      if (mappingByCode.has(row.code)) {
+        clientIds = mappingByCode.get(row.code);
+      }
+
+      // Essai 2 : par SIREN (CLÉ UNIVERSELLE) — sauf si SIREN partagé par plusieurs clients
+      if (clientIds.length === 0 && row.siren) {
+        const sirenClean = row.siren.replace(/\s/g, '').trim();
+        if (sirenClean && clientBySiren.has(sirenClean) && !sharedSirens.has(sirenClean)) {
+          const client = clientBySiren.get(sirenClean);
+          clientIds = [client.id];
+        }
+      }
+
+      // Essai 3 : par code_silae sur le client
+      if (clientIds.length === 0 && clientByCode.has(row.code)) {
+        const client = clientByCode.get(row.code);
         clientIds = [client.id];
       }
-    }
 
-    // Essai 3 : par code_silae sur le client
-    if (clientIds.length === 0 && clientByCode.has(row.code)) {
-      const client = clientByCode.get(row.code);
-      clientIds = [client.id];
-    }
-
-    // Essai 4 : par nom normalisé
-    if (clientIds.length === 0) {
-      const nomNorm = normalizeString(row.nom);
-      if (clientByNom.has(nomNorm)) {
-        const client = clientByNom.get(nomNorm);
-        clientIds = [client.id];
+      // Essai 4 : par nom normalisé
+      if (clientIds.length === 0) {
+        const nomNorm = normalizeString(row.nom);
+        if (clientByNom.has(nomNorm)) {
+          const client = clientByNom.get(nomNorm);
+          clientIds = [client.id];
+        }
       }
-    }
 
-    // Essai 5 : nom contient (partiel)
-    if (clientIds.length === 0) {
-      const nomNorm = normalizeString(row.nom);
-      for (const c of clients) {
-        const cNorm = normalizeString(c.nom);
-        if (cNorm.includes(nomNorm) || nomNorm.includes(cNorm)) {
-          clientIds = [c.id];
-          break;
+      // Essai 5 : nom contient (partiel)
+      if (clientIds.length === 0) {
+        const nomNorm = normalizeString(row.nom);
+        for (const c of clients) {
+          const cNorm = normalizeString(c.nom);
+          if (cNorm.includes(nomNorm) || nomNorm.includes(cNorm)) {
+            clientIds = [c.id];
+            break;
+          }
         }
       }
     }
@@ -308,6 +468,10 @@ export async function importSilaeData(supabase, silaeRows, periode, clients) {
         sorties: row.sorties,
         declarations: row.declarations,
         attestations_pe: row.attestationsPE,
+        // Colonnes désormais fournies par le fichier Silae (le fichier fait foi,
+        // écrase la saisie manuelle éventuelle sur ces deux colonnes)
+        extras: row.extras || 0,
+        bulletins_refaits: row.bulletinsRefaits || 0,
         imported_at: new Date().toISOString()
       }, { onConflict: 'client_id,periode' });
 
