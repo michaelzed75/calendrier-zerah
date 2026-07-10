@@ -94,6 +94,37 @@ describe('parseManuelExcel', () => {
     expect(result).toHaveLength(0);
   });
 
+  it('rejette un export Silae avec un message orientant vers le bon bouton', () => {
+    // Structure d'un fichier Silae "Analyse production synthétique"
+    const rows = [
+      ['Analyse production synthétique par période de paie'],
+      [],
+      ['Numéro\nDossier', 'Société', 'Siren', 'Bulletins extra', 'Bulletins refaits'],
+      ['BK BAGNEUX', 'BK BAGNEUX', '901059287', '', 1]
+    ];
+    expect(() => parseManuelExcel(buildExcelBuffer(rows)))
+      .toThrow(/export Silae.*Choisir fichier Silae/s);
+  });
+
+  it('rejette un fichier quelconque sans l\'en-tête du modèle', () => {
+    const rows = [
+      ['Nom', 'Montant'],
+      ['ACME', 100]
+    ];
+    expect(() => parseManuelExcel(buildExcelBuffer(rows)))
+      .toThrow(/Fichier non reconnu.*Exporter modèle/s);
+  });
+
+  it('accepte l\'en-tête du modèle indépendamment de la casse', () => {
+    const rows = [
+      ['TYPE', 'CLIENT', 'Siren', 'Cabinet', 'Bull. refaits', 'Bull. manuels', 'Entrées', 'Sorties', 'Extras', 'Coffre-fort', 'Éditique', 'Temps passé', 'Commentaires'],
+      ['R', 'BK BAGNEUX', '901059287', 'AUP', 2, 0, 0, 0, 0, 0, 0, 0, '']
+    ];
+    const result = parseManuelExcel(buildExcelBuffer(rows));
+    expect(result).toHaveLength(1);
+    expect(result[0].bulletins_refaits).toBe(2);
+  });
+
   it('devrait parser les bulletins refaits correctement', () => {
     const rows = [
       HEADERS,

@@ -196,8 +196,15 @@ export async function exportModeleManuel({ supabase, periode, cabinet }) {
 
 /**
  * Parse un fichier Excel de saisie manuelle.
+ *
+ * REJETTE tout fichier dont la première ligne n'est pas l'en-tête du modèle
+ * (Type / Client / SIREN…) — en particulier les exports Silae "Analyse
+ * production synthétique", dont les colonnes décalées écriraient n'importe
+ * quoi dans les colonnes manuelles.
+ *
  * @param {ArrayBuffer} buffer
  * @returns {ManuelRow[]}
+ * @throws {Error} si le fichier ne correspond pas au modèle de saisie
  */
 export function parseManuelExcel(buffer) {
   const wb = XLSX.read(buffer, { type: 'array' });
@@ -205,6 +212,23 @@ export function parseManuelExcel(buffer) {
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
   if (raw.length < 2) return [];
+
+  // Garde-fou : vérifier que c'est bien le modèle de saisie manuelle
+  const premiereCellule = String(raw[0]?.[0] || '').trim().toLowerCase();
+  const header = (raw[0] || []).map(c => String(c || '').trim().toLowerCase());
+  if (premiereCellule.includes('analyse production')) {
+    throw new Error(
+      'Ce fichier est un export Silae « Analyse production synthétique » — ' +
+      'utilisez le bouton « Choisir fichier Silae » de la section Import Silae, ' +
+      'pas l\'import de saisie manuelle.'
+    );
+  }
+  if (header[0] !== 'type' || header[1] !== 'client' || header[2] !== 'siren') {
+    throw new Error(
+      'Fichier non reconnu : la première ligne doit contenir les colonnes du modèle ' +
+      '(Type, Client, SIREN…). Utilisez « Exporter modèle » puis remplissez-le.'
+    );
+  }
 
   // Skip header row
   const rows = [];
