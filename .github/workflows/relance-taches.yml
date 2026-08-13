@@ -7,6 +7,11 @@ on:
     # Lundi 9h UTC = 10h Paris en hiver (heure d'hiver, UTC+1)
     - cron: '0 9 * * 1'
   workflow_dispatch: # Déclenchement manuel depuis GitHub
+    inputs:
+      only_email:
+        description: "Test : n'envoyer qu'à cette adresse (laisser vide = envoi réel à tous les collaborateurs)"
+        required: false
+        default: ''
 
 jobs:
   relance-taches:
@@ -39,8 +44,16 @@ jobs:
       - name: Envoyer le digest des tâches
         if: steps.gate.outputs.should_run == 'true'
         run: |
+          URL="https://calendrier-zerah.vercel.app/api/relance-taches"
+          ONLY="${{ github.event.inputs.only_email }}"
           # --fail-with-body : si l'endpoint renvoie une erreur HTTP, le run
           # GitHub échoue visiblement (avant, curl renvoyait toujours succès).
-          curl -sS --fail-with-body -X POST "https://calendrier-zerah.vercel.app/api/relance-taches" \
-            -H "Content-Type: application/json" \
-            -d '{}'
+          if [ -n "$ONLY" ]; then
+            echo "Mode TEST : envoi uniquement à $ONLY"
+            curl -sS --fail-with-body -X POST "$URL?onlyEmail=$ONLY" \
+              -H "Content-Type: application/json" -d '{}'
+          else
+            echo "Envoi RÉEL à tous les collaborateurs concernés"
+            curl -sS --fail-with-body -X POST "$URL" \
+              -H "Content-Type: application/json" -d '{}'
+          fi
