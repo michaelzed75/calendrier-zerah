@@ -16,8 +16,12 @@ xxx/
 nul
 supabase/.temp/
 
+# Scripts one-shot archivés (diagnostic/migration ponctuels)
+scripts/_archive/
+
 # Fichiers de données client (Excel, etc.)
 communication claude user/
+_donnees/
 
 # Artefacts divers
 C*tmpcheck*.js
