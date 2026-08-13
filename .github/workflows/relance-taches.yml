@@ -2,9 +2,9 @@ name: Digest hebdomadaire des tâches
 
 on:
   schedule:
-    # Lundi 8h UTC = 10h Paris en été
+    # Lundi 8h UTC = 10h Paris en été (heure d'été, UTC+2)
     - cron: '0 8 * * 1'
-    # Lundi 9h UTC = 10h Paris en hiver
+    # Lundi 9h UTC = 10h Paris en hiver (heure d'hiver, UTC+1)
     - cron: '0 9 * * 1'
   workflow_dispatch: # Déclenchement manuel depuis GitHub
 
@@ -12,21 +12,35 @@ jobs:
   relance-taches:
     runs-on: ubuntu-latest
     steps:
-      - name: Vérifier qu'il est bien 10h à Paris
-        id: check_time
+      # On ne peut PAS gater sur l'heure d'exécution : les crons GitHub Actions
+      # sont souvent décalés de plusieurs dizaines de minutes, ce qui faisait
+      # systématiquement rater la fenêtre "10h Paris" -> digest jamais envoyé.
+      # On gate donc sur le cron QUI A déclenché le run (github.event.schedule)
+      # + le décalage horaire actuel de Paris (été/hiver). Exactement un cron
+      # passe par lundi, quel que soit le retard de GitHub.
+      - name: Décider s'il faut lancer (été/hiver, tolérant aux retards)
+        id: gate
         run: |
-          PARIS_HOUR=$(TZ='Europe/Paris' date +%H)
-          echo "Heure à Paris: ${PARIS_HOUR}h"
-          if [ "$PARIS_HOUR" = "10" ]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "Ce n'est pas 10h à Paris, on skip"
+          OFFSET=$(TZ='Europe/Paris' date +%z)   # +0200 (été) ou +0100 (hiver)
+          SCHED="${{ github.event.schedule }}"
+          EVENT="${{ github.event_name }}"
+          echo "event=$EVENT offset=$OFFSET schedule=$SCHED"
+          RUN=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            RUN=true                                                    # manuel : toujours
+          elif [ "$OFFSET" = "+0200" ] && [ "$SCHED" = "0 8 * * 1" ]; then
+            RUN=true                                                    # été : cron 8h UTC
+          elif [ "$OFFSET" = "+0100" ] && [ "$SCHED" = "0 9 * * 1" ]; then
+            RUN=true                                                    # hiver : cron 9h UTC
           fi
+          echo "Décision: should_run=$RUN"
+          echo "should_run=$RUN" >> $GITHUB_OUTPUT
 
       - name: Envoyer le digest des tâches
-        if: steps.check_time.outputs.should_run == 'true'
+        if: steps.gate.outputs.should_run == 'true'
         run: |
-          curl -X POST "https://calendrier-zerah.vercel.app/api/relance-taches" \
+          # --fail-with-body : si l'endpoint renvoie une erreur HTTP, le run
+          # GitHub échoue visiblement (avant, curl renvoyait toujours succès).
+          curl -sS --fail-with-body -X POST "https://calendrier-zerah.vercel.app/api/relance-taches" \
             -H "Content-Type: application/json" \
             -d '{}'
