@@ -1,12 +1,13 @@
-name: Digest hebdomadaire des tâches
+name: Digest hebdomadaire des tâches (déclenchement manuel)
 
+# Le déclenchement automatique est géré par Vercel Cron (voir vercel.json,
+# "0 8 * * 1" -> appelle directement /api/relance-taches). Les schedules
+# GitHub Actions ont été retirés d'ici : ils étaient trop souvent décalés
+# de plusieurs dizaines de minutes (parfois beaucoup plus), et les garder
+# en plus du cron Vercel aurait envoyé le digest en double chaque lundi.
+# Ce workflow reste utile pour un test manuel ou un rattrapage ponctuel.
 on:
-  schedule:
-    # Lundi 8h UTC = 10h Paris en été (heure d'été, UTC+2)
-    - cron: '0 8 * * 1'
-    # Lundi 9h UTC = 10h Paris en hiver (heure d'hiver, UTC+1)
-    - cron: '0 9 * * 1'
-  workflow_dispatch: # Déclenchement manuel depuis GitHub
+  workflow_dispatch:
     inputs:
       only_email:
         description: "Test : n'envoyer qu'à cette adresse (laisser vide = envoi réel à tous les collaborateurs)"
@@ -17,32 +18,7 @@ jobs:
   relance-taches:
     runs-on: ubuntu-latest
     steps:
-      # On ne peut PAS gater sur l'heure d'exécution : les crons GitHub Actions
-      # sont souvent décalés de plusieurs dizaines de minutes, ce qui faisait
-      # systématiquement rater la fenêtre "10h Paris" -> digest jamais envoyé.
-      # On gate donc sur le cron QUI A déclenché le run (github.event.schedule)
-      # + le décalage horaire actuel de Paris (été/hiver). Exactement un cron
-      # passe par lundi, quel que soit le retard de GitHub.
-      - name: Décider s'il faut lancer (été/hiver, tolérant aux retards)
-        id: gate
-        run: |
-          OFFSET=$(TZ='Europe/Paris' date +%z)   # +0200 (été) ou +0100 (hiver)
-          SCHED="${{ github.event.schedule }}"
-          EVENT="${{ github.event_name }}"
-          echo "event=$EVENT offset=$OFFSET schedule=$SCHED"
-          RUN=false
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            RUN=true                                                    # manuel : toujours
-          elif [ "$OFFSET" = "+0200" ] && [ "$SCHED" = "0 8 * * 1" ]; then
-            RUN=true                                                    # été : cron 8h UTC
-          elif [ "$OFFSET" = "+0100" ] && [ "$SCHED" = "0 9 * * 1" ]; then
-            RUN=true                                                    # hiver : cron 9h UTC
-          fi
-          echo "Décision: should_run=$RUN"
-          echo "should_run=$RUN" >> $GITHUB_OUTPUT
-
       - name: Envoyer le digest des tâches
-        if: steps.gate.outputs.should_run == 'true'
         run: |
           URL="https://calendrier-zerah.vercel.app/api/relance-taches"
           ONLY="${{ github.event.inputs.only_email }}"
