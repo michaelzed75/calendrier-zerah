@@ -4,6 +4,7 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/relance-taches", "schedule": "0 8 * * 1" }
+    { "path": "/api/relance-taches", "schedule": "0 8 * * 1" },
+    { "path": "/api/relance-taches", "schedule": "30 8 7 9 *" }
   ]
 }
