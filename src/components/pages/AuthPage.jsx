@@ -110,7 +110,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
       const { data: collab, error: collabError } = await supabase
         .from('collaborateurs')
         .select('*')
-        .eq('email', email)
+        .ilike('email', email)
         .single();
 
       if (collabError || !collab) {
@@ -159,7 +159,7 @@ function AuthPage({ authPage, setAuthPage, accent }) {
       const { data: collab, error: collabError } = await supabase
         .from('collaborateurs')
         .select('*')
-        .eq('email', email)
+        .ilike('email', email)
         .single();
 
       if (collabError || !collab) {

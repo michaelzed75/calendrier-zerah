@@ -145,7 +145,7 @@ export default function App() {
     const { data, error } = await supabase
       .from('collaborateurs')
       .select('*')
-      .eq('email', email)
+      .ilike('email', email)
       .single();
 
     if (!error && data) {

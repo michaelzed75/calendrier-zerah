@@ -56,7 +56,7 @@ async function authenticateAdmin(authHeader) {
   const { data: collab, error: collabErr } = await supabaseAdmin
     .from('collaborateurs')
     .select('id, email, is_admin, est_chef_mission, nom')
-    .eq('email', userData.user.email)
+    .ilike('email', userData.user.email)
     .single();
 
   if (collabErr || !collab) {
