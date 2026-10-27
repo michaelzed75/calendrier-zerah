@@ -10,6 +10,7 @@ import RestructurationPanel from '../honoraires/RestructurationPanel';
 import FacturationVariablePanel from '../honoraires/FacturationVariablePanel';
 import DashboardHonorairesPanel from '../honoraires/DashboardHonorairesPanel';
 import SyncPreviewModal from '../honoraires/SyncPreviewModal';
+import SilaeKeysModal from '../modals/SilaeKeysModal';
 
 /**
  * @typedef {import('../../types.js').Client} Client
@@ -78,6 +79,7 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
   const [apiCabinet, setApiCabinet] = useState('');
   const [apiKeysMap, setApiKeysMap] = useState({}); // { cabinet: { api_key, company_id } }
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [showSilaeModal, setShowSilaeModal] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [savingApiKey, setSavingApiKey] = useState(false);
@@ -564,6 +566,16 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
             ) : null}
             API Pennylane
           </button>
+
+          {/* Identifiants API Silae (Vault) */}
+          {userCollaborateur?.is_admin && (
+            <button
+              onClick={() => setShowSilaeModal(true)}
+              className="px-4 py-2 border border-slate-600 rounded-lg hover:bg-slate-600 flex items-center gap-2 text-white"
+            >
+              API Silae
+            </button>
+          )}
 
           {/* Bouton sync */}
           {canSync && (
@@ -1506,6 +1518,11 @@ function HonorairesPage({ clients, setClients, collaborateurs, accent, userColla
           onCancel={handleCancelSync}
           accepting={committing}
         />
+      )}
+
+      {/* Modal identifiants API Silae */}
+      {showSilaeModal && (
+        <SilaeKeysModal onClose={() => setShowSilaeModal(false)} />
       )}
     </div>
   );

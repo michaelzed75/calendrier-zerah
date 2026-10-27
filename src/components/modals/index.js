@@ -6,3 +6,4 @@ export { default as AddChargeModal } from './AddChargeModal';
 export { default as EditChargeModal } from './EditChargeModal';
 export { default as ExportModal } from './ExportModal';
 export { default as PennylaneKeysModal } from './PennylaneKeysModal';
+export { default as SilaeKeysModal } from './SilaeKeysModal';
